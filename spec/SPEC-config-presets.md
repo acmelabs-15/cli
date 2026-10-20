@@ -71,7 +71,7 @@ Ultracite's core preset through `extends`, Ultracite's ignore list named again (
 | `no-await-in-loop` | `error` | `off` | Steps that must run in order stay sequential: ordered writes, a check that finishes before the first write, one outside program at a time so outputs do not mix. `Promise.all` would reorder them. |
 | `typescript/consistent-type-definitions` | `interface` | `type` | ACMElabs code uses `type` for object shapes, as the specs' code style shows. |
 
-Ultracite's core preset also sets `env: { browser: true }`, which `extends` does not pass on. The preset keeps that, so a repo that moves onto it gets the same results as today.
+Ultracite's core preset also sets `env: { browser: true }`, which `extends` does not pass on. The preset sets no `env`, as today's configs do, so a repo that moves onto it gets the same results as today.
 
 ### Format: `@acmelabs/config/oxfmt`
 
@@ -128,8 +128,8 @@ export { default } from "@acmelabs/config/oxfmt";
 When the repo adds its own settings, such as brain's vendored folders. Each addition carries its reason, as the preset's do:
 
 ```ts
-import { defineConfig } from "oxlint";
 import preset from "@acmelabs/config/oxlint";
+import { defineConfig } from "oxlint";
 
 export default defineConfig({
   extends: [preset],
@@ -140,8 +140,8 @@ export default defineConfig({
 ```
 
 ```ts
-import { defineConfig } from "oxfmt";
 import preset from "@acmelabs/config/oxfmt";
+import { defineConfig } from "oxfmt";
 
 export default defineConfig({
   ...preset,
@@ -150,7 +150,7 @@ export default defineConfig({
 });
 ```
 
-The preset types say that `ignorePatterns` is always present, so a thin caller needs no fallback.
+The preset types say that `ignorePatterns` is always present, so a thin caller needs no fallback. The imports stand in the order that the format preset sorts them, so each thin caller passes the format check as written.
 
 `tsconfig.json`:
 
