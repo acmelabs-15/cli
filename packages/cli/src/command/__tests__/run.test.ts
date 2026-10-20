@@ -594,8 +594,7 @@ describe("runCommand: a question mid-run", () => {
 
   test("ask with no value and no answer names the flag, and how to give it", async () => {
     const outcome = await runCommand(release, {}, frontEnd(tagged()));
-    const message =
-      "--marketplace has no value; give it as a flag, for example --marketplace";
+    const message = "--marketplace has no value; give it as a flag, for example --marketplace";
     expect(outcome).toEqual({
       ok: false,
       command: "sample release",
@@ -616,8 +615,7 @@ describe("runCommand: a question mid-run", () => {
         return { repoName: await context.ask("repoName") };
       },
     });
-    const message =
-      "--repo-name has no value; give it as a flag, for example --repo-name <value>";
+    const message = "--repo-name has no value; give it as a flag, for example --repo-name <value>";
     expect(await runCommand(create, {}, frontEnd(fakeWorld()))).toMatchObject({
       exitCode: 2,
       error: { kind: "input", message, issues: [{ field: "--repo-name", message }] },
