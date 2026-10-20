@@ -36,6 +36,7 @@ From the brief and Peter's standing rules:
 - Outward-facing steps (push, PR, merge, release, repo creation, visibility, npm publish, org creation) are asked once, then run as small separate shell commands.
 - Verify or say unverified. Check Claude Code, GitHub Actions and npm behaviour against their current docs.
 - A new command is one file and one line in the command list, with its own tests. `acmelabs --help` lists every command.
+- Every repo, every package and every plugin has a `README.md`: what it is, how to install and use it, and where its records are. A package's README ships in its npm package.
 - Every repo, every package and every plugin keeps a changelog through changesets, set up as brain does: `.changeset/config.json` with `@changesets/changelog-github`, `.changeset/README.md` explaining the release flow, a `CHANGELOG.md` per package, and the `changeset` and `version` scripts. A user-facing change gets a changeset. This repo follows the rule from its first code commit.
 
 ## Test seams
@@ -62,6 +63,7 @@ The brief's done-when list, with Peter's additions from the interview:
 - [ ] A new repo protects main with the "Protect main" ruleset and enables agent-skills and brain at project scope (ADR-0011).
 - [ ] A new repo has changesets set up as brain does, written from its repo config: `.changeset/config.json`, `.changeset/README.md`, `CHANGELOG.md` per package, and the `changeset` and `version` scripts.
 - [ ] This repo's two packages and its plugin each keep a changelog through changesets.
+- [ ] A new repo, and each package and plugin in it, has a `README.md`. This repo and its two packages have one too.
 - [ ] A new repo starts with this repo's record layout: `AGENTS.md` with the session start and end routine and the rules for questions and research (every question to the owner through the ask-user-question skill; research lands in files), a root `CLAUDE.md` that imports it and names which plugin runs which phase, `CONTEXT.md`, `docs/STATUS.md`, `docs/design/`, `docs/decisions/`, `docs/research/` with its index, `tasks/`, and brain's `docs/agents/` files.
 - [ ] `acmelabs marketplace add` adds a plugin repo to acmelabs-15/marketplace under the marketplace's conventions, and `claude plugin validate . --strict` passes on the marketplace afterwards.
 - [ ] The marketplace README has a short "Add a plugin" section that points to `acmelabs new` and `acmelabs marketplace add`.
@@ -98,3 +100,4 @@ The brief's done-when list, with Peter's additions from the interview:
 | 11 | In this workspace, changesets versions the packages under `packages/`, not the root. Where does the agent-guide plugin's version and changelog live: a private workspace package for the plugin, or the plugin's version tied to `@acmelabs/cli`? This also decides whether the marketplace entry points at the repo root or a subfolder | `agent-guide`, `cli-release` | Research the marketplace's subfolder sources, then ask Peter |
 | 12 | The vendored `@clack/ui` is a workspace package that is not on npm. `@acmelabs/cli` must bundle it into its build output and must not list it as a dependency | `tui-kit`, `cli-release` | Settle in the `tui-kit` spec |
 | 13 | Claude Code's plugin dependency ranges resolve `<name>--v<version>` tags; ACMElabs repos tag `v<version>` | none in this pass | Note for later |
+| 14 | Which license? brain and jev-gate ship an MIT `LICENSE`; this public repo has none yet, and npm packages name one in `package.json` | `cli-release`; new repos in `scaffold` | Ask Peter |

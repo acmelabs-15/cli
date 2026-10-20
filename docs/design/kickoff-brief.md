@@ -25,6 +25,7 @@ Each row changes or adds to the brief below. The full exchange is in `docs/desig
 | 2026-10-20 | A research agent that delegates to sub-agents has them write their findings to Markdown files, which it then reads. | not in the brief |
 | 2026-10-20 | Every repo that the CLI or TUI makes starts with the same record layout and agent rules as this repo, modelled on awaken-the-slumberer: `AGENTS.md` and `CLAUDE.md`, `CONTEXT.md`, `docs/STATUS.md`, `docs/design/`, `docs/decisions/`, `docs/research/`, `tasks/`, and the rule above. | not in the brief |
 | 2026-10-20 | The two standing rules added to Peter's global `~/CLAUDE.md` also go into this repo's `AGENTS.md` and into the `AGENTS.md` of every repo the CLI makes: every question to Peter, a decision or a permission, goes through the ask-user-question skill; research lands in files. | not in the brief |
+| 2026-10-20 | This repo has a `README.md`, and so does every plugin and package the CLI makes. | not in the brief |
 | 2026-10-20 | This repo, its packages and its plugin, and every package and plugin repo the CLI makes, keep changelogs through changesets, set up as brain does. | The brief named "changesets releases" as part of the shape, but not per package or for this repo |
 
 ## The brief as given
