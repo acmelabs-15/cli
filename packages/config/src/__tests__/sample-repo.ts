@@ -70,6 +70,15 @@ export const formatSpreadCaller = [
   "",
 ].join("\n");
 
+/** The spec's `tsconfig.json` thin caller: the TypeScript preset, and the repo's own include. */
+export const typescriptThinCaller = [
+  "{",
+  '  "extends": "@acmelabs/config/tsconfig.json",',
+  '  "include": ["src/**/*.ts"]',
+  "}",
+  "",
+].join("\n");
+
 /** The scripts in a sample repo's package.json, as an ACMElabs repo names them. */
 const scripts = { lint: "oxlint", "format:check": "oxfmt --check", typecheck: "tsc --noEmit" };
 

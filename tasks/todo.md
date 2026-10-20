@@ -16,7 +16,7 @@ Phase 2 The three presets
 
 - [x] 3. Every lint deviation has its reason, and the lint results match today's
 - [x] 4. A sample repo formats with the format preset
-- [ ] 5. A sample repo type-checks with the TypeScript preset
+- [x] 5. A sample repo type-checks with the TypeScript preset
 - [ ] Checkpoint: the presets
 
 Phase 3 The presets in use
@@ -112,13 +112,13 @@ Phase 3 The presets in use
 **Description:** `packages/config/tsconfig.json` holds the spec's `compilerOptions`, each with a comment line that gives its reason, and no `include`. The package exports and ships it. A sample repo whose `tsconfig.json` is the spec's thin caller type-checks on Bun. This answers spec open question 2.
 
 **Acceptance criteria:**
-- [ ] `exports` has `./tsconfig.json`, and `files` ships it.
-- [ ] In a sample repo with the thin caller: `Bun.file` type-checks; an unchecked index read fails; a type-only import without `type` fails; a file outside the sample repo's `include` is not checked.
-- [ ] A test reads the preset's text: every option under `compilerOptions` has a comment line directly above it, and the file has no `include`.
+- [x] `exports` has `./tsconfig.json`, and `files` ships it.
+- [x] In a sample repo with the thin caller: `Bun.file` type-checks; an unchecked index read fails; a type-only import without `type` fails; a file outside the sample repo's `include` is not checked.
+- [x] A test reads the preset's text: every option under `compilerOptions` has a comment line directly above it, and the file has no `include`.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/config`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/config`
+- [x] `bun run check` is green.
 
 **Dependencies:** 2
 

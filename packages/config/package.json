@@ -5,7 +5,8 @@
   "description": "The ACMElabs presets: oxlint, oxfmt and TypeScript, each deviation with its reason.",
   "license": "MIT",
   "files": [
-    "dist"
+    "dist",
+    "tsconfig.json"
   ],
   "type": "module",
   "exports": {
@@ -16,7 +17,8 @@
     "./oxfmt": {
       "types": "./dist/oxfmt.d.ts",
       "default": "./dist/oxfmt.js"
-    }
+    },
+    "./tsconfig.json": "./tsconfig.json"
   },
   "scripts": {
     "build": "bun scripts/build.ts"

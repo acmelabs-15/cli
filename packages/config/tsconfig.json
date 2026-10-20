@@ -1,0 +1,26 @@
+// The ACMElabs TypeScript preset. A repo extends it and names its own include: a path in an
+// extended config resolves from this folder, so the preset sets none.
+{
+  "compilerOptions": {
+    // Bun runs the newest syntax; nothing is compiled down.
+    "target": "ESNext",
+    // Resolve imports as Bun does: package exports, and no file extensions (with moduleResolution).
+    "module": "ESNext",
+    // Resolve imports as Bun does: package exports, and no file extensions (with module).
+    "moduleResolution": "bundler",
+    // No DOM: the code runs on Bun, not in a browser.
+    "lib": ["ESNext"],
+    // Bun's globals and APIs. The repo installs @types/bun.
+    "types": ["bun"],
+    // Every strict check.
+    "strict": true,
+    // An index read can be undefined, and the type says so.
+    "noUncheckedIndexedAccess": true,
+    // tsc only checks; Bun runs the source. A library build sets its own output.
+    "noEmit": true,
+    // Dependencies' type files are not checked: faster, and not this repo's to fix.
+    "skipLibCheck": true,
+    // A type-only import says `type`, so a transpiler drops it without type information.
+    "verbatimModuleSyntax": true
+  }
+}
