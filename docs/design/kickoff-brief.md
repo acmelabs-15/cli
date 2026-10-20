@@ -24,6 +24,7 @@ Each row changes or adds to the brief below. The full exchange is in `docs/desig
 | 2026-10-20 | Everything the interview settles is saved to Markdown in this repo, in the layout of `~/Dev/awaken-the-slumberer`. | not in the brief |
 | 2026-10-20 | A research agent that delegates to sub-agents has them write their findings to Markdown files, which it then reads. | not in the brief |
 | 2026-10-20 | Every repo that the CLI or TUI makes starts with the same record layout and agent rules as this repo, modelled on awaken-the-slumberer: `AGENTS.md` and `CLAUDE.md`, `CONTEXT.md`, `docs/STATUS.md`, `docs/design/`, `docs/decisions/`, `docs/research/`, `tasks/`, and the rule above. | not in the brief |
+| 2026-10-20 | The two standing rules added to Peter's global `~/CLAUDE.md` also go into this repo's `AGENTS.md` and into the `AGENTS.md` of every repo the CLI makes: every question to Peter, a decision or a permission, goes through the ask-user-question skill; research lands in files. | not in the brief |
 
 ## The brief as given
 

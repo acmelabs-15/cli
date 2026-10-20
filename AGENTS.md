@@ -25,7 +25,7 @@ Run these steps at the end of every session and after each completed task:
 
 1. Tick the finished tasks in `tasks/todo.md`.
 2. Rewrite `docs/STATUS.md`: date, phase, last completed task, next task, anything red, and what waits on Peter. Done when a new session can continue from it alone.
-3. Commit. Done when `git status` is clean. Push only once Peter has approved pushes for this repo.
+3. Commit, and tell Peter the commit's hash and subject. Peter gave standing permission on 2026-10-20 to commit at each task end and session end without asking. Done when `git status` is clean. A push is an outward step: ask before each one.
 
 ## Phases and gates
 
@@ -68,7 +68,7 @@ At a STOP, the next phase starts only after Peter approves in the conversation. 
 - **Words.** Domain words come from `CONTEXT.md`. A concept the glossary lacks goes through the domain-modeling skill.
 - **Questions to Peter.** Every question to Peter, a decision or a permission, goes through the ask-user-question skill, one question per call, with the facts and a recommendation inside the question. A choice is Peter's when two paths are defensible, the choice changes what gets built, and reading more would not settle it.
 - **Decisions.** A decision that is hard to reverse, surprising without context and the result of a real trade-off gets a short record in `docs/decisions/`.
-- **Research.** Every research agent writes its findings to a Markdown file and its parent reads that file. A finished note goes in `docs/research/` with a row in its `README.md` index.
+- **Research lands in files.** A research agent writes its findings to a Markdown file, and its parent reads that file, not the agent's reply; replies between agents often fail. An agent that delegates names each sub-agent's target file in its prompt. A finished note goes in `docs/research/` with a row in its `README.md` index.
 - **Commands.** A new command is one file and one line in the command list, with its own tests. `acmelabs --help` lists every command.
 
 ## Tool setup

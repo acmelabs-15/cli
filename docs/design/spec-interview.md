@@ -212,6 +212,18 @@ Peter declined the question ("doesn't want to take this action right now") and a
 
 Peter asked that everything from the interview be saved to Markdown in the layout of `~/Dev/awaken-the-slumberer`. This file, `docs/design/kickoff-brief.md`, `docs/research/`, `docs/decisions/`, `CONTEXT.md`, `spec/README.md`, `AGENTS.md`, `CLAUDE.md`, `.claude/settings.json` and `docs/STATUS.md` were written then.
 
+### Standing rules — settled 2026-10-20
+
+- **Peter:** "use the ask user question skill always." The agent had asked two permissions in plain text, reading the global rule as covering decisions only.
+- **Asked and answered:** add both rules to `~/CLAUDE.md` §1: every question to Peter, a decision or a permission, goes through ask-user-question; research lands in files, and an agent that delegates names each sub-agent's target file.
+- **Peter:** those global updates "should probably also exist in the project specific ones that we create using the CLI as well as the AGENTS.md in this project." Effect: both rules are in this repo's `AGENTS.md`, and the done-when item for a new repo's record layout names them.
+
+### The repo name — settled 2026-10-20
+
+- **Peter asked:** "instead of being in a directory named 'cli' should it be called 'tui'?"
+- **Facts given:** the TUI is one of four front-ends, and the repo also holds `@acmelabs/config` and the agent-guide plugin. The glossary uses "TUI" for the full-screen front-end only. A rename was cheap (no remote, one commit, 7 mentions); `acmelabs-15/tui`, `acmelabs-15/acmelabs` and `@acmelabs/tui` were free.
+- **Recommended and answered:** keep `cli` for the repo and the folder. The npm package stays `@acmelabs/cli`.
+
 ### Where `CLAUDE.md` lives — settled 2026-10-20
 
 - **Peter asked:** should `.claude/CLAUDE.md` be at the root instead?

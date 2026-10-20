@@ -8,7 +8,7 @@ The one place for where the project stands. Every session reads it first and rew
 
 - **Phase: Spec** (`/brain:spec`), for the whole initiative.
 - **Done:** `setup-brain` (local markdown tracker); the spec interview's decisions (`docs/design/spec-interview.md`); the capability map, approved by Peter on 2026-10-20 (`spec/README.md`); eleven decision records; the research notes; the glossary; `AGENTS.md`, the root `CLAUDE.md` and `.claude/settings.json`. Every interview question is settled, the test seams included.
-- **No module spec is written yet.** No code exists. Nothing is committed: the repo has no commits and no remote.
+- **No module spec is written yet.** No code exists. The records are in the first commit, `96370cc`, on this machine only; the repo has no remote.
 
 ## Red and notes
 
@@ -17,7 +17,7 @@ The one place for where the project stands. Every session reads it first and rew
 
 ## Waiting on Peter
 
-1. **First commit:** approval to commit these records as the repo's first commit.
+Nothing now. Peter approved the first commit, and the two global rules (research in files; every question through ask-user-question) are in `~/CLAUDE.md` §1.
 
 ## Next steps
 
