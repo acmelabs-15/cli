@@ -6,7 +6,7 @@ The task list for `tasks/plan.md`. Tick a task in the checklist when it meets it
 
 Phase 1 Foundation
 
-- [ ] 1. Workspace, TypeScript, and the first test: the four host ids
+- [x] 1. Workspace, TypeScript, and the first test: the four host ids
 - [ ] 2. Lint and format gate
 - [ ] 3. Changesets, as brain does
 - [ ] Checkpoint: foundation
