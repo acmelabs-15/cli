@@ -8,7 +8,7 @@ The task list for `tasks/plan.md`. Tick a task in the checklist, and each box in
 
 Phase 1 The gate on Bun, and a first preset end to end
 
-- [ ] 1. The gate runs on Bun in this repo
+- [x] 1. The gate runs on Bun in this repo
 - [ ] 2. A sample repo lints with the built lint preset
 - [ ] Checkpoint: the seam works
 
@@ -31,13 +31,13 @@ Phase 3 The presets in use
 **Description:** A root `bunfig.toml` with `[run]` and `bun = true` (ADR-0012). From here on, every check in `bun run check` runs on Bun, also on a machine with Node on PATH.
 
 **Acceptance criteria:**
-- [ ] `bunfig.toml` holds `[run]` and `bun = true`, with a comment that names ADR-0012.
-- [ ] `bun run check` passes with the failing `node`, and its output has no `REAL NODE WAS CALLED`.
-- [ ] With `bunfig.toml` moved away, `bun run typecheck` with the failing `node` exits non-zero with `REAL NODE WAS CALLED`. This proves the check is live.
+- [x] `bunfig.toml` holds `[run]` and `bun = true`, with a comment that names ADR-0012.
+- [x] `bun run check` passes with the failing `node`, and its output has no `REAL NODE WAS CALLED`.
+- [x] With `bunfig.toml` moved away, `bun run typecheck` with the failing `node` exits non-zero with `REAL NODE WAS CALLED`. This proves the check is live.
 
 **Verification:**
-- [ ] `bun run check` is green, read from its own exit code.
-- [ ] The two runs above, with their output kept in the task's report.
+- [x] `bun run check` is green, read from its own exit code.
+- [x] The two runs above, with their output kept in the task's report.
 
 **Dependencies:** None
 
