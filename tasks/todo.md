@@ -9,7 +9,7 @@ Phase 1 A command runs
 - [x] 1. World: realWorld and fakeWorld
 - [x] 2. A command runs and ends with its exit code
 - [x] 3. Input errors named by flag and positional
-- [ ] Checkpoint: a command runs
+- [x] Checkpoint: a command runs
 
 Phase 2 The rest of the frame
 
@@ -77,8 +77,8 @@ Phase 2 The rest of the frame
 
 ## Checkpoint: a command runs
 
-- [ ] A sample command runs through `runCommand` with `fakeWorld`, and every failure kind built so far ends with its exit code.
-- [ ] `bun run check` is green on a clean clone of the branch.
+- [x] A sample command runs through `runCommand` with `fakeWorld`, and every failure kind built so far ends with its exit code.
+- [x] `bun run check` is green on a clean clone of the branch.
 
 ## Task 4: Progress updates, and open steps closed on a throw
 

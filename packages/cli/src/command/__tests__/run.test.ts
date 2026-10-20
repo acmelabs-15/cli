@@ -10,7 +10,7 @@ import type { ProgressUpdate } from "../command";
 import { defineCommand } from "../command";
 import type { Outcome } from "../outcome";
 import { exitCodes, inputError, loginNeeded, outsideError, problem } from "../outcome";
-import { runCommand } from "../run";
+import { flagOf, runCommand } from "../run";
 import type { World } from "../world";
 import { fakeWorld } from "../world";
 
@@ -591,5 +591,16 @@ describe("runCommand: the context a command runs in", () => {
         ],
       },
     });
+  });
+});
+
+describe("flagOf", () => {
+  test("gives the field in kebab case after two dashes, with an acronym kept as one word", () => {
+    expect(flagOf("host")).toBe("--host");
+    expect(flagOf("dryRun")).toBe("--dry-run");
+    expect(flagOf("npmURL")).toBe("--npm-url");
+    expect(flagOf("URLPath")).toBe("--url-path");
+    expect(flagOf("githubAPIToken")).toBe("--github-api-token");
+    expect(flagOf("schemaV2")).toBe("--schema-v2");
   });
 });

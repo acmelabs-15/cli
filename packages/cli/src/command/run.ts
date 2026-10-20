@@ -20,9 +20,16 @@ function millisecondsSince(started: number): number {
   return Math.round(performance.now() - started);
 }
 
-/** A field's flag: the field in kebab case after two dashes, such as `--dry-run` for `dryRun`. */
-function flagOf(field: string): string {
-  return `--${field.replaceAll(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)}`;
+/**
+ * A field's flag: the field in kebab case after two dashes, such as `--dry-run` for `dryRun`. An
+ * acronym stays one word: `npmURL` is `--npm-url`. cli-frontend names the router's flags with this
+ * function, so an input error always names a flag that exists.
+ */
+export function flagOf(field: string): string {
+  const words = field
+    .replaceAll(/(?<lower>[a-z0-9])(?<upper>[A-Z])/gu, "$<lower>-$<upper>")
+    .replaceAll(/(?<acronym>[A-Z])(?<word>[A-Z][a-z])/gu, "$<acronym>-$<word>");
+  return `--${words.toLowerCase()}`;
 }
 
 /**
