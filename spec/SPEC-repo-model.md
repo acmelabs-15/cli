@@ -124,7 +124,7 @@ Matches brain's scripts and DEC-001: `type` for object shapes, function declarat
 ```ts
 /** Every manifest of the repo's hosts, in host-table order. Empty for a library-only repo. */
 export function manifestsFor(config: RepoConfig): Manifest[] {
-  const declared = new Set(config.plugin?.hosts ?? []);
+  const declared = new Set(config.plugin?.hosts);
   return hostIds
     .filter((id) => declared.has(id))
     .flatMap((id) => hosts[id].manifests.map((manifest) => ({ host: id, ...manifest })));
