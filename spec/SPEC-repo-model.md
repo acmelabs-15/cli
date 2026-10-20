@@ -13,7 +13,7 @@ Acceptance: see "Success criteria".
 ## Tech stack
 
 - Bun 1.4.0, TypeScript, `bun:test`.
-- zod 4 for the repo config schema. **Agent's call, small and reversible:** the router (ADR-0009) reads Standard Schema, which zod implements, and zod's `z.toJSONSchema` generates the JSON schema that editors check `acmelabs.json` against. The command list (`command-core`) and the MCP tool schemas (`agent-guide`) need the same generation.
+- zod 4 for the repo config schema. **Agent's call, small and reversible:** the router (ADR-0009) reads Standard Schema, which zod implements, and zod's `z.toJSONSchema` generates the editor schema that `acmelabs.json` is checked against. The command list (`command-core`) and the MCP tool schemas (`agent-guide`) need the same generation.
 
 ## The repo config
 

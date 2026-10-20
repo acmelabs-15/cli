@@ -205,6 +205,6 @@ Phase 2 repo-model
 
 ## Checkpoint: repo-model complete
 
-- [ ] Every success criterion in `spec/SPEC-repo-model.md` passes.
-- [ ] The Definition of Done holds for the module: integration and documentation included.
+- [x] Every success criterion in `spec/SPEC-repo-model.md` passes.
+- [x] The Definition of Done holds for the module: integration and documentation included.
 - [ ] `/brain:review` on the module's commits, then Peter reviews before the next module starts.

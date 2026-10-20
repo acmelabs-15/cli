@@ -46,11 +46,11 @@ The final-checkpoint review of module `repo-model` (`/brain:review`, the five-ax
    `config.ts:143-158`. A `library` line over 100 columns is rewrapped by oxfmt. Already open question 18 in `spec/README.md`, for `scaffold` or `config-presets`.
    Fix: settle question 18 there; no change in this module.
 
-6. **The schema script imports the root format config.** _Fixed in task 9._ `[judgement]` (architecture)
+6. **The schema script imports the root format config.** _Fixed in `a65ff19` (task 9)._ `[judgement]` (architecture)
    `packages/cli/scripts/schema.ts:12`, `import formatConfig from "../../../oxfmt.config"`. The import must change when `config-presets` moves the config into `@acmelabs/config`.
    Fix: a one-line comment that names that move.
 
-7. **Small readability changes.** _Fixed in task 9._ `[judgement]` (readability)
+7. **Small readability changes.** _Fixed in `a65ff19` (task 9)._ `[judgement]` (readability)
    - `config.ts:103`, `readJson` hides its missing-file error: rename it `readJsonFile`, or fold it into finding 1's fix.
    - `hosts.ts:16-20`, the two `Omit<…, "host">` types: name them `ManifestEntry` and `ValidatorEntry`.
    - `hosts.ts:13`, `required`: say in its doc line that it means "a missing tool fails the check".
@@ -58,14 +58,14 @@ The final-checkpoint review of module `repo-model` (`/brain:review`, the five-ax
 
 ### Nit
 
-8. `config.ts:139`, `const { $schema: _schema, ...config }` names a variable only to drop it. _Fixed in task 9._ `[judgement]` (readability)
-9. `config.ts:30` and `oxlint.config.ts:14`, "(Peter, 2026-10-20)" in code comments is provenance, which belongs in an ADR or the interview record; keep the reason, drop the tag. _Fixed in task 9._ `[judgement]` (readability)
-10. `config.ts:14`, "One problem in a repo config" for the type `RepoConfigIssue`: say "issue". _Fixed in task 9._ `[judgement]` (readability)
-11. `hosts.ts:3, 22, 58, 64, 71`, "in host-table order" is said five times; say it once on `hostIds`. _Fixed in task 9._ `[judgement]` (readability)
-12. `hosts.ts:24-55`, `Host.name` is not in the spec's host table. _Fixed in task 9._ It is scope creep, but `scaffold` will need the names for its host prompt. Fix: add the names to the spec's table. `[judgement]` (correctness)
-13. `config.test.ts`, the fixture named `package-outside-repo` now also covers `..` inside the repo. _Fixed in task 9._ `[judgement]` (orchestrator)
-14. The words "editor schema", "JSON schema for editors" and "schema file" name one thing, and `CONTEXT.md` has no entry for it. _Fixed in task 9._ A glossary gap, for the domain-modeling skill. `[judgement]` (readability)
-15. `config.ts:55`, the repeat check is O(n²) through `indexOf`: 1,000 packages take 3 ms and 10,000 take 214 ms. _Fixed in task 9._ Real lists hold 1 to 20 items. `[judgement]` (performance)
+8. `config.ts:139`, `const { $schema: _schema, ...config }` names a variable only to drop it. _Fixed in `a65ff19` (task 9)._ `[judgement]` (readability)
+9. `config.ts:30` and `oxlint.config.ts:14`, "(Peter, 2026-10-20)" in code comments is provenance, which belongs in an ADR or the interview record; keep the reason, drop the tag. _Fixed in `a65ff19` (task 9)._ `[judgement]` (readability)
+10. `config.ts:14`, "One problem in a repo config" for the type `RepoConfigIssue`: say "issue". _Fixed in `a65ff19` (task 9)._ `[judgement]` (readability)
+11. `hosts.ts:3, 22, 58, 64, 71`, "in host-table order" is said five times; say it once on `hostIds`. _Fixed in `a65ff19` (task 9)._ `[judgement]` (readability)
+12. `hosts.ts:24-55`, `Host.name` is not in the spec's host table. _Fixed in `a65ff19` (task 9)._ It is scope creep, but `scaffold` will need the names for its host prompt. Fix: add the names to the spec's table. `[judgement]` (correctness)
+13. `config.test.ts`, the fixture named `package-outside-repo` now also covers `..` inside the repo. _Fixed in `a65ff19` (task 9)._ `[judgement]` (orchestrator)
+14. The words "editor schema", "JSON schema for editors" and "schema file" name one thing, and `CONTEXT.md` has no entry for it. _Fixed in `a65ff19` (task 9)._ A glossary gap, for the domain-modeling skill. `[judgement]` (readability)
+15. `config.ts:55`, the repeat check is O(n²) through `indexOf`: 1,000 packages take 3 ms and 10,000 take 214 ms. _Fixed in `a65ff19` (task 9)._ Real lists hold 1 to 20 items. `[judgement]` (performance)
 
 ### FYI
 
@@ -81,3 +81,17 @@ The final-checkpoint review of module `repo-model` (`/brain:review`, the five-ax
 - Untrusted input: the strict schema rejects unknown keys and `__proto__`; host ids come from a closed list; validator commands come from the static host table, never from the file; error text escapes values through `JSON.stringify`; the editor pattern has no ReDoS risk. (security)
 - No `any`, no casts, no silent fallbacks; `src/` uses only `zod`, `node:path` and `Bun.file`, ready for the built-JS publish. (architecture)
 - Tests check behaviour, cover each error case the spec lists, and use real files in a temp folder, as brain's tests do. (orchestrator)
+
+## Re-check after tasks 8 and 9
+
+Run on 2026-10-20 by the orchestrator, after `316c209` (task 8) and `a65ff19` (task 9). `bun run check` is green with 64 tests. VS Code's JSON language server flags the four new path cases (backslash, drive prefix, blank, NUL) against the shipped editor schema; the only gap left is the accepted one, a repeat in another spelling.
+
+Both Required findings are resolved: every read failure is a `RepoConfigError` that names the file (`checkFile` and `readJsonFile` in `config.ts`), and a parity test plus the override guard keep the two forms of the path rule in step.
+
+One new finding:
+
+21. **Optional:** `acmelabs.json` may be a link to a file outside the repo, and a parse error can quote a fragment of that file. `[judgement]` (orchestrator, re-check)
+    `packages/cli/src/repo/config.ts`, `checkFile` uses `stat`, which follows links. On Peter's machine this is harmless. In CI it matters only if a shared workflow runs the CLI on an untrusted pull request, where the link could point at a file that holds secrets.
+    Fix: decide with the CI design. Either reject a link whose target leaves the repo (`lstat`, then `realpath` inside the repo root), or leave the file's content out of the parse error. Recorded as open question 19 in `spec/README.md`, for `shared-workflows` and `repo-checks`.
+
+**Verdict after the re-check: approve.** The open findings are Optional, Nit or FYI, and each is fixed, deferred to a named module, or recorded.
