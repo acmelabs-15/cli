@@ -36,6 +36,7 @@ From the brief and Peter's standing rules:
 - Outward-facing steps (push, PR, merge, release, repo creation, visibility, npm publish, org creation) are asked once, then run as small separate shell commands.
 - Verify or say unverified. Check Claude Code, GitHub Actions and npm behaviour against their current docs.
 - A new command is one file and one line in the command list, with its own tests. `acmelabs --help` lists every command.
+- Every repo, every package and every plugin keeps a changelog through changesets, set up as brain does: `.changeset/config.json` with `@changesets/changelog-github`, `.changeset/README.md` explaining the release flow, a `CHANGELOG.md` per package, and the `changeset` and `version` scripts. A user-facing change gets a changeset. This repo follows the rule from its first code commit.
 
 ## Test seams
 
@@ -59,6 +60,8 @@ The brief's done-when list, with Peter's additions from the interview:
 - [ ] `acmelabs new <name>` makes a library repo where `bun run check` passes, CI passes, and the first Version Packages PR merge publishes 0.1.0 from CI with provenance (ADR-0006).
 - [ ] A new repo references the shared pieces and copies none of them. Its `package.json` scripts call `acmelabs` for version sync, release notes and validate.
 - [ ] A new repo protects main with the "Protect main" ruleset and enables agent-skills and brain at project scope (ADR-0011).
+- [ ] A new repo has changesets set up as brain does, written from its repo config: `.changeset/config.json`, `.changeset/README.md`, `CHANGELOG.md` per package, and the `changeset` and `version` scripts.
+- [ ] This repo's two packages and its plugin each keep a changelog through changesets.
 - [ ] A new repo starts with this repo's record layout: `AGENTS.md` with the session start and end routine and the rules for questions and research (every question to the owner through the ask-user-question skill; research lands in files), a root `CLAUDE.md` that imports it and names which plugin runs which phase, `CONTEXT.md`, `docs/STATUS.md`, `docs/design/`, `docs/decisions/`, `docs/research/` with its index, `tasks/`, and brain's `docs/agents/` files.
 - [ ] `acmelabs marketplace add` adds a plugin repo to acmelabs-15/marketplace under the marketplace's conventions, and `claude plugin validate . --strict` passes on the marketplace afterwards.
 - [ ] The marketplace README has a short "Add a plugin" section that points to `acmelabs new` and `acmelabs marketplace add`.
@@ -86,10 +89,12 @@ The brief's done-when list, with Peter's additions from the interview:
 | 2 | ~~What job `@bomb.sh/args` does~~ Settled 2026-10-20: the router alone; args is not added (ADR-0009) | none | none |
 | 3 | Does the vendored `@clack/ui` preview work on tty 0.9 under Bun, and does a Bubbles-style text input and multi-select feel right? | `tui-kit` | A prototype, through the prototype skill |
 | 4 | Do oxlint and oxfmt load a TypeScript config under Bun with no Node on PATH? (UNVERIFIED) | `config-presets` | A probe in that module's spec |
-| 5 | Where does the repo config live: an `acmelabs.json` file or a field in `package.json`? | `repo-model` | Decide in that module's spec |
+| 5 | ~~Where the repo config lives~~ Settled 2026-10-20: `acmelabs.json` at the repo root | none | none |
 | 6 | Which plugin's skill runs on a shared name in a new repo: agent-skills (awaken-the-slumberer's rule) or brain? | `scaffold` | Ask Peter in that module's spec |
 | 7 | How do Codex, Gemini CLI and Antigravity CLI enable plugins at project scope, if they can? | `scaffold` | Research, written to `docs/research/` |
 | 8 | A Version Packages PR opened by `GITHUB_TOKEN` now starts its CI runs in an approval-required state. Does "CI passes on the first PR" accept one manual approval, or do the shared workflows need a GitHub App token? | `shared-workflows` | Ask Peter in that module's spec |
 | 9 | Can CI publish with `bunx npm@12` under Bun, so no Node is installed at all? npm 12.2.0 runs under Bun 1.4.0; its trusted publishing there is UNVERIFIED | `shared-workflows` | A probe in that module's spec |
 | 10 | A fresh ACMElabs plugin-creation skill, made for this CLI | after `scaffold` | A later pass |
-| 11 | Claude Code's plugin dependency ranges resolve `<name>--v<version>` tags; ACMElabs repos tag `v<version>` | none in this pass | Note for later |
+| 11 | In this workspace, changesets versions the packages under `packages/`, not the root. Where does the agent-guide plugin's version and changelog live: a private workspace package for the plugin, or the plugin's version tied to `@acmelabs/cli`? This also decides whether the marketplace entry points at the repo root or a subfolder | `agent-guide`, `cli-release` | Research the marketplace's subfolder sources, then ask Peter |
+| 12 | The vendored `@clack/ui` is a workspace package that is not on npm. `@acmelabs/cli` must bundle it into its build output and must not list it as a dependency | `tui-kit`, `cli-release` | Settle in the `tui-kit` spec |
+| 13 | Claude Code's plugin dependency ranges resolve `<name>--v<version>` tags; ACMElabs repos tag `v<version>` | none in this pass | Note for later |

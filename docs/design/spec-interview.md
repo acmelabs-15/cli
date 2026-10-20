@@ -224,6 +224,21 @@ Peter asked that everything from the interview be saved to Markdown in the layou
 - **Facts given:** the TUI is one of four front-ends, and the repo also holds `@acmelabs/config` and the agent-guide plugin. The glossary uses "TUI" for the full-screen front-end only. A rename was cheap (no remote, one commit, 7 mentions); `acmelabs-15/tui`, `acmelabs-15/acmelabs` and `@acmelabs/tui` were free.
 - **Recommended and answered:** keep `cli` for the repo and the folder. The npm package stays `@acmelabs/cli`.
 
+### Commits — settled 2026-10-20
+
+- **Recommended and answered:** standing permission to commit at each task end and session end, with each commit reported. Pushes are asked each time. Recorded in `AGENTS.md`, "Session end".
+
+### Where the repo config lives — settled 2026-10-20 (module `repo-model`)
+
+- **Facts given:** this repo is both a library repo and a plugin repo (ADR-0010), so the config allows both kinds. A separate file can carry a `$schema` line that editors check; a `package.json` field cannot, and in a library it ships inside every npm package.
+- **Recommended and answered:** `acmelabs.json` at the repo root. Effect on the glossary: a repo kind is a plugin, a library, or both.
+- **Fact verified after the answer:** `agy plugin validate .` reads the root `plugin.json`. It passes on brain and fails on jev-gate with "missing plugin.json", as expected for a Claude Code-only plugin.
+
+### Changelogs — added 2026-10-20
+
+- **Peter:** "make sure there are changelogs. I think the brain codebase has a standard setup for changesets and changelog management. This repo should have all that as well. So should packages and plugins."
+- **Effect:** a rule for every module in `spec/README.md`, and two done-when items. changesets cannot import its config from a shared package, so `acmelabs new` writes each repo's `.changeset/config.json` from its repo config. Open question 11 in `spec/README.md` asks where the agent-guide plugin's version and changelog live in this workspace.
+
 ### Where `CLAUDE.md` lives — settled 2026-10-20
 
 - **Peter asked:** should `.claude/CLAUDE.md` be at the root instead?

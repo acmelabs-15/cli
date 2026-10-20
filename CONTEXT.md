@@ -11,7 +11,7 @@ A repository in the acmelabs-15 GitHub organization that follows the ACMElabs sh
 _Avoid_: project, package (for the whole repo)
 
 **Repo kind**:
-What a repo releases: a plugin or a library. The kind decides the release flow.
+What a repo releases: a plugin, a library, or both. Each kind brings its own release flow.
 _Avoid_: type, template
 
 **Plugin repo**:
