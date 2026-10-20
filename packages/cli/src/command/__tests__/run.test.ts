@@ -6,12 +6,11 @@ import path from "node:path";
 import { z } from "zod";
 
 import { readRepoConfig } from "../../repo/config";
-import type { ProgressUpdate } from "../command";
+import type { ProgressUpdate, Question } from "../command";
 import { defineCommand } from "../command";
 import type { Outcome } from "../outcome";
 import { exitCodes, inputError, loginNeeded, outsideError, problem } from "../outcome";
-import type { Question } from "../run";
-import { flagOf, runCommand } from "../run";
+import { runCommand } from "../run";
 import type { World } from "../world";
 import { fakeWorld, realWorld } from "../world";
 
@@ -1567,16 +1566,5 @@ describe("runCommand: secrets removed from every text that leaves it", () => {
       ok: true,
       result: { token: "ghp_0123456789abcdef" },
     });
-  });
-});
-
-describe("flagOf", () => {
-  test("gives the field in kebab case after two dashes, with an acronym kept as one word", () => {
-    expect(flagOf("host")).toBe("--host");
-    expect(flagOf("dryRun")).toBe("--dry-run");
-    expect(flagOf("npmURL")).toBe("--npm-url");
-    expect(flagOf("URLPath")).toBe("--url-path");
-    expect(flagOf("githubAPIToken")).toBe("--github-api-token");
-    expect(flagOf("schemaV2")).toBe("--schema-v2");
   });
 });

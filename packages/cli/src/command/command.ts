@@ -40,6 +40,33 @@ export type Context<Input> = World & {
   signal: AbortSignal;
 };
 
+/** One question mid-run: what a front-end needs to ask the user for one optional input. */
+export type Question = {
+  /** The input field the answer fills, such as `marketplace`. */
+  field: string;
+  /** The field's flag, such as `--marketplace`, the way the caller gives the value up front. */
+  flag: string;
+  /** The field's description, given with `.describe()`. */
+  description: string | undefined;
+  /** The field's schema: its type picks the prompt, and runCommand checks the answer with it. */
+  schema: z.ZodType;
+};
+
+/** How a front-end with a terminal asks one question mid-run. It resolves to the user's answer. */
+export type Answerer = (question: Question) => Promise<unknown>;
+
+/**
+ * What a front-end gives runCommand: its world, where progress updates go, its signal, and how it
+ * asks. JSON mode and the MCP server give no `answer`, so a question with no value is an input
+ * error there.
+ */
+export type FrontEnd = {
+  world: World;
+  progress: (update: ProgressUpdate) => void;
+  signal: AbortSignal;
+  answer?: Answerer;
+};
+
 /**
  * One thing the CLI does, declared once with its inputs. Every front-end reads the declaration. Its
  * result is JSON, because JSON mode's result line carries it.

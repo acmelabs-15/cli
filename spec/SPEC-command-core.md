@@ -169,9 +169,11 @@ The module adds no `acmelabs` command. Its checks run in the repo's gate: `bun r
 ## Project structure
 
 ```
-packages/cli/src/command/command.ts       Command, defineCommand, Context
+packages/cli/src/command/command.ts       Command, defineCommand, Context, and the front-end's types: FrontEnd, Question, Answerer
 packages/cli/src/command/world.ts         World, realWorld, fakeWorld
 packages/cli/src/command/outcome.ts       the failure kinds, exit codes, the throw helpers
+packages/cli/src/command/input.ts         flagOf, and the checks of the input and of an answer
+packages/cli/src/command/steps.ts         trackSteps: the open steps of one run
 packages/cli/src/command/run.ts           runCommand
 packages/cli/src/command/lines.ts         progressLine, resultLine
 packages/cli/src/command/__tests__/       one test file per source file

@@ -18,7 +18,7 @@ Phase 2 The rest of the frame
 - [x] 6. JSON mode's lines
 - [x] 7. The command list and its rules
 - [x] 8. Review fixes: secrets redacted, the progress sink guarded, a missing program exits 3, one shared helper
-- [ ] 9. Review fixes: the front-end types in command.ts, and run.ts split into input, steps and run
+- [x] 9. Review fixes: the front-end types in command.ts, and run.ts split into input, steps and run
 - [ ] 10. Review fixes: list rules apart, descriptions through wrappers, nits, glossary and spec records
 - [ ] Checkpoint: command-core complete
 
@@ -182,12 +182,12 @@ Phase 2 The rest of the frame
 **Description:** Fix the review's finding 5, chosen by Peter on 2026-10-20, before any front-end imports these types. A pure move: no behaviour changes, and every test still passes.
 
 **Acceptance criteria:**
-- [ ] `FrontEnd`, `Question` and `Answerer` live in `command.ts` beside `Context`.
-- [ ] Flag naming and the input and answer checks live in `input.ts`, the step tracker in `steps.ts`, and `run.ts` holds `runCommand` and what only it uses.
-- [ ] The tests are split the same way, and the count of tests is the same before and after.
+- [x] `FrontEnd`, `Question` and `Answerer` live in `command.ts` beside `Context`.
+- [x] Flag naming and the input and answer checks live in `input.ts`, the step tracker in `steps.ts`, and `run.ts` holds `runCommand` and what only it uses.
+- [x] The tests are split the same way, and the count of tests is the same before and after.
 
 **Verification:**
-- [ ] `bun run check` is green, by its own exit code, with the same number of tests as before the task.
+- [x] `bun run check` is green, by its own exit code, with the same number of tests as before the task.
 
 **Dependencies:** 8
 
