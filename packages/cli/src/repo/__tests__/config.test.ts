@@ -240,27 +240,42 @@ describe("readRepoConfig errors", () => {
     const root = await fixture("absolute-package", json({ library: { packages: ["/abs/x"] } }));
     const error = await rejection(root);
     expect(error.issues).toEqual([
-      { path: "library.packages[0]", message: '"/abs/x" is not a relative path inside the repo' },
+      {
+        path: "library.packages[0]",
+        message:
+          '"/abs/x" is not a relative path inside the repo; write it from the repo root, with no ".." segment',
+      },
     ]);
     expect(error.message).toBe(
-      `${root}/acmelabs.json: library.packages[0]: "/abs/x" is not a relative path inside the repo`,
+      `${root}/acmelabs.json: library.packages[0]: "/abs/x" is not a relative path inside the repo; write it from the repo root, with no ".." segment`,
     );
   });
 
-  test("a package path that leaves the repo: the error names each such field", async () => {
+  test("a package path with a .. segment: the error names each such field", async () => {
     const root = await fixture(
       "package-outside-repo",
-      json({ library: { packages: ["../sibling", "packages/../..", "..cache"] } }),
+      json({
+        library: {
+          packages: ["../sibling", "packages/../..", "..cache", "packages/../packages/config"],
+        },
+      }),
     );
     const error = await rejection(root);
     expect(error.issues).toEqual([
       {
         path: "library.packages[0]",
-        message: '"../sibling" is not a relative path inside the repo',
+        message:
+          '"../sibling" is not a relative path inside the repo; write it from the repo root, with no ".." segment',
       },
       {
         path: "library.packages[1]",
-        message: '"packages/../.." is not a relative path inside the repo',
+        message:
+          '"packages/../.." is not a relative path inside the repo; write it from the repo root, with no ".." segment',
+      },
+      {
+        path: "library.packages[3]",
+        message:
+          '"packages/../packages/config" is not a relative path inside the repo; write it from the repo root, with no ".." segment',
       },
     ]);
   });
@@ -269,7 +284,11 @@ describe("readRepoConfig errors", () => {
     const root = await fixture("empty-package-path", json({ library: { packages: [""] } }));
     const error = await rejection(root);
     expect(error.issues).toEqual([
-      { path: "library.packages[0]", message: '"" is not a relative path inside the repo' },
+      {
+        path: "library.packages[0]",
+        message:
+          '"" is not a relative path inside the repo; write it from the repo root, with no ".." segment',
+      },
     ]);
   });
 

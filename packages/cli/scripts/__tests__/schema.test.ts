@@ -73,9 +73,10 @@ describe("the overrides for the zod refinements", () => {
     expect(rejected.filter((value) => pattern.test(value))).toEqual([]);
   });
 
-  test("a relative path inside the repo: a package path says that editors reject any ..", () => {
+  test("a relative path inside the repo: the package path description names the one rule", () => {
     const items = node(editorSchema(), "properties.library.properties.packages.items");
-    expect(items.description).toContain('a ".." segment');
+    expect(items.description).toContain('no ".." segment');
+    expect(items.description).not.toContain("acmelabs accepts");
   });
 });
 

@@ -30,7 +30,7 @@
           "items": {
             "type": "string",
             "pattern": "^(?!/|$)(?!(?:[^/]*/)*\\.\\.(?:/|$))",
-            "description": "A package folder's path from the repo root. Editors reject an empty path, a leading \"/\" and a \"..\" segment; acmelabs accepts a \"..\" segment while the path stays inside the repo."
+            "description": "A package folder's path from the repo root: not empty, no leading \"/\", and no \"..\" segment."
           },
           "uniqueItems": true,
           "description": "The package folders that publish, as relative paths from the repo root, each one once. Editors compare the paths as written, so \"./packages/cli\" and \"packages/cli\" are no repeat to an editor; acmelabs counts them as one."

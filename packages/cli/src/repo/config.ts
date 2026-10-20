@@ -25,19 +25,20 @@ function normalForm(value: string): string {
   return normal.length > 1 && normal.endsWith("/") ? normal.slice(0, -1) : normal;
 }
 
-/** Whether a path is relative and stays inside the repo. The empty string is no path. */
-function isInsideRepo(value: string): boolean {
-  const normal = normalForm(value);
-  return (
-    value !== "" && !path.posix.isAbsolute(normal) && normal !== ".." && !normal.startsWith("../")
-  );
+/**
+ * Whether a path is relative, written from the repo root, with no `..` segment. The empty
+ * string is no path. Any `..` is rejected, as the editor schema does (Peter, 2026-10-20).
+ */
+function isRepoRelative(value: string): boolean {
+  return value !== "" && !path.posix.isAbsolute(value) && !value.split("/").includes("..");
 }
 
 /** A package folder's path from the repo root, checked as written, then put in normal form. */
 const packagePath = z
   .string()
-  .refine(isInsideRepo, {
-    error: (issue) => `${JSON.stringify(issue.input)} is not a relative path inside the repo`,
+  .refine(isRepoRelative, {
+    error: (issue) =>
+      `${JSON.stringify(issue.input)} is not a relative path inside the repo; write it from the repo root, with no ".." segment`,
   })
   .overwrite(normalForm);
 

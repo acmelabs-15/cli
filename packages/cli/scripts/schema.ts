@@ -32,12 +32,12 @@ const refinements: Readonly<Record<string, JsonSchema>> = {
     description:
       'The package folders that publish, as relative paths from the repo root, each one once. Editors compare the paths as written, so "./packages/cli" and "packages/cli" are no repeat to an editor; acmelabs counts them as one.',
   },
-  // A relative path inside the repo: not empty, no leading "/", no ".." segment. A regular
-  // expression cannot tell whether a ".." segment climbs out of the repo, so it rejects them all.
+  // A relative path inside the repo: not empty, no leading "/", no ".." segment. readRepoConfig
+  // applies the same rule, so the editor and the command agree.
   "properties.library.properties.packages.items": {
     pattern: String.raw`^(?!/|$)(?!(?:[^/]*/)*\.\.(?:/|$))`,
     description:
-      'A package folder\'s path from the repo root. Editors reject an empty path, a leading "/" and a ".." segment; acmelabs accepts a ".." segment while the path stays inside the repo.',
+      'A package folder\'s path from the repo root: not empty, no leading "/", and no ".." segment.',
   },
 };
 
