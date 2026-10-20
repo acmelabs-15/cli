@@ -24,15 +24,15 @@ Phase 2 repo-model
 **Description:** Make the repo a Bun workspace with one package, `@acmelabs/cli`, and give it a gate that runs TypeScript and the tests. The first test pins the four host ids in host-table order, the smallest real piece of `repo-model`.
 
 **Acceptance criteria:**
-- [ ] The root `package.json` is private, declares the workspace `packages/*`, and has the scripts `typecheck`, `test` and `check`.
-- [ ] `packages/cli/package.json` names `@acmelabs/cli`, version 0.0.0, `"private": true`, `"type": "module"`, `"license": "MIT"`.
-- [ ] `hostIds` in `packages/cli/src/repo/hosts.ts` is `claude-code`, `codex`, `gemini-cli`, `antigravity-cli`, in that order, and `HostId` is its type.
-- [ ] `packages/cli/README.md` says what the package is, that it is not yet published, and points at the repo's README. (Added by Peter on 2026-10-20 after plan approval.)
+- [x] The root `package.json` is private, declares the workspace `packages/*`, and has the scripts `typecheck`, `test` and `check`.
+- [x] `packages/cli/package.json` names `@acmelabs/cli`, version 0.0.0, `"private": true`, `"type": "module"`, `"license": "MIT"`.
+- [x] `hostIds` in `packages/cli/src/repo/hosts.ts` is `claude-code`, `codex`, `gemini-cli`, `antigravity-cli`, in that order, and `HostId` is its type.
+- [x] `packages/cli/README.md` says what the package is, that it is not yet published, and points at the repo's README. (Added by Peter on 2026-10-20 after plan approval.)
 
 **Verification:**
-- [ ] The test fails before `hosts.ts` exists, then passes: `bun test packages/cli/src/repo`
-- [ ] `bun run check` is green (typecheck and tests).
-- [ ] `bun install --frozen-lockfile` succeeds on the committed `bun.lock`.
+- [x] The test fails before `hosts.ts` exists, then passes: `bun test packages/cli/src/repo`
+- [x] `bun run check` is green (typecheck and tests).
+- [x] `bun install --frozen-lockfile` succeeds on the committed `bun.lock`.
 
 **Dependencies:** None
 
