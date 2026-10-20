@@ -17,6 +17,9 @@ Phase 2 The rest of the frame
 - [x] 5. Questions mid-run, and cancel
 - [x] 6. JSON mode's lines
 - [x] 7. The command list and its rules
+- [ ] 8. Review fixes: secrets redacted, the progress sink guarded, a missing program exits 3, one shared helper
+- [ ] 9. Review fixes: the front-end types in command.ts, and run.ts split into input, steps and run
+- [ ] 10. Review fixes: list rules apart, descriptions through wrappers, nits, glossary and spec records
 - [ ] Checkpoint: command-core complete
 
 ## Task 1: World: realWorld and fakeWorld
@@ -154,6 +157,62 @@ Phase 2 The rest of the frame
 **Files likely touched:** `packages/cli/src/commands/index.ts`, `packages/cli/src/commands/__tests__/index.test.ts`, `.changeset/<name>.md`
 
 **Estimated scope:** Small
+
+## Task 8: Review fixes: secrets redacted, the progress sink guarded, a missing program exits 3, one shared helper
+
+**Description:** Fix the review's Required findings 1 to 4 (`docs/reviews/2026-10-20-command-core.md`), chosen by Peter on 2026-10-20.
+
+**Acceptance criteria:**
+- [ ] Every text that leaves `runCommand` (failure and issue messages, progress titles, details and messages) has secrets removed: the value of every `world.env` entry whose name holds `TOKEN`, `SECRET`, `KEY` or `PASSWORD`, URL credentials, and token-like query values; a thrown `new Error("https://x?token=abc")` leaves no `abc` in the outcome (finding 1).
+- [ ] A front-end whose `progress` throws cannot make `runCommand` reject: the outcome still comes, with its exit code (finding 2).
+- [ ] A program that is not installed ends with kind `outside`, exit 3, and a message that names the program, from `realWorld` and from `fakeWorld`; one shared helper replaces `sameWords` and `samePath` (findings 3 and 4).
+
+**Verification:**
+- [ ] Each new test fails first, then passes: `bun test packages/cli/src`
+- [ ] `bun run check` is green, by its own exit code.
+
+**Dependencies:** 7
+
+**Files likely touched:** `packages/cli/src/command/run.ts`, `world.ts`, `list.ts`, and their tests
+
+**Estimated scope:** Medium
+
+## Task 9: Review fixes: the front-end types in command.ts, and run.ts split into input, steps and run
+
+**Description:** Fix the review's finding 5, chosen by Peter on 2026-10-20, before any front-end imports these types. A pure move: no behaviour changes, and every test still passes.
+
+**Acceptance criteria:**
+- [ ] `FrontEnd`, `Question` and `Answerer` live in `command.ts` beside `Context`.
+- [ ] Flag naming and the input and answer checks live in `input.ts`, the step tracker in `steps.ts`, and `run.ts` holds `runCommand` and what only it uses.
+- [ ] The tests are split the same way, and the count of tests is the same before and after.
+
+**Verification:**
+- [ ] `bun run check` is green, by its own exit code, with the same number of tests as before the task.
+
+**Dependencies:** 8
+
+**Files likely touched:** `packages/cli/src/command/command.ts`, `run.ts`, `input.ts`, `steps.ts`, and the tests under `__tests__/`
+
+**Estimated scope:** Medium (a move across several files)
+
+## Task 10: Review fixes: list rules apart, descriptions through wrappers, nits, glossary and spec records
+
+**Description:** Fix the review's findings 6 to 8 and 11 to 18, chosen by Peter on 2026-10-20, and mark every finding's outcome in the review file.
+
+**Acceptance criteria:**
+- [ ] The command list's rules live apart from `CommandList`; a description is found through optional, nullable and default wrappers, in the rules and in a `Question`; an empty path and an async schema are handled; `trackSteps` reads with less nesting (findings 6, 7, 8, 15, 16).
+- [ ] The nits are fixed: the comments and `questionFor` (12, 13); the glossary gains World, Outcome, Failure kind and Progress update, and one word replaces "defect" and "bug" for one concept (14).
+- [ ] The spec records: the reworded doc-comment rule, its first line on `repo-model`, the step-restart rule and the line escaping (11, 17, 18); the review file marks each finding's outcome.
+
+**Verification:**
+- [ ] Each behaviour change gets a failing test first: `bun test packages/cli/src`
+- [ ] `bun run check` is green, by its own exit code.
+
+**Dependencies:** 9
+
+**Files likely touched:** `packages/cli/src/command/list.ts`, a new rules file, `run.ts` or its split files, their tests, `CONTEXT.md`, `spec/SPEC-command-core.md`, `docs/reviews/2026-10-20-command-core.md`
+
+**Estimated scope:** Medium (many files, small edits)
 
 ## Checkpoint: command-core complete
 
