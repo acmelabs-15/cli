@@ -22,7 +22,7 @@ export const realNodeLine = "REAL NODE WAS CALLED";
 const failingNode = `#!/bin/sh\necho "${realNodeLine}"\nexit 99\n`;
 
 /** The spec's `bunfig.toml`: every `bun run` script runs on Bun (ADR-0012). */
-const runBunConfig = [
+export const runBunConfig = [
   "[run]",
   "# The gate runs on Bun, also when Node is on PATH (ADR-0012).",
   "bun = true",

@@ -15,6 +15,7 @@ import {
   lintThinCaller,
   realNodeLine,
   sampleRepo,
+  typescriptThinCaller,
 } from "./sample-repo";
 
 let work: string;
@@ -198,7 +199,7 @@ describe("bun run format:check in a sample repo with the spread thin caller and 
 });
 
 describe("the spec's thin callers, which scaffold writes word for word", () => {
-  test("the two lint and the two format thin callers pass bun run format:check as written", async () => {
+  test("the two lint, the two format and the tsconfig.json thin callers pass bun run format:check as written", async () => {
     const repo = await sampleRepo(work, {
       files: {
         "oxlint.config.ts": lintThinCaller,
@@ -206,12 +207,16 @@ describe("the spec's thin callers, which scaffold writes word for word", () => {
         // Not named *.config.ts: oxfmt would read a nested oxfmt.config.ts as a config.
         "callers/lint-extends.ts": lintExtendingCaller,
         "callers/format-spread.ts": formatSpreadCaller,
+        // Its own name, so oxfmt formats it as a repo's tsconfig.json; in a folder, so it is not
+        // the sample repo's own.
+        "callers/tsconfig.json": typescriptThinCaller,
       },
     });
     const run = await repo.run("format:check");
     expect(run.output).not.toContain(".ts");
-    // package.json, bunfig.toml and the four thin callers: each one is checked.
-    expect(run.output).toContain(" on 6 files ");
+    expect(run.output).not.toContain("tsconfig.json");
+    // package.json, bunfig.toml and the five thin callers: each one is checked.
+    expect(run.output).toContain(" on 7 files ");
     expect(run.output).not.toContain(realNodeLine);
     expect(run.exitCode).toBe(0);
   });

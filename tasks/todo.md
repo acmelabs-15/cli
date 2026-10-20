@@ -23,7 +23,7 @@ Phase 3 The presets in use
 
 - [x] 6. This repo's gate uses its own presets
 - [x] 7. formatRepoConfig writes oxfmt's layout
-- [ ] 8. The @acmelabs/config README and changeset
+- [x] 8. The @acmelabs/config README and changeset
 - [ ] Checkpoint: config-presets complete
 
 ## Task 1: The gate runs on Bun in this repo
@@ -175,13 +175,13 @@ Phase 3 The presets in use
 **Description:** `packages/config/README.md` says what the package is, how to install it, the thin callers from the spec, `bunfig.toml` with a pointer to ADR-0012, and the table of deviations with their reasons. A test proves the README lists each deviation. A changeset records the new package. The stale status lines of the root and `packages/cli` READMEs are corrected.
 
 **Acceptance criteria:**
-- [ ] The README holds the spec's thin callers and one table row per deviation, with its reason.
-- [ ] A test fails when a deviation in `lintDeviations` or `formatDeviations` is missing from the README.
-- [ ] `.changeset/config-presets.md` records `@acmelabs/config` as a minor change; the root and `packages/cli` READMEs state the current modules.
+- [x] The README holds the spec's thin callers and one table row per deviation, with its reason.
+- [x] A test fails when a deviation in `lintDeviations` or `formatDeviations` is missing from the README.
+- [x] `.changeset/config-presets.md` records `@acmelabs/config` as a minor change; the root and `packages/cli` READMEs state the current modules.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/config`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/config`
+- [x] `bun run check` is green.
 
 **Dependencies:** 3, 4, 5
 
