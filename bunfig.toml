@@ -1,0 +1,3 @@
+[run]
+# The gate runs on Bun, also when Node is on PATH (ADR-0012).
+bun = true

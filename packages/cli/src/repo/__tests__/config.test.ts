@@ -3,6 +3,12 @@ import { chmod, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import {
+  builtPackage,
+  formatThinCaller,
+  realNodeLine,
+  sampleRepo,
+} from "../../../../config/src/__tests__/sample-repo";
 import type { RepoConfig } from "../config";
 import { RepoConfigError, formatRepoConfig, readRepoConfig } from "../config";
 
@@ -510,6 +516,72 @@ describe("formatRepoConfig", () => {
 `);
   });
 
+  test("a repo kind's line of 100 columns stays on one line", () => {
+    const text = formatRepoConfig(
+      {
+        library: {
+          packages: ["packages/alpha-core", "packages/beta-tools", "packages/gamma-engine"],
+        },
+      },
+      "./schema.json",
+    );
+    expect(text).toBe(`{
+  "$schema": "./schema.json",
+  "library": { "packages": ["packages/alpha-core", "packages/beta-tools", "packages/gamma-engine"] }
+}
+`);
+    expect(text.split("\n")[2]).toHaveLength(100);
+  });
+
+  test("a line over 100 columns opens the repo kind's object; its list stays on one line when it fits there", () => {
+    // On one line, the library line would be 101 columns.
+    const text = formatRepoConfig(
+      {
+        library: {
+          packages: ["packages/alpha-core", "packages/beta-tools", "packages/gamma-runtime"],
+        },
+      },
+      "./schema.json",
+    );
+    expect(text).toBe(`{
+  "$schema": "./schema.json",
+  "library": {
+    "packages": ["packages/alpha-core", "packages/beta-tools", "packages/gamma-runtime"]
+  }
+}
+`);
+  });
+
+  test("a list too long for its own line puts one item per line", () => {
+    const text = formatRepoConfig(
+      {
+        library: {
+          packages: [
+            "packages/alpha-core",
+            "packages/beta-tools",
+            "packages/gamma-runtime",
+            "packages/delta-ui",
+            "packages/epsilon-cli",
+          ],
+        },
+      },
+      "./schema.json",
+    );
+    expect(text).toBe(`{
+  "$schema": "./schema.json",
+  "library": {
+    "packages": [
+      "packages/alpha-core",
+      "packages/beta-tools",
+      "packages/gamma-runtime",
+      "packages/delta-ui",
+      "packages/epsilon-cli"
+    ]
+  }
+}
+`);
+  });
+
   test("reads back equal, and a second format is byte-identical", async () => {
     const config: RepoConfig = {
       plugin: { hosts: ["codex", "claude-code"] },
@@ -521,6 +593,147 @@ describe("formatRepoConfig", () => {
     const readBack = await readRepoConfig(root);
     expect(readBack).toEqual(config);
     expect(formatRepoConfig(readBack, schemaPath)).toBe(text);
+  });
+});
+
+/** A list of strings as one line of JSON: `["a", "b"]`. */
+function oneLineList(items: readonly string[]): string {
+  return `[${items.map((item) => JSON.stringify(item)).join(", ")}]`;
+}
+
+/**
+ * A repo config's text in its one-line form, as formatRepoConfig wrote it before it took oxfmt's
+ * layout: each repo kind's object on one line, whatever its width.
+ */
+function oneLineForm(config: RepoConfig, schemaPath: string): string {
+  const lines = [`  "$schema": ${JSON.stringify(schemaPath)}`];
+  if (config.plugin !== undefined) {
+    lines.push(`  "plugin": { "hosts": ${oneLineList(config.plugin.hosts)} }`);
+  }
+  if (config.library !== undefined) {
+    lines.push(`  "library": { "packages": ${oneLineList(config.library.packages)} }`);
+  }
+  return `{\n${lines.join(",\n")}\n}\n`;
+}
+
+describe("formatRepoConfig's output in a sample repo with the format preset", () => {
+  beforeAll(async () => {
+    // The first call builds @acmelabs/config, which can take longer than the default 5 s.
+    await builtPackage();
+  }, 30_000);
+
+  test("bun run format:check leaves the output unchanged in every layout", async () => {
+    const cases: Record<string, RepoConfig> = {
+      "plugin-only": { plugin: { hosts: ["claude-code"] } },
+      "all-four-hosts": {
+        plugin: { hosts: ["claude-code", "codex", "gemini-cli", "antigravity-cli"] },
+      },
+      "one-package": { library: { packages: ["."] } },
+      // On one line, 100 columns: it fits, so it stays.
+      "library-line-of-100-columns": {
+        library: {
+          packages: ["packages/alpha-core", "packages/beta-tools", "packages/gamma-engine"],
+        },
+      },
+      // On one line, 101 columns: the object opens, and the list fits on its own line.
+      "library-line-of-101-columns": {
+        library: {
+          packages: ["packages/alpha-core", "packages/beta-tools", "packages/gamma-runtime"],
+        },
+      },
+      // The list does not fit on its own line either: one package per line.
+      "five-packages": {
+        library: {
+          packages: [
+            "packages/alpha-core",
+            "packages/beta-tools",
+            "packages/gamma-runtime",
+            "packages/delta-ui",
+            "packages/epsilon-cli",
+          ],
+        },
+      },
+      // On one line, 95 characters but 102 columns: each of the seven wide characters takes two
+      // columns, as oxfmt counts them.
+      "wide-characters": {
+        library: {
+          packages: ["packages/alpha-core", "packages/beta-tools", "packages/日本語ツール集"],
+        },
+      },
+      "both-kinds": {
+        plugin: { hosts: ["claude-code", "codex", "gemini-cli", "antigravity-cli"] },
+        library: { packages: ["packages/cli", "packages/config"] },
+      },
+    };
+    const files = Object.fromEntries(
+      Object.entries(cases).map(([name, config]) => [
+        `cases/${name}.json`,
+        formatRepoConfig(config, "./node_modules/@acmelabs/cli/schema/acmelabs.schema.json"),
+      ]),
+    );
+    const repo = await sampleRepo(work, {
+      files: { "oxfmt.config.ts": formatThinCaller, ...files },
+    });
+    const run = await repo.run("format:check");
+    expect(run.output).not.toContain("cases/");
+    expect(run.output).toContain("All matched files use the correct format.");
+    // package.json, bunfig.toml, oxfmt.config.ts and the eight cases: each one is checked.
+    expect(run.output).toContain(" on 11 files ");
+    expect(run.output).not.toContain(realNodeLine);
+    expect(run.exitCode).toBe(0);
+  });
+
+  test("bun run format turns each repo kind's one-line form into formatRepoConfig's text", async () => {
+    // oxfmt keeps an object open that was open in its input, so the check above passes at any
+    // width above the preset's. Only the one-line form shows where oxfmt breaks a line.
+    const schemaPath = "./node_modules/@acmelabs/cli/schema/acmelabs.schema.json";
+    const cases: Record<string, RepoConfig> = {
+      // On one line, 100 columns: a narrower width opens it.
+      "library-line-of-100-columns": {
+        library: {
+          packages: ["packages/alpha-core", "packages/beta-tools", "packages/gamma-engine"],
+        },
+      },
+      // On one line, 101 columns: a wider width keeps it on one line.
+      "library-line-of-101-columns": {
+        library: {
+          packages: ["packages/alpha-core", "packages/beta-tools", "packages/gamma-runtime"],
+        },
+      },
+      // The list does not fit on its own line either: one package per line.
+      "five-packages": {
+        library: {
+          packages: [
+            "packages/alpha-core",
+            "packages/beta-tools",
+            "packages/gamma-runtime",
+            "packages/delta-ui",
+            "packages/epsilon-cli",
+          ],
+        },
+      },
+    };
+    const files = Object.fromEntries(
+      Object.entries(cases).map(([name, config]) => [
+        `cases/${name}.json`,
+        oneLineForm(config, schemaPath),
+      ]),
+    );
+    const repo = await sampleRepo(work, {
+      files: { "oxfmt.config.ts": formatThinCaller, ...files },
+    });
+    const run = await repo.run("format");
+    expect(run.output).not.toContain(realNodeLine);
+    expect(run.exitCode).toBe(0);
+    const formatted: Record<string, string> = {};
+    for (const name of Object.keys(cases)) {
+      formatted[name] = await Bun.file(path.join(repo.root, "cases", `${name}.json`)).text();
+    }
+    expect(formatted).toEqual(
+      Object.fromEntries(
+        Object.entries(cases).map(([name, config]) => [name, formatRepoConfig(config, schemaPath)]),
+      ),
+    );
   });
 });
 

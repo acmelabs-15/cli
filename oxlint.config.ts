@@ -1,24 +1,5 @@
-// Lint: Ultracite's Oxlint core preset, extended by hand, with brain's settings. The TypeScript
-// compiler check stays a separate step, `bun run typecheck`. Every relaxation below is a decision
-// with its reason; see brain's docs/decisions/DEC-001-lint-and-format.md. This config moves into
-// @acmelabs/config with the config-presets module, and this repo then imports it from there.
-import { defineConfig } from "oxlint";
-import core from "ultracite/oxlint/core";
-
-export default defineConfig({
-  extends: [core],
-  // `extends` does not pass ignorePatterns on, so the preset's own list is named here.
-  ignorePatterns: core.ignorePatterns,
-  rules: {
-    // Function declarations, not arrow constants, with helpers above their callers:
-    // Ultracite's no-use-before-define requires that order.
-    "func-style": "off",
-    // Object keys are ordered by meaning: a manifest's fields, a fixture tree's paths.
-    "sort-keys": "off",
-    // Steps that must run in order stay sequential: ordered writes, and a check that must finish
-    // before the first write. Promise.all would reorder them.
-    "no-await-in-loop": "off",
-    // The spec's code style uses `type` for object shapes.
-    "typescript/consistent-type-definitions": ["error", "type"],
-  },
-});
+// Lint: the ACMElabs preset. Its deviations and their reasons: packages/config/src/oxlint.ts.
+// This repo imports the preset's source by relative path, not the built package: Bun runs the
+// source with no build, so the gate needs no build step. The $schema line in acmelabs.json points
+// at this repo's own source the same way.
+export { default } from "./packages/config/src/oxlint";

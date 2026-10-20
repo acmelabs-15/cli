@@ -298,3 +298,15 @@ Peter asked that everything from the interview be saved to Markdown in the layou
 ### The config-presets spec — approved 2026-10-20
 
 - **Approved:** `spec/SPEC-config-presets.md` as written (draft `88a0907`), with the agent's three calls: the tool versions stay as today; each repo lists oxlint, oxfmt, typescript and `@types/bun` itself, and Ultracite moves into the preset; this repo imports the presets by relative path.
+
+### This repo's root configs under Node — settled 2026-10-20 (module `config-presets`, task 6)
+
+- **Facts given:** the root lint and format configs import the presets' source, whose own imports have no file extension. Bun loads them; real Node fails with "Cannot find module", so an editor's oxc extension on Node would show a config error in this repo. Other repos import the built package, which loads under Node. No oxc extension is installed on Peter's machine (VS Code has ESLint and Prettier; Cursor has Biome).
+- **Recommended and answered:** accept and record, in `spec/SPEC-config-presets.md` ("This repo on the presets"). Rejected: `.ts` file extensions in the presets' imports, and a build step before the gate.
+
+### The config-presets review fixes — settled 2026-10-20
+
+- **Facts given:** the final-checkpoint review (`docs/reviews/2026-10-20-config-presets.md`) found two Required findings, fixed in any case: the width-drift test catches only a narrower width, and the handoff note is stale. The optional findings came in three groups: code cleanups, record fixes, and bundling Ultracite's two presets into the package.
+- **Recommended:** the cleanups and the record fixes now, and the bundling in `cli-release`, which owns the published shape.
+- **Answer:** all three groups now, the bundling included. Recorded in ADR-0013.
+- **Agent's note, same day:** the spec's `env` sentence was made exact in `a0a733d` ("The preset sets no `env`, as today's configs do"), after task 2 found it could be read two ways. The new wording matches the sentence's own reason and today's configs; no behaviour changed.

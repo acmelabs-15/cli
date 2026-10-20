@@ -1,0 +1,18 @@
+// The type-file build of @acmelabs/config: the TypeScript preset, with output. scripts/build.ts
+// runs tsc on this file and names the output folder. The package does not ship this file.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // The preset only checks; the build writes type files.
+    "noEmit": false,
+    // A .d.ts file for each source file.
+    "declaration": true,
+    // Type files only: bun build writes the JavaScript.
+    "emitDeclarationOnly": true,
+    // Each type file keeps its path from src, such as dist/oxlint.d.ts.
+    "rootDir": "src"
+  },
+  // The package's source, without its tests.
+  "include": ["src"],
+  "exclude": ["src/**/__tests__"]
+}

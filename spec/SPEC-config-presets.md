@@ -41,8 +41,8 @@ Acceptance: see "Success criteria".
     "./oxfmt": { "types": "./dist/oxfmt.d.ts", "default": "./dist/oxfmt.js" },
     "./tsconfig.json": "./tsconfig.json"
   },
-  "files": ["dist", "tsconfig.json"],
-  "dependencies": { "ultracite": "7.12.0" },
+  "files": ["dist", "tsconfig.json", "THIRD-PARTY-NOTICES.md"],
+  "devDependencies": { "ultracite": "7.12.0" },
   "peerDependencies": {
     "oxlint": "1.83.0",
     "oxfmt": "0.68.0",
@@ -52,7 +52,7 @@ Acceptance: see "Success criteria".
 }
 ```
 
-- **Ultracite is a dependency of the package.** A repo stops listing it.
+- **Ultracite is bundled into the package** (ADR-0013, Peter, 2026-10-20, review finding 3). The build puts Ultracite's two presets into the built JavaScript, Ultracite is a devDependency, and the package ships Ultracite's MIT notice in `THIRD-PARTY-NOTICES.md`, which each built file names. A repo installs no Ultracite and stops listing it.
 - **The four tools are peer dependencies, and each repo lists them itself.** **Agent's call, from evidence:** with Bun's isolated linker, which Bun uses for a workspace, a dependency's own dependencies give the repo no `oxlint` or `oxfmt` command (note 08, section 2). oxlint and oxfmt are exact, because the deviations name the rules and options of those versions.
 - **Private at 0.0.0 until `cli-release`,** as `@acmelabs/cli` is. A changeset records the new package.
 - **A `README.md`** (the rule for every package): what the package is, how to install it, the thin callers below, and the table of deviations with their reasons.
@@ -71,7 +71,7 @@ Ultracite's core preset through `extends`, Ultracite's ignore list named again (
 | `no-await-in-loop` | `error` | `off` | Steps that must run in order stay sequential: ordered writes, a check that finishes before the first write, one outside program at a time so outputs do not mix. `Promise.all` would reorder them. |
 | `typescript/consistent-type-definitions` | `interface` | `type` | ACMElabs code uses `type` for object shapes, as the specs' code style shows. |
 
-Ultracite's core preset also sets `env: { browser: true }`, which `extends` does not pass on. The preset keeps that, so a repo that moves onto it gets the same results as today.
+Ultracite's core preset also sets `env: { browser: true }`, which `extends` does not pass on. The preset sets no `env`, as today's configs do, so a repo that moves onto it gets the same results as today.
 
 ### Format: `@acmelabs/config/oxfmt`
 
@@ -89,7 +89,8 @@ The `compilerOptions` that the three repos share today. No upstream preset exist
 | Option | Value | Reason |
 |---|---|---|
 | `target` | `ESNext` | Bun runs the newest syntax; nothing is compiled down. |
-| `module`, `moduleResolution` | `ESNext`, `bundler` | Resolve imports as Bun does: package exports, and no file extensions. |
+| `module` | `ESNext` | The newest ES module syntax, as Bun runs it: `import.meta` and top-level `await` type-check. |
+| `moduleResolution` | `bundler` | Resolve imports as Bun does: through package exports, and with no file extensions. |
 | `lib` | `["ESNext"]` | No DOM: the code runs on Bun, not in a browser. |
 | `types` | `["bun"]` | Bun's globals and APIs. The repo installs `@types/bun`. |
 | `strict` | `true` | Every strict check. |
@@ -128,8 +129,8 @@ export { default } from "@acmelabs/config/oxfmt";
 When the repo adds its own settings, such as brain's vendored folders. Each addition carries its reason, as the preset's do:
 
 ```ts
-import { defineConfig } from "oxlint";
 import preset from "@acmelabs/config/oxlint";
+import { defineConfig } from "oxlint";
 
 export default defineConfig({
   extends: [preset],
@@ -140,8 +141,8 @@ export default defineConfig({
 ```
 
 ```ts
-import { defineConfig } from "oxfmt";
 import preset from "@acmelabs/config/oxfmt";
+import { defineConfig } from "oxfmt";
 
 export default defineConfig({
   ...preset,
@@ -150,7 +151,7 @@ export default defineConfig({
 });
 ```
 
-The preset types say that `ignorePatterns` is always present, so a thin caller needs no fallback.
+The preset types say that `ignorePatterns` is always present, so a thin caller needs no fallback. The imports stand in the order that the format preset sorts them, so each thin caller passes the format check as written.
 
 `tsconfig.json`:
 
@@ -186,6 +187,7 @@ bun = true
 - The root `oxlint.config.ts` and `oxfmt.config.ts` import the presets' source by relative path (`./packages/config/src/oxlint.ts`), and `tsconfig.json` extends `./packages/config/tsconfig.json`. **Agent's call, small and reversible:** Bun runs the source with no build, so the gate needs no build step. This repo's `$schema` line already points at its own source the same way. The sample-repo tests prove the import by package name, from the built package.
 - The root drops `ultracite` from its devDependencies.
 - A root `bunfig.toml` holds `run.bun` (ADR-0012).
+- **Known limit, accepted by Peter on 2026-10-20:** the presets' source imports its own files with no file extension, as all code in this repo does. Bun loads it; real Node cannot ("Cannot find module"). So in this repo, an editor's oxc extension that starts oxlint or oxfmt on Node cannot load the root configs. Other repos import the built package, which loads under Node (task 6, `3ecbb09`).
 
 ## `formatRepoConfig` writes oxfmt's layout
 
@@ -204,7 +206,7 @@ The module adds no `acmelabs` command.
 
 ```
 bun run check                                  # the gate; unchanged
-bun run --filter @acmelabs/config build        # packages/config/dist: oxlint.js, oxfmt.js and their .d.ts
+bun run --filter @acmelabs/config build        # packages/config/dist: oxlint.js, oxfmt.js, their .d.ts and deviation.d.ts
 bun test packages/config                       # the sample-repo tests alone
 ```
 
@@ -218,6 +220,7 @@ packages/config/                              @acmelabs/config
   package.json
   README.md
   tsconfig.json                               the TypeScript preset, shipped as it is
+  tsconfig.build.json                         the preset with the type-file output; not shipped
   scripts/build.ts                            bun build and tsc declarations into dist/
   src/deviation.ts                            Deviation, and the settings built from a list of them
   src/oxlint.ts                               the lint preset and its deviations
@@ -256,7 +259,7 @@ export default defineConfig({
 
 ## Testing strategy
 
-The sample-repo seam, new in this module (Peter, 2026-10-20). The three agreed seams test a command, a command line or a screen; this module has none of them. A test writes a sample repo in a temp folder, with the thin callers above, a `bunfig.toml` with `run.bun`, and a `node_modules` that holds the built `@acmelabs/config` and links to this repo's installed tools. No network is used. The test then runs `bun run lint`, `bun run format:check` or `bun run typecheck` in the sample repo and checks the exit code and the messages. Every run puts a `node` first on PATH that fails when anything calls it, so each test also proves that no check runs on Node. Measured on 2026-10-20: oxlint 0.09 s, oxfmt 0.07 s, tsc 0.88 s. The package is built once per test run.
+The sample-repo seam, new in this module (Peter, 2026-10-20). The three agreed seams test a command, a command line or a screen; this module has none of them. A test writes a sample repo in a temp folder, with the thin callers above, a `bunfig.toml` with `run.bun`, and a `node_modules` that holds the built `@acmelabs/config` and links to this repo's installed tools. No network is used. The test then runs `bun run lint`, `bun run format:check`, `bun run format` or `bun run typecheck` in the sample repo and checks the exit code and the messages. Every run puts a `node` first on PATH that fails when anything calls it, so each test also proves that no check runs on Node. Measured on 2026-10-20: oxlint 0.09 s, oxfmt 0.07 s, tsc 0.88 s. The package is built once per test run.
 
 Cases:
 
@@ -265,7 +268,7 @@ Cases:
 - **TypeScript:** `Bun.file` type-checks; an unchecked index read fails (`noUncheckedIndexedAccess`); a type-only import without `type` fails (`verbatimModuleSyntax`); the sample repo's own `include` decides which files are checked.
 - **No Node:** with `run.bun` removed from the sample repo, the failing `node` is called and the run fails. This proves the check is live.
 - **Reasons:** every rule and option in which the presets differ from Ultracite's has a deviation with a non-empty reason; the README lists each deviation; every option in the TypeScript preset has a comment line above it.
-- **`formatRepoConfig`:** oxfmt with the preset leaves the output unchanged for a plugin-only config, all four hosts, one package, a library line of 101 columns, five packages, and both kinds together. The existing read-back and byte-identical tests stay.
+- **`formatRepoConfig`:** oxfmt with the preset leaves the output unchanged for a plugin-only config, all four hosts, one package, a library line of 101 columns, five packages, and both kinds together. oxfmt in write mode turns the one-line form of the 100-column, 101-column and five-package cases into `formatRepoConfig`'s text, so a format width above or below 100 fails a test (review finding 1, task 9). The existing read-back and byte-identical tests stay.
 
 ## Boundaries
 
@@ -325,12 +328,12 @@ Cases:
 - [ ] Every deviation has a reason, and the README lists each one; every TypeScript preset option has its reason comment.
 - [ ] This repo's root configs use the presets, the root lists no `ultracite`, and `bunfig.toml` holds `run.bun`.
 - [ ] In this repo, `bun run check` passes with a `node` first on PATH that fails when called.
-- [ ] oxfmt with the preset leaves `formatRepoConfig`'s output unchanged for the six cases above.
+- [ ] oxfmt with the preset leaves `formatRepoConfig`'s output unchanged for the six cases above, and turns the one-line form into `formatRepoConfig`'s text.
 - [ ] `spec/README.md` holds the sample-repo seam and the rule that every file `acmelabs` writes passes the format check unchanged.
 - [ ] A changeset records `@acmelabs/config`, and `bun run check` is green.
 
 ## Open questions
 
 1. After `changeset version`, `packages/cli/CHANGELOG.md` and `packages/config/CHANGELOG.md` sit under `packages`, which this repo's format check covers. Does the changelog that changesets writes pass `oxfmt --check`? If not, the gate fails on the Version Packages PR. Decide in `cli-release`.
-2. Does `tsc` resolve `extends: "@acmelabs/config/tsconfig.json"` through the package's `exports` with the isolated linker? The sample-repo tests answer it in the build. If it fails, the thin caller changes before `scaffold` uses it.
-3. Ultracite's oxlint preset imports `defineConfig` from `oxlint` at run time, and lists oxlint as an optional peer. Does Bun's isolated linker give Ultracite the repo's oxlint through `@acmelabs/config`? The sample-repo tests answer it in the build.
+2. ~~Does `tsc` resolve `extends: "@acmelabs/config/tsconfig.json"` through the package's `exports`?~~ Answered by task 5 (`23b0fa4`), with tsc 5.9.3 in the hoisted layout: yes, through `exports` only. The thin caller works as written. The package needs both the `./tsconfig.json` entry in `exports` and the file in `files`: with the file on disk and no `exports` entry, tsc fails with `TS6053`.
+3. ~~Ultracite's oxlint preset imports `defineConfig` from `oxlint` at run time, and lists oxlint as an optional peer. Does Bun's isolated linker give Ultracite the repo's oxlint through `@acmelabs/config`?~~ Answered: yes in the hoisted layout (task 2) and through this repo's isolated install (task 6, `3ecbb09`). Since ADR-0013 the bundled presets import `oxlint` and `oxfmt` from the package itself, so the question no longer applies to a repo.

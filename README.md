@@ -2,7 +2,7 @@
 
 `acmelabs` is the one tool for [ACMElabs](https://github.com/acmelabs-15) repos. It makes a new repo start in the ACMElabs shape and keeps every repo in that shape afterwards.
 
-**Status:** in development. The spec is written and approved module by module; the first module, `repo-model`, is being built. Nothing is on npm yet.
+**Status:** in development. The work goes one module at a time, in the build order of [`spec/README.md`](spec/README.md). [`docs/STATUS.md`](docs/STATUS.md) says where it stands. Nothing is on npm yet.
 
 ## What it will do
 
