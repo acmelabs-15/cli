@@ -29,7 +29,7 @@ Phase 4 Review fixes (Peter chose them on 2026-10-20; `docs/reviews/2026-10-20-c
 
 - [x] 9. The width-drift test fails for a wider or a narrower width
 - [x] 10. The presets bundle Ultracite's presets
-- [ ] 11. The build uses the TypeScript preset, and each option has its own reason
+- [x] 11. The build uses the TypeScript preset, and each option has its own reason
 - [ ] 12. The tool pins, the root typecheck and the test tsconfig stay true to the preset
 - [x] 13. Record fixes
 - [ ] Checkpoint: config-presets complete
@@ -240,13 +240,13 @@ Phase 4 Review fixes (Peter chose them on 2026-10-20; `docs/reviews/2026-10-20-c
 **Description:** Review findings 5 and 9. A build tsconfig in `packages/config` extends the preset and turns on the type-file output, so `scripts/build.ts` restates no option that the preset sets. The `module` and `moduleResolution` comments in the preset each give that option's own reason, and the README's and the spec's tables match.
 
 **Acceptance criteria:**
-- [ ] `scripts/build.ts` names no compiler option that the preset sets, and the built `.d.ts` files are byte-identical to the ones before the change.
-- [ ] The `module` and `moduleResolution` comments differ, each with its own reason; the README's and the spec's TypeScript tables say the same.
-- [ ] The build tsconfig does not ship: `files` is unchanged.
+- [x] `scripts/build.ts` names no compiler option that the preset sets, and the built `.d.ts` files are byte-identical to the ones before the change.
+- [x] The `module` and `moduleResolution` comments differ, each with its own reason; the README's and the spec's TypeScript tables say the same.
+- [x] The build tsconfig does not ship: `files` is unchanged.
 
 **Verification:**
-- [ ] The before-and-after comparison of `dist/*.d.ts`, kept in the task's report.
-- [ ] `bun run check` is green.
+- [x] The before-and-after comparison of `dist/*.d.ts`, kept in the task's report.
+- [x] `bun run check` is green.
 
 **Dependencies:** 10
 

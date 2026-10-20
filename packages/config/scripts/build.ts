@@ -9,8 +9,14 @@ import path from "node:path";
 /** The folder of @acmelabs/config. */
 const packageDir = path.resolve(import.meta.dir, "..");
 
-/** The preset files. Each one becomes `<name>.js` and `<name>.d.ts` in the output folder. */
+/**
+ * The preset files. Each one becomes `<name>.js` in the output folder; tsc writes `<name>.d.ts`
+ * for it, and for every other source file in `src`.
+ */
 const presets = [path.join(packageDir, "src/oxlint.ts"), path.join(packageDir, "src/oxfmt.ts")];
+
+/** The tsconfig for the type files: the TypeScript preset, with the type-file output turned on. */
+const buildTsconfig = path.join(packageDir, "tsconfig.build.json");
 
 /**
  * The comment at the top of each built JavaScript file. The file bundles Ultracite's code, so it
@@ -21,34 +27,13 @@ const banner = [
   "// under the MIT license. Ultracite's copyright and permission notice: ../THIRD-PARTY-NOTICES.md",
 ].join("\n");
 
-/**
- * The tsc flags for the type files. tsc gets the preset files by name, so it reads no
- * tsconfig.json, and these flags set every option: the TypeScript preset has `noEmit`, and a build
- * must emit.
- */
-const declarationFlags = [
-  "--declaration",
-  "--emitDeclarationOnly",
-  "--rootDir",
-  path.join(packageDir, "src"),
-  "--target",
-  "ESNext",
-  "--module",
-  "ESNext",
-  "--moduleResolution",
-  "bundler",
-  "--strict",
-  "--skipLibCheck",
-  "--verbatimModuleSyntax",
-];
-
 /** Writes the type files with tsc, which runs on Bun; throws with tsc's output when it fails. */
 async function writeDeclarations(outDir: string): Promise<void> {
   const tsc = Bun.resolveSync("typescript/bin/tsc", packageDir);
-  const child = Bun.spawn(
-    [process.execPath, tsc, ...declarationFlags, "--outDir", outDir, ...presets],
-    { stdout: "pipe", stderr: "pipe" },
-  );
+  const child = Bun.spawn([process.execPath, tsc, "--project", buildTsconfig, "--outDir", outDir], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   const [stdout, stderr, exitCode] = await Promise.all([
     child.stdout.text(),
     child.stderr.text(),

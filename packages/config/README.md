@@ -136,7 +136,8 @@ No upstream preset exists for TypeScript, so every option is a choice. Each opti
 | Option | Value | Reason |
 | --- | --- | --- |
 | `target` | `ESNext` | Bun runs the newest syntax; nothing is compiled down. |
-| `module`, `moduleResolution` | `ESNext`, `bundler` | Resolve imports as Bun does: package exports, and no file extensions. |
+| `module` | `ESNext` | The newest ES module syntax, as Bun runs it: `import.meta` and top-level `await` type-check. |
+| `moduleResolution` | `bundler` | Resolve imports as Bun does: through package exports, and with no file extensions. |
 | `lib` | `["ESNext"]` | No DOM: the code runs on Bun, not in a browser. |
 | `types` | `["bun"]` | Bun's globals and APIs. The repo installs `@types/bun`. |
 | `strict` | `true` | Every strict check. |

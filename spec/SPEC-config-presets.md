@@ -89,7 +89,8 @@ The `compilerOptions` that the three repos share today. No upstream preset exist
 | Option | Value | Reason |
 |---|---|---|
 | `target` | `ESNext` | Bun runs the newest syntax; nothing is compiled down. |
-| `module`, `moduleResolution` | `ESNext`, `bundler` | Resolve imports as Bun does: package exports, and no file extensions. |
+| `module` | `ESNext` | The newest ES module syntax, as Bun runs it: `import.meta` and top-level `await` type-check. |
+| `moduleResolution` | `bundler` | Resolve imports as Bun does: through package exports, and with no file extensions. |
 | `lib` | `["ESNext"]` | No DOM: the code runs on Bun, not in a browser. |
 | `types` | `["bun"]` | Bun's globals and APIs. The repo installs `@types/bun`. |
 | `strict` | `true` | Every strict check. |
@@ -219,6 +220,7 @@ packages/config/                              @acmelabs/config
   package.json
   README.md
   tsconfig.json                               the TypeScript preset, shipped as it is
+  tsconfig.build.json                         the preset with the type-file output; not shipped
   scripts/build.ts                            bun build and tsc declarations into dist/
   src/deviation.ts                            Deviation, and the settings built from a list of them
   src/oxlint.ts                               the lint preset and its deviations

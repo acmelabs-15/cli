@@ -4,9 +4,9 @@
   "compilerOptions": {
     // Bun runs the newest syntax; nothing is compiled down.
     "target": "ESNext",
-    // Resolve imports as Bun does: package exports, and no file extensions (with moduleResolution).
+    // The newest ES module syntax, as Bun runs it: import.meta and top-level await type-check.
     "module": "ESNext",
-    // Resolve imports as Bun does: package exports, and no file extensions (with module).
+    // Resolve imports as Bun does: through package exports, and with no file extensions.
     "moduleResolution": "bundler",
     // No DOM: the code runs on Bun, not in a browser.
     "lib": ["ESNext"],
