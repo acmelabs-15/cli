@@ -10,7 +10,7 @@ Phase 1 The gate on Bun, and a first preset end to end
 
 - [x] 1. The gate runs on Bun in this repo
 - [x] 2. A sample repo lints with the built lint preset
-- [ ] Checkpoint: the seam works
+- [x] Checkpoint: the seam works
 
 Phase 2 The three presets
 
@@ -66,8 +66,8 @@ Phase 3 The presets in use
 
 ## Checkpoint: the seam works
 
-- [ ] `bun run check` is green, with the failing `node` too.
-- [ ] The tracer answers the riskiest question: a sample repo imports the built lint preset by package name, and oxlint runs it on Bun.
+- [x] `bun run check` is green, with the failing `node` too.
+- [x] The tracer answers the riskiest question: a sample repo imports the built lint preset by package name, and oxlint runs it on Bun.
 
 ## Task 3: Every lint deviation has its reason, and the lint results match today's
 
