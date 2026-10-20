@@ -19,7 +19,7 @@ Phase 2 repo-model
 - [x] 7. The JSON schema for editors
 - [x] 8. Review fixes: file reading, the package-path rule, one rule in both forms
 - [x] 9. Review fixes: names, doc lines, nits and the glossary term
-- [ ] Checkpoint: repo-model complete
+- [x] Checkpoint: repo-model complete
 
 ## Task 1: Workspace, TypeScript, and the first test: the four host ids
 
@@ -207,4 +207,4 @@ Phase 2 repo-model
 
 - [x] Every success criterion in `spec/SPEC-repo-model.md` passes.
 - [x] The Definition of Done holds for the module: integration and documentation included.
-- [ ] `/brain:review` on the module's commits, then Peter reviews before the next module starts.
+- [x] `/brain:review` on the module's commits (approve after the re-check). Peter chose on 2026-10-20 to merge PR #1 before his own review; it merged as `082abe4`.

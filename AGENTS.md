@@ -47,7 +47,7 @@ At a STOP, the next phase starts only after Peter approves in the conversation. 
 | What | Where |
 |---|---|
 | The capability map and one spec per module | `spec/` |
-| The plan and the task list | `tasks/plan.md`, `tasks/todo.md` |
+| The plan and the task list of the module in progress; done plans by module | `tasks/plan.md`, `tasks/todo.md`; `tasks/done/<module-id>/` |
 | The handoff note | `docs/STATUS.md` |
 | The brief and the interview record | `docs/design/` |
 | Decision records | `docs/decisions/NNNN-short-title.md` |

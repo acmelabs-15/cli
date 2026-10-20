@@ -2,25 +2,26 @@
 
 The one place for where the project stands. Every session reads it first and rewrites it last (see "Session end" in `AGENTS.md`). Keep it short: facts a new session needs to continue, nothing else.
 
-**Updated:** 2026-10-20, after the repo-model foundation checkpoint, by the Claude Code session that ran the spec interview and drives the build.
+**Updated:** 2026-10-20, after module `repo-model` merged, by the Claude Code session that ran the spec interview and the first build.
 
 ## Where things stand
 
-- **Phase: Spec** (`/brain:spec`), for the whole initiative.
-- **Done:** `setup-brain` (local markdown tracker); the spec interview's decisions (`docs/design/spec-interview.md`); the capability map, approved by Peter on 2026-10-20 (`spec/README.md`); eleven decision records; the research notes; the glossary; `AGENTS.md`, the root `CLAUDE.md` and `.claude/settings.json`. Every interview question is settled, the test seams included.
-- **Module specs:** `repo-model` approved by Peter on 2026-10-20 (`spec/SPEC-repo-model.md`). No other module spec is written. No code exists. The repo is public at https://github.com/acmelabs-15/cli, created and pushed on 2026-10-20 with Peter's approval, with brain's Actions setting and the "Protect main" ruleset. Each push is asked first.
+- **The spec:** the capability map of 16 modules is approved (`spec/README.md`). Every interview decision is recorded (`docs/design/spec-interview.md`, `docs/decisions/`).
+- **Module `repo-model`: done.** Built in `/brain:build auto` mode (9 tasks), reviewed on five axes (`docs/reviews/2026-10-20-repo-model.md`: approve after the re-check), and merged into main in PR #1 (`082abe4`). Its plan is in `tasks/done/repo-model/`. `bun run check` is green on main: 64 tests.
+- **No module is in progress.** `tasks/plan.md` and `tasks/todo.md` do not exist until the next module's plan.
+- **The repo:** public at https://github.com/acmelabs-15/cli, main protected by "Protect main". Peter's standing permissions: commit at task and session ends, push after every commit, one branch per module merged through one PR; merging is asked.
 
 ## Red and notes
 
-- Peter answered "both plugins" for new repos. This repo runs brain's version on a shared skill name; awaken-the-slumberer runs agent-skills' version. New repos' rule is open for the `scaffold` spec.
-- The local npm login is rejected (401). The first publishes need Peter's `npm login` and 2FA; that comes in the `cli-release` module, not now.
+- **New repos and the two plugins:** this repo runs brain's version of a skill both plugins carry; awaken-the-slumberer (now "Last of the Colossi") runs agent-skills' version. The rule for new repos is open question 6, for the `scaffold` spec.
+- **npm:** the local npm login is rejected (401). The first publishes need Peter's `npm login` and 2FA, in module `cli-release`.
+- **Open questions 15 to 19** in `spec/README.md` came out of the `repo-model` build; each names the module that settles it. Two need a brain PR: brain's changesets `$schema` (16) and its helper-order wording (17).
 
 ## Waiting on Peter
 
-Nothing now. Peter approved the first commit, and the two global rules (research in files; every question through ask-user-question) are in `~/CLAUDE.md` §1.
+Nothing blocks. Peter chose to merge PR #1 before his own review; a look at it on GitHub is still welcome.
 
 ## Next steps
 
-1. Build `repo-model` on branch `repo-model`, in `/brain:build auto` mode (Peter's choice, 2026-10-20): one fresh sub-agent per task, one commit each, pushed. Done: tasks 1–3 (`d4fcafd`, `cb34e01`, `e15afa8`), the foundation checkpoint, tasks 4 (`60173a5`), 5 (`e197491`), 6 (`7c170ae`) and 7 (`d98208d`), then the `..` fix (`8bc3303`). The final review (`docs/reviews/2026-10-20-repo-model.md`) asked for changes; Peter chose all three groups of fixes, now tasks 8 and 9. Tasks 8 (`316c209`) and 9 (`a65ff19`) and the re-check are done; the review now says approve (`docs/reviews/2026-10-20-repo-model.md`). Next: Peter's review, then one PR into main with a merge commit.
-2. Then the other layer 1 specs in build order (`spec/README.md`): `command-core`, `config-presets`, `github-ops`, `npm-ops`. `tui-kit` waits for its prototype (open question 3).
-3. Each module spec goes to Peter for approval, then `/brain:plan` for that module.
+1. The other layer 1 specs, in build order (`spec/README.md`): `command-core`, `config-presets`, `github-ops`, `npm-ops`. `tui-kit` waits for its prototype (open question 3: the vendored `@clack/ui` on tty 0.9).
+2. Each module: `/brain:spec` for its `spec/SPEC-<module-id>.md`, Peter's approval, `/brain:plan`, then the build on a branch named after the module.
