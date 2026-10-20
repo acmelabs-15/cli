@@ -204,10 +204,11 @@ function isGone(error: unknown): boolean {
 
 /**
  * Whether `error`, from a signal to the process group that `pid` leads, means that nothing in the
- * group is left to stop. ESRCH: the group is gone. EPERM: macOS still holds the group, but no
- * program in it can take a signal from this process, because macOS skips the programs that have
- * ended and are not yet reaped. When the leader has ended too, nothing is left to stop: a leader
- * that still ran as this user would take the signal. An EPERM from the leader is a real refusal.
+ * group is left to stop. ESRCH: the group is gone. EPERM: nothing is left to stop when the leader
+ * has ended too, reaped or not; an EPERM from the leader itself is a real refusal. The reason: on
+ * EPERM, macOS still holds the group, but no program in it can take a signal from this process. It
+ * skips the programs that have ended and are not yet reaped, and a leader that still ran as this
+ * user would take the signal. A program of another user that is left would refuse a SIGKILL too.
  */
 function nothingLeftToStop(error: unknown, pid: number): boolean {
   if (isGone(error)) {

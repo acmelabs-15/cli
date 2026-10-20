@@ -213,7 +213,10 @@ describe("realWorld: a program's time limit", () => {
     const marker = path.join(work, "child-started");
     const controller = new AbortController();
     const started = performance.now();
-    const spawned = realWorld().spawn(
+    // On macOS, a child that bash starts at the moment of the SIGTERM misses it, because the group
+    // signal skips a process still in fork. The SIGKILL after the grace stops it: a short grace
+    // keeps that well under 2 seconds.
+    const spawned = realWorld({ graceMs: 200 }).spawn(
       ["bash", "-c", `(sleep 2; echo late) & echo started > "${marker}"; sleep 10`],
       { signal: controller.signal },
     );
@@ -251,33 +254,44 @@ describe("realWorld: a program's time limit", () => {
     expect(() => process.kill(pid, 0)).toThrow();
   });
 
-  test("after a cancel, nothing keeps acmelabs running for the grace once the group's programs have ended", async () => {
+  test("after a cancel, acmelabs does not wait for the grace once the group's programs have ended", async () => {
     const worldFile = path.join(import.meta.dir, "..", "world.ts");
     /**
      * A script, run as its own process as acmelabs is. Five times, it starts 10 programs through
      * realWorld, each with 4 children, and cancels them all at once. Then it prints the time its
-     * last call ended, and lets its event loop end. Each program writes its marker after it starts
-     * its children, and starts nothing after it. Many ended children at once wait longer to be
-     * reaped, so the end of a call often finds a group that holds only ended programs.
+     * last call ended, and lets its event loop end. Each program starts its children, then writes
+     * its marker, then only waits. Many ended children at once wait longer to be reaped, so the end
+     * of a call often finds a group that holds only ended programs. A call that does not end with
+     * the cancel's reason writes to stderr.
      */
     const script = [
       `import { realWorld } from ${JSON.stringify(worldFile)};`,
+      `const work = ${JSON.stringify(work)};`,
       "const world = realWorld();",
-      `const program = "sleep 10 & sleep 10 & sleep 10 & sleep 10 & echo started > \\"$0\\"; wait";`,
+      "const program = 'sleep 10 & '.repeat(4) + 'echo started > \"$0\"; wait';",
       "for (let round = 0; round < 5; round += 1) {",
       "  const controller = new AbortController();",
       "  const reason = new Error('the user pressed Ctrl+C');",
-      `  const markers = Array.from({ length: 10 }, (_, run) => ${JSON.stringify(work)} + "/cancelled-" + round + "-" + run);`,
-      "  const calls = markers.map((marker) => world.spawn(['bash', '-c', program, marker], { signal: controller.signal }));",
-      "  for (const marker of markers) while (!(await Bun.file(marker).exists())) await Bun.sleep(5);",
+      "  const markers = Array.from({ length: 10 }, (_, run) =>",
+      "    work + '/cancelled-' + round + '-' + run,",
+      "  );",
+      "  const calls = markers.map((marker) =>",
+      "    world.spawn(['bash', '-c', program, marker], { signal: controller.signal }),",
+      "  );",
+      "  for (const marker of markers) {",
+      "    while (!(await Bun.file(marker).exists())) await Bun.sleep(5);",
+      "  }",
       "  controller.abort(reason);",
       "  for (const end of await Promise.allSettled(calls)) {",
-      "    if (end.status !== 'rejected' || end.reason !== reason) console.error('a call did not end with the cancel');",
+      "    if (end.status !== 'rejected' || end.reason !== reason) {",
+      "      console.error('a call did not end with the cancel');",
+      "    }",
       "  }",
       "}",
       "process.stdout.write(String(Date.now()));",
     ].join("\n");
-    const spawned = await realWorld().spawn(["bun", "-e", script]);
+    // A time limit below the test's own, so a script that hangs stops with its group.
+    const spawned = await realWorld().spawn(["bun", "-e", script], { timeoutMs: 8000 });
     expect(spawned.stderr).toBe("");
     // A SIGKILL timer kept for an ended group would keep the script alive for the grace, 5 s.
     const lingered = Date.now() - Number(spawned.stdout);
