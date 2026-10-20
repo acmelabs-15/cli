@@ -6,7 +6,7 @@ The task list for `tasks/plan.md`. Tick a task in the checklist, and each box in
 
 Phase 1 A command runs
 
-- [ ] 1. World: realWorld and fakeWorld
+- [x] 1. World: realWorld and fakeWorld
 - [ ] 2. A command runs and ends with its exit code
 - [ ] 3. Input errors named by flag and positional
 - [ ] Checkpoint: a command runs
@@ -24,13 +24,13 @@ Phase 2 The rest of the frame
 **Description:** The outside world becomes one object, `World`, so a command reaches gh, npm and the network only through it, and a test replaces it with one fake. `realWorld()` uses Bun and the process; `fakeWorld()` answers `spawn` and `fetch` from a script and logs every call.
 
 **Acceptance criteria:**
-- [ ] `World`, `Spawned`, `realWorld()` and `fakeWorld(options)` exist in `packages/cli/src/command/world.ts`, as the spec's "The context a command runs in" gives them.
-- [ ] `fakeWorld` returns the scripted answer for a matching `spawn` or `fetch` call, fails loudly on an unscripted call, and logs every call in order.
-- [ ] `realWorld().spawn(["bun", "--version"])` returns code 0 and Bun's version on stdout.
+- [x] `World`, `Spawned`, `realWorld()` and `fakeWorld(options)` exist in `packages/cli/src/command/world.ts`, as the spec's "The context a command runs in" gives them.
+- [x] `fakeWorld` returns the scripted answer for a matching `spawn` or `fetch` call, fails loudly on an unscripted call, and logs every call in order.
+- [x] `realWorld().spawn(["bun", "--version"])` returns code 0 and Bun's version on stdout.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/command`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/command`
+- [x] `bun run check` is green.
 
 **Dependencies:** None
 
