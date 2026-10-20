@@ -18,7 +18,7 @@ Phase 2 The tracer and the settings
 
 - [x] 5. Tracer: a sample command gives a repo the Actions setting
 - [ ] 6. checkLogin names the gh command that fixes the login
-- [ ] 7. A command file may check a repo name at its top
+- [x] 7. A command file may check a repo name at its top
 - [x] 8. Every repo can get Protect main
 - [x] 9. A step retries an unexpected 404 or 409
 - [x] Checkpoint: the tracer and the settings
@@ -156,12 +156,12 @@ Phase 3 The other steps
 **Description:** The command list's import rule lets a command file load `../github/names` at its top, because that file loads only zod and a command's input checks a repo name with it. Every other github-ops file stays heavy.
 
 **Acceptance criteria:**
-- [ ] `heavyImports` of a command file that imports `../github/names` is empty; one that imports `../github/gh` still names it.
-- [ ] A test scans `names.ts` and finds zod as its only import.
+- [x] `heavyImports` of a command file that imports `../github/names` is empty; one that imports `../github/gh` still names it.
+- [x] A test scans `names.ts` and finds zod as its only import.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/command`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/command`
+- [x] `bun run check` is green.
 
 **Dependencies:** 5
 

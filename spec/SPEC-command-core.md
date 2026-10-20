@@ -199,7 +199,7 @@ Rules, each checked by a test over the real list:
 - Every path has one word or more and is unique, and no command's path is the start of another command's path.
 - Every summary is one line, and every input field has a description, given before or after its optional, nullable or default wrapper.
 - Every positional names a required field of the input.
-- A command file loads only zod, Node built-ins (`node:`), `command-core` and `repo-model` at its top. Anything heavier (gh, npm, the TUI) loads inside `run` with `await import(...)`, so a quick command in CI stays quick. Node built-ins are allowed because they load faster than zod (measured on Bun 1.4.0 during the build: `node:path` 8 ms, `node:fs/promises` 11 ms, zod 20 ms, median of 15 starts). A type-only import loads nothing and is allowed. Known gap: an `await import(...)` at the file's top level, outside `run`, is not caught.
+- A command file loads only zod, Node built-ins (`node:`), `command-core`, `repo-model` and github-ops's names file (`../github/names`, which loads only zod) at its top. Anything heavier (gh, npm, the TUI) loads inside `run` with `await import(...)`, so a quick command in CI stays quick. Node built-ins are allowed because they load faster than zod (measured on Bun 1.4.0 during the build: `node:path` 8 ms, `node:fs/promises` 11 ms, zod 20 ms, median of 15 starts). A type-only import loads nothing and is allowed. Known gap: an `await import(...)` at the file's top level, outside `run`, is not caught.
 
 The list is empty until `repo-checks` adds the first real commands; this module's tests use sample commands.
 
