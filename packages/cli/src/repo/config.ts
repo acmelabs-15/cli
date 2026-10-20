@@ -200,14 +200,58 @@ function jsonList(items: readonly string[]): string {
   return `[${items.map((item) => JSON.stringify(item)).join(", ")}]`;
 }
 
-/** The canonical file text: two-space JSON, the $schema line first, a final newline. */
+/**
+ * The widest line, in columns: `printWidth` of the format preset, `@acmelabs/config/oxfmt`. The
+ * CLI does not depend on that package; a sample-repo test runs oxfmt with the preset on
+ * `formatRepoConfig`'s output, so a drift fails there.
+ */
+const printWidth = 100;
+
+/**
+ * Whether a line fits in `printWidth`. It counts columns as oxfmt does, not characters: a wide
+ * character, such as `日`, takes two columns.
+ */
+function fits(line: string): boolean {
+  return Bun.stringWidth(line) <= printWidth;
+}
+
+/**
+ * One repo kind's text, laid out as oxfmt with the format preset lays it out. The kind stays on
+ * one line when it fits. Otherwise its object opens, and its list stays on one line when it fits
+ * there, else puts one item per line. `end` follows the last line: a comma when another kind
+ * follows, and it counts toward the fit.
+ */
+function kindText(kind: string, field: string, items: readonly string[], end: string): string {
+  const oneLine = `  "${kind}": { "${field}": ${jsonList(items)} }${end}`;
+  if (fits(oneLine)) {
+    return oneLine;
+  }
+  const listLine = `    "${field}": ${jsonList(items)}`;
+  const list = fits(listLine)
+    ? listLine
+    : [
+        `    "${field}": [`,
+        items.map((item) => `      ${JSON.stringify(item)}`).join(",\n"),
+        "    ]",
+      ].join("\n");
+  return [`  "${kind}": {`, list, `  }${end}`].join("\n");
+}
+
+/**
+ * The canonical file text: two-space JSON, the $schema line first, a final newline. Each repo kind
+ * is laid out as the format check lays it out, so the file passes that check unchanged.
+ */
 export function formatRepoConfig(config: RepoConfig, schemaPath: string): string {
-  const lines = [`"$schema": ${JSON.stringify(schemaPath)}`];
+  const kinds: [kind: string, field: string, items: readonly string[]][] = [];
   if (config.plugin !== undefined) {
-    lines.push(`"plugin": { "hosts": ${jsonList(config.plugin.hosts)} }`);
+    kinds.push(["plugin", "hosts", config.plugin.hosts]);
   }
   if (config.library !== undefined) {
-    lines.push(`"library": { "packages": ${jsonList(config.library.packages)} }`);
+    kinds.push(["library", "packages", config.library.packages]);
   }
-  return `{\n${lines.map((line) => `  ${line}`).join(",\n")}\n}\n`;
+  const lines = [`  "$schema": ${JSON.stringify(schemaPath)}${kinds.length > 0 ? "," : ""}`];
+  for (const [index, [kind, field, items]] of kinds.entries()) {
+    lines.push(kindText(kind, field, items, index < kinds.length - 1 ? "," : ""));
+  }
+  return `{\n${lines.join("\n")}\n}\n`;
 }

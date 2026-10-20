@@ -22,7 +22,7 @@ Phase 2 The three presets
 Phase 3 The presets in use
 
 - [x] 6. This repo's gate uses its own presets
-- [ ] 7. formatRepoConfig writes oxfmt's layout
+- [x] 7. formatRepoConfig writes oxfmt's layout
 - [ ] 8. The @acmelabs/config README and changeset
 - [ ] Checkpoint: config-presets complete
 
@@ -156,13 +156,13 @@ Phase 3 The presets in use
 **Description:** `formatRepoConfig` keeps a repo kind's line when it fits in 100 columns. A longer line opens the kind's object, one field per line, and its list stays on one line when it fits there, else one item per line. A sample-repo test runs oxfmt with the format preset on the output.
 
 **Acceptance criteria:**
-- [ ] oxfmt with the format preset leaves the output unchanged for a plugin-only config, all four hosts, one package, a library line of 101 columns, five packages, and both kinds together.
-- [ ] The width is a constant in `config.ts` with a comment that names the preset; the existing read-back and byte-identical tests still pass.
-- [ ] A changeset for `@acmelabs/cli` says that `acmelabs.json` keeps the layout the format check gives it.
+- [x] oxfmt with the format preset leaves the output unchanged for a plugin-only config, all four hosts, one package, a library line of 101 columns, five packages, and both kinds together.
+- [x] The width is a constant in `config.ts` with a comment that names the preset; the existing read-back and byte-identical tests still pass.
+- [x] A changeset for `@acmelabs/cli` says that `acmelabs.json` keeps the layout the format check gives it.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/repo`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/repo`
+- [x] `bun run check` is green.
 
 **Dependencies:** 4
 
