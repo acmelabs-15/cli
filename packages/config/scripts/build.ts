@@ -10,7 +10,7 @@ import path from "node:path";
 const packageDir = path.resolve(import.meta.dir, "..");
 
 /** The preset files. Each one becomes `<name>.js` and `<name>.d.ts` in the output folder. */
-const presets = [path.join(packageDir, "src/oxlint.ts")];
+const presets = [path.join(packageDir, "src/oxlint.ts"), path.join(packageDir, "src/oxfmt.ts")];
 
 /**
  * The tsc flags for the type files. tsc gets the preset files by name, so it reads no

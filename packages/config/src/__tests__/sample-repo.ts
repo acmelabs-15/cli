@@ -50,8 +50,28 @@ export const lintExtendingCaller = [
   "",
 ].join("\n");
 
+/** The spec's one-line format thin caller, for a repo that adds nothing to the preset. */
+export const formatThinCaller = [
+  "// Format: the ACMElabs preset. Its deviations and their reasons: the @acmelabs/config README.",
+  'export { default } from "@acmelabs/config/oxfmt";',
+  "",
+].join("\n");
+
+/** The spec's format thin caller for a repo that adds its own ignored folder, `skills`. */
+export const formatSpreadCaller = [
+  'import preset from "@acmelabs/config/oxfmt";',
+  'import { defineConfig } from "oxfmt";',
+  "",
+  "export default defineConfig({",
+  "  ...preset,",
+  "  // Vendored skills are never linted or formatted by this repo.",
+  '  ignorePatterns: [...preset.ignorePatterns, "skills"],',
+  "});",
+  "",
+].join("\n");
+
 /** The scripts in a sample repo's package.json, as an ACMElabs repo names them. */
-const scripts = { lint: "oxlint", typecheck: "tsc --noEmit" };
+const scripts = { lint: "oxlint", "format:check": "oxfmt --check", typecheck: "tsc --noEmit" };
 
 /** The fields of a package.json that the sample repo's install reads. */
 type Manifest = {

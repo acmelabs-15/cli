@@ -12,6 +12,10 @@
     "./oxlint": {
       "types": "./dist/oxlint.d.ts",
       "default": "./dist/oxlint.js"
+    },
+    "./oxfmt": {
+      "types": "./dist/oxfmt.d.ts",
+      "default": "./dist/oxfmt.js"
     }
   },
   "scripts": {

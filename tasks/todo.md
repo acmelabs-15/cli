@@ -15,7 +15,7 @@ Phase 1 The gate on Bun, and a first preset end to end
 Phase 2 The three presets
 
 - [x] 3. Every lint deviation has its reason, and the lint results match today's
-- [ ] 4. A sample repo formats with the format preset
+- [x] 4. A sample repo formats with the format preset
 - [ ] 5. A sample repo type-checks with the TypeScript preset
 - [ ] Checkpoint: the presets
 
@@ -93,13 +93,13 @@ Phase 3 The presets in use
 **Description:** The format preset: Ultracite's oxfmt preset spread, with `printWidth` 100 and `trailingComma` `"all"` as deviations with their reasons. The build and the exports add `./oxfmt`. The format cases from the spec run in a sample repo.
 
 **Acceptance criteria:**
-- [ ] The build writes `dist/oxfmt.js` and `dist/oxfmt.d.ts`; `exports` has `./oxfmt`; the preset's type says `ignorePatterns` is always present.
-- [ ] In a sample repo with the one-line thin caller: a 95-column line stays unchanged; a multi-line call gets trailing commas everywhere; imports in the wrong order fail; a file under `dist/` is not checked. The spec's spread thin caller with one more ignored folder skips that folder.
-- [ ] A test compares the preset with Ultracite's: every option that differs is in `formatDeviations` with a non-empty reason, and every deviation differs.
+- [x] The build writes `dist/oxfmt.js` and `dist/oxfmt.d.ts`; `exports` has `./oxfmt`; the preset's type says `ignorePatterns` is always present.
+- [x] In a sample repo with the one-line thin caller: a 95-column line stays unchanged; a multi-line call gets trailing commas everywhere; imports in the wrong order fail; a file under `dist/` is not checked. The spec's spread thin caller with one more ignored folder skips that folder.
+- [x] A test compares the preset with Ultracite's: every option that differs is in `formatDeviations` with a non-empty reason, and every deviation differs.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/config`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/config`
+- [x] `bun run check` is green.
 
 **Dependencies:** 2 (and task 3's `Deviation` type when task 3 is done)
 
