@@ -85,7 +85,7 @@ Phase 2 The rest of the frame
 **Description:** A command reports progress with `context.progress`, and `runCommand` forwards each update to the front-end in order. A step that started and did not end is closed as failed when the command throws, so no front-end shows a half-done step as running.
 
 **Acceptance criteria:**
-- [ ] `ProgressUpdate` exists as the spec gives it, and updates reach the host's `progress` in order.
+- [ ] `ProgressUpdate` exists as the spec gives it, and updates reach the front-end's `progress` in order.
 - [ ] A throw closes each open step as `failed` before the outcome; a normal end with an open step is a bug (kind `bug`, exit 70), because every started step must end.
 
 **Verification:**
@@ -100,7 +100,7 @@ Phase 2 The rest of the frame
 
 ## Task 5: Questions mid-run, and cancel
 
-**Description:** `context.ask(field)` returns an optional input's value: the value given up front, else the answer from the host's `answer` function, else an input error that names the flag. Cancel through the host's signal ends with kind `cancelled` and exit 130.
+**Description:** `context.ask(field)` returns an optional input's value: the value given up front, else the answer from the front-end's `answer` function, else an input error that names the flag. Cancel through the front-end's signal ends with kind `cancelled` and exit 130.
 
 **Acceptance criteria:**
 - [ ] `ask` returns an up-front value without calling `answer`; with no value, it calls `answer`; with neither, the outcome is kind `input`, exit 2, naming `--field`.

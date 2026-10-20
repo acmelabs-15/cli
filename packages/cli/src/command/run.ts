@@ -5,6 +5,13 @@ import type { CommandFailure, Outcome } from "./outcome";
 import { CommandError, exitCodes, inputError } from "./outcome";
 import type { World } from "./world";
 
+/** What a front-end gives runCommand: its world, where progress updates go, and its signal. */
+export type FrontEnd = {
+  world: World;
+  progress: (update: ProgressUpdate) => void;
+  signal: AbortSignal;
+};
+
 /** The time since `started`, a `performance.now()` reading, in whole milliseconds. */
 function millisecondsSince(started: number): number {
   return Math.round(performance.now() - started);
@@ -32,11 +39,8 @@ async function checkInput<Input extends z.ZodObject>(
 }
 
 /** The context a command runs in: the front-end's world, progress and signal. */
-function contextFor<Input>(
-  input: Input,
-  host: { world: World; progress: (update: ProgressUpdate) => void; signal: AbortSignal },
-): Context<Input> {
-  const { world } = host;
+function contextFor<Input>(input: Input, frontEnd: FrontEnd): Context<Input> {
+  const { world } = frontEnd;
   return {
     root: world.root,
     env: world.env,
@@ -44,7 +48,7 @@ function contextFor<Input>(
     fetch: world.fetch,
     now: world.now,
     progress(update) {
-      host.progress(update);
+      frontEnd.progress(update);
     },
     // ask rejects, and never throws, because its type promises a Promise.
     ask(field) {
@@ -58,7 +62,7 @@ function contextFor<Input>(
       }
       return Promise.resolve(value);
     },
-    signal: host.signal,
+    signal: frontEnd.signal,
   };
 }
 
@@ -86,13 +90,13 @@ function failureOf(error: unknown): CommandFailure {
 export async function runCommand<Input extends z.ZodObject, Result>(
   command: Command<Input, Result>,
   rawInput: unknown,
-  host: { world: World; progress: (update: ProgressUpdate) => void; signal: AbortSignal },
+  frontEnd: FrontEnd,
 ): Promise<Outcome<Result>> {
   const started = performance.now();
   const name = command.path.join(" ");
   try {
     const input = await checkInput(command.input, rawInput);
-    const result = await command.run(input, contextFor(input, host));
+    const result = await command.run(input, contextFor(input, frontEnd));
     return { ok: true, command: name, exitCode: 0, durationMs: millisecondsSince(started), result };
   } catch (error) {
     const failure = failureOf(error);

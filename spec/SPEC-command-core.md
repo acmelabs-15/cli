@@ -106,13 +106,23 @@ export type Issue = { field: string; message: string };
 An input issue names the field as the caller wrote it: `--host` for a flag, `<name>` for a positional, and the field path inside `acmelabs.json` for a repo config issue.
 
 ```ts
+/** What a front-end gives runCommand: its world, where progress updates go, its signal, and how it asks. */
+export type FrontEnd = {
+  world: World;
+  progress: (update: ProgressUpdate) => void;
+  signal: AbortSignal;
+  answer?: Answerer;
+};
+
 /** Runs one command: checks the input, runs it, and turns every ending into an Outcome. */
 export function runCommand<Input extends z.ZodObject, Result>(
   command: Command<Input, Result>,
   rawInput: unknown,
-  host: { world: World; progress: (update: ProgressUpdate) => void; answer?: Answerer; signal: AbortSignal },
+  frontEnd: FrontEnd,
 ): Promise<Outcome<Result>>;
 ```
+
+The parameter is named after the glossary's **front-end**, not "host", which the glossary keeps for an agent program that loads a plugin.
 
 `runCommand` is the command seam. `answer` is how a front-end with a terminal asks a question; JSON mode and the MCP server pass none.
 
