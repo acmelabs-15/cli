@@ -9,7 +9,7 @@ Phase 1 Foundation
 - [x] 1. Workspace, TypeScript, and the first test: the four host ids
 - [x] 2. Lint and format gate
 - [x] 3. Changesets, as brain does
-- [ ] Checkpoint: foundation
+- [x] Checkpoint: foundation
 
 Phase 2 repo-model
 
@@ -81,8 +81,8 @@ Phase 2 repo-model
 
 ## Checkpoint: foundation
 
-- [ ] `bun run check` is green on a clean clone: `bun install --frozen-lockfile`, then `bun run check`.
-- [ ] Tasks 1–3 are committed, one commit each.
+- [x] `bun run check` is green on a clean clone: `bun install --frozen-lockfile`, then `bun run check`.
+- [x] Tasks 1–3 are committed, one commit each.
 
 ## Task 4: Read and check `acmelabs.json`
 

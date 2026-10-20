@@ -101,3 +101,5 @@ The brief's done-when list, with Peter's additions from the interview:
 | 12 | The vendored `@clack/ui` is a workspace package that is not on npm. `@acmelabs/cli` must bundle it into its build output and must not list it as a dependency | `tui-kit`, `cli-release` | Settle in the `tui-kit` spec |
 | 13 | Claude Code's plugin dependency ranges resolve `<name>--v<version>` tags; ACMElabs repos tag `v<version>` | none in this pass | Note for later |
 | 14 | ~~Which license~~ Settled 2026-10-20: MIT, as brain and jev-gate; also the default for new repos | none | none |
+| 15 | CI that runs `changeset status` must pass `--since=origin/main`: a checkout with no local `main` fails with "Failed to find where HEAD diverged from main" (seen on a clean clone, 2026-10-20) | `shared-workflows` | Use `--since=origin/main` with a full-history checkout |
+| 16 | brain's `.changeset/config.json` points `$schema` at `@changesets/config@3.1.2`, but `@changesets/cli` 3.0.3 installs config 4.0.1. This repo copied brain's value. Fix it in brain, then here; `scaffold` writes the current schema | `scaffold`; a brain PR | Fix at the cause, in brain |
