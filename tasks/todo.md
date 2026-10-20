@@ -17,6 +17,8 @@ Phase 2 repo-model
 - [x] 5. Manifests and validators per host
 - [x] 6. Canonical file text, and this repo's own `acmelabs.json`
 - [x] 7. The JSON schema for editors
+- [ ] 8. Review fixes: file reading, the package-path rule, one rule in both forms
+- [ ] 9. Review fixes: names, doc lines, nits and the glossary term
 - [ ] Checkpoint: repo-model complete
 
 ## Task 1: Workspace, TypeScript, and the first test: the four host ids
@@ -163,6 +165,43 @@ Phase 2 repo-model
 **Files likely touched:** `packages/cli/scripts/schema.ts`, `packages/cli/scripts/__tests__/schema.test.ts`, `packages/cli/schema/acmelabs.schema.json`, `package.json`, `.changeset/<name>.md`
 
 **Estimated scope:** Medium
+
+## Task 8: Review fixes: file reading, the package-path rule, one rule in both forms
+
+**Description:** Fix the review's findings 1 to 4 (`docs/reviews/2026-10-20-repo-model.md`), which Peter chose on 2026-10-20: groups 1 and 2, and the size cap from group 3. Every way of failing to read `acmelabs.json` becomes a `RepoConfigError` that names the file. The package-path rule gets stricter, and its two forms (the command's and the editor schema's) are proven to agree.
+
+**Acceptance criteria:**
+- [ ] A folder named `acmelabs.json`, an unreadable file, and a file over 1 MiB each fail with a `RepoConfigError` that names the file and says what is wrong (findings 1 and 4).
+- [ ] A package path with a backslash, a NUL byte, a drive prefix such as `C:`, or only blanks fails in the command and in the editor schema (finding 3).
+- [ ] One test runs the command's rule and the editor schema's pattern over one shared list of sample paths and expects the same verdict for each; the pattern has one comment line per lookahead; `editorSchema` throws when an override key matches no node (finding 2).
+
+**Verification:**
+- [ ] Each new test fails first, then passes: `bun test packages/cli`
+- [ ] `bun run check` is green, the schema check included.
+
+**Dependencies:** 7
+
+**Files likely touched:** `packages/cli/src/repo/config.ts`, `packages/cli/src/repo/__tests__/config.test.ts`, `packages/cli/scripts/schema.ts`, `packages/cli/scripts/__tests__/schema.test.ts`, `packages/cli/schema/acmelabs.schema.json`
+
+**Estimated scope:** Medium
+
+## Task 9: Review fixes: names, doc lines, nits and the glossary term
+
+**Description:** Fix the review's findings 6 to 15, the rest of group 3, which Peter chose on 2026-10-20. No behaviour changes except the house wording for a non-object file.
+
+**Acceptance criteria:**
+- [ ] Findings 6 to 11 and 13 to 15 of the review are fixed as the review says; a file that holds a non-object, such as `[]`, fails with the house wording, with a test.
+- [ ] The spec's host table names each host (finding 12), and `CONTEXT.md` has an entry for the editor schema, used in the code's doc comments (finding 14).
+- [ ] The review file marks each fixed finding as fixed.
+
+**Verification:**
+- [ ] `bun run check` is green.
+
+**Dependencies:** 8
+
+**Files likely touched:** `packages/cli/src/repo/config.ts`, `packages/cli/src/repo/hosts.ts`, `packages/cli/scripts/schema.ts`, the three test files, `oxlint.config.ts`, `spec/SPEC-repo-model.md`, `CONTEXT.md`, `docs/reviews/2026-10-20-repo-model.md`
+
+**Estimated scope:** Medium (many files, each a small edit)
 
 ## Checkpoint: repo-model complete
 
