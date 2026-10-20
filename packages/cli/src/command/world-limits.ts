@@ -27,7 +27,7 @@ function countOf(count: number, unit: string): string {
 }
 
 /** A time in words, in its largest whole unit: 5 minutes, 90 seconds, 1500 milliseconds. */
-function durationOf(ms: number): string {
+export function durationOf(ms: number): string {
   if (ms >= 60_000 && ms % 60_000 === 0) {
     return countOf(ms / 60_000, "minute");
   }
