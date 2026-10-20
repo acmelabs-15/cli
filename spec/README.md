@@ -90,7 +90,7 @@ The brief's done-when list, with Peter's additions from the interview:
 | 1 | ~~The test seams~~ Settled 2026-10-20: the three seams under "Test seams" | none | none |
 | 2 | ~~What job `@bomb.sh/args` does~~ Settled 2026-10-20: the router alone; args is not added (ADR-0009) | none | none |
 | 3 | Does the vendored `@clack/ui` preview work on tty 0.9 under Bun, and does a Bubbles-style text input and multi-select feel right? | `tui-kit` | A prototype, through the prototype skill |
-| 4 | Do oxlint and oxfmt load a TypeScript config under Bun with no Node on PATH? (UNVERIFIED) | `config-presets` | A probe in that module's spec |
+| 4 | Do oxlint and oxfmt load a TypeScript config under Bun with no Node on PATH? Answered on macOS (`docs/research/07-oxc-without-node.md`): yes, because `bun run` puts a Bun-backed `node` first on PATH. With Node installed, plain `bun run` uses that Node; `bun --bun run` forces Bun. Linux is UNVERIFIED. Open: should the gate and CI use `bun --bun run`? | `config-presets`, `shared-workflows` | Decide in those specs; verify on Linux in CI |
 | 5 | ~~Where the repo config lives~~ Settled 2026-10-20: `acmelabs.json` at the repo root | none | none |
 | 6 | Which plugin's skill runs on a shared name in a new repo: agent-skills (awaken-the-slumberer's rule) or brain? | `scaffold` | Ask Peter in that module's spec |
 | 7 | How do Codex, Gemini CLI and Antigravity CLI enable plugins at project scope, if they can? | `scaffold` | Research, written to `docs/research/` |
