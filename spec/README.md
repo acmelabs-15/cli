@@ -6,7 +6,7 @@ The index of the spec. Peter approved this map on 2026-10-20 (`docs/design/spec-
 
 | Layer | Module id | Responsibility | Depends on | Spec |
 |---|---|---|---|---|
-| 1 | `repo-model` | The repo config (repo kind, hosts) and the host table: each host's manifests, version fields and validator | none | not written |
+| 1 | `repo-model` | The repo config (repo kind, hosts) and the host table: each host's manifests, version fields and validator | none | [draft](SPEC-repo-model.md), waiting on Peter |
 | 1 | `command-core` | The command list: each command's inputs, events, result, errors and exit codes | none | not written |
 | 1 | `tui-kit` | The theme, the vendored `@clack/ui` preview, and the Bubbles-style components with focus | none | not written; prototype first |
 | 1 | `config-presets` | `@acmelabs/config`: the oxlint, oxfmt and tsconfig presets, each deviation with its reason | none | not written |
