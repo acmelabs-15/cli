@@ -332,5 +332,5 @@ Cases:
 ## Open questions
 
 1. After `changeset version`, `packages/cli/CHANGELOG.md` and `packages/config/CHANGELOG.md` sit under `packages`, which this repo's format check covers. Does the changelog that changesets writes pass `oxfmt --check`? If not, the gate fails on the Version Packages PR. Decide in `cli-release`.
-2. Does `tsc` resolve `extends: "@acmelabs/config/tsconfig.json"` through the package's `exports` with the isolated linker? The sample-repo tests answer it in the build. If it fails, the thin caller changes before `scaffold` uses it.
+2. ~~Does `tsc` resolve `extends: "@acmelabs/config/tsconfig.json"` through the package's `exports`?~~ Answered by task 5 (`23b0fa4`), with tsc 5.9.3 in the hoisted layout: yes, through `exports` only. The thin caller works as written. The package needs both the `./tsconfig.json` entry in `exports` and the file in `files`: with the file on disk and no `exports` entry, tsc fails with `TS6053`.
 3. Ultracite's oxlint preset imports `defineConfig` from `oxlint` at run time, and lists oxlint as an optional peer. Does Bun's isolated linker give Ultracite the repo's oxlint through `@acmelabs/config`? The sample-repo tests answer it in the build.

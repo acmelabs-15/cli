@@ -17,7 +17,7 @@ Phase 2 The three presets
 - [x] 3. Every lint deviation has its reason, and the lint results match today's
 - [x] 4. A sample repo formats with the format preset
 - [x] 5. A sample repo type-checks with the TypeScript preset
-- [ ] Checkpoint: the presets
+- [x] Checkpoint: the presets
 
 Phase 3 The presets in use
 
@@ -128,9 +128,9 @@ Phase 3 The presets in use
 
 ## Checkpoint: the presets
 
-- [ ] `bun run check` is green, with the failing `node` too.
-- [ ] Every lint, format, TypeScript, "No Node" and "Reasons" case in the spec's "Testing strategy" passes, except the README check (task 8).
-- [ ] Spec open question 2 has its answer in task 5's report.
+- [x] `bun run check` is green, with the failing `node` too.
+- [x] Every lint, format, TypeScript, "No Node" and "Reasons" case in the spec's "Testing strategy" passes, except the README check (task 8).
+- [x] Spec open question 2 has its answer in task 5's report.
 
 ## Task 6: This repo's gate uses its own presets
 
