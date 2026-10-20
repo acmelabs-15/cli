@@ -293,7 +293,7 @@ Phase 4 Review fixes (Peter chose them on 2026-10-20; `docs/reviews/2026-10-20-c
 
 ## Checkpoint: config-presets complete
 
-- [ ] Every success criterion in `spec/SPEC-config-presets.md` passes.
-- [ ] `bun run check` is green, with the failing `node` too.
-- [ ] `/brain:review` on the branch, and its findings fixed or recorded.
+- [x] Every success criterion in `spec/SPEC-config-presets.md` passes.
+- [x] `bun run check` is green, with the failing `node` too.
+- [x] `/brain:review` on the branch, and its findings fixed or recorded.
 - [ ] Peter reviews; the PR into `main` merges with a merge commit, after he asks for it.

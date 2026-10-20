@@ -68,3 +68,33 @@ The final-checkpoint review of module `config-presets` (`/brain:review`, the fiv
 - "Nothing outside their own file reads `lintDeviations` and `formatDeviations`" (architecture). Wrong: `oxlint.test.ts`, `oxfmt.test.ts` and `readme.test.ts` read them, so the data earns its place.
 - "The lint reasons test cannot fail" (correctness). Wrong: task 3 added `"no-console": "error"` to the preset's `rules`, and the test failed with `["no-console"]`.
 - "The comma logic sits in two places and could be one" (readability). The fit check needs the comma's width, as task 7's probe showed, so the parameter stays.
+
+## Re-check after the fixes
+
+Run on 2026-10-20 by the orchestrator, after tasks 9 to 13 (the fixes Peter chose). **Verdict: approve.**
+
+| Finding | Outcome |
+|---|---|
+| 1 The width-drift test | Fixed in `2fa9c6b` (task 9). oxfmt in write mode turns the one-line form of the 100-column, 101-column and five-package cases into `formatRepoConfig`'s text. A preset width of 120 and of 90 each made the test fail (mutation runs, undone). The 100-column case was needed: with the two named cases only, 90 passed. |
+| 2 The stale handoff note | Fixed at the session end, with this re-check. |
+| 3 Ultracite's tree in every repo | Fixed in `a6f99c6` (task 10, ADR-0013). The built presets import only `oxlint` and `oxfmt`; Ultracite is a devDependency; `THIRD-PARTY-NOTICES.md` holds Ultracite's `license.md` from tag `ultracite@7.12.0`, byte for byte; a sample repo with no Ultracite lints and formats. Under real Node, the built presets load with no Ultracite installed. |
+| 4 The tool pins | Fixed in `1a6bcff` (task 12): a test proves the root's four tools equal the preset's peers. |
+| 5 The build restated preset options | Fixed in `d0e1c6c` (task 11): `tsconfig.build.json` extends the preset; the built `.d.ts` files are byte-identical before and after. |
+| 6 The root typecheck read local build output | Fixed in `1a6bcff`: the root `tsconfig.json` excludes `packages/*/dist`; `--showConfig` lists no `dist` file and no `node_modules` file. |
+| 7 The duplicated test tsconfig | Fixed in `1a6bcff`: one `configOnlyTsconfig(file)` in `sample-repo.ts`. |
+| 8 `ultraciteIgnorePatterns()` twice | Kept, as recommended. |
+| 9 The `module` and `moduleResolution` comments | Fixed in `d0e1c6c`: one reason each, checked with a tsc probe; the README's and the spec's tables have one row per option. |
+| 10 to 12 Stale records | Fixed in `3ba22ba` (`.changeset/README.md`) and on `main` in `c915de8` (`AGENTS.md` now names the `check` script instead of a copy of its steps; note 07 names `AI_AGENT`). |
+| 13 The `env` sentence's source | Recorded in `docs/design/spec-interview.md` (`50c58bb`). |
+| 14 `buildPackage` empties its folder | Kept, as recommended. |
+| 15 No `LICENSE` per package | Open question 24 in `spec/README.md`, for `cli-release` (`c915de8`). |
+
+Also fixed: two lines over 100 columns (the build banner, in `1a6bcff`; a doc comment, in `588cea9`), and the spec's build comment now names `deviation.d.ts`.
+
+Verification: `bun run check` is green with 213 tests, normally, with a failing `node` first on PATH, and on a clean clone of the branch.
+
+### New FYI from the fixes
+
+- The built JavaScript holds comments with each bundled module's path, which include the install store's hash and depend on the build's working folder. Two builds can differ in those comments only. A byte-for-byte compare of release builds belongs to `cli-release` and should build from one fixed folder. (task 10)
+- `repo-model`'s test "reads a list of 10,000 distinct package paths in under 100 ms" took 132 ms once while other tests ran on the same machine; quiet runs take 37 to 45 ms. A wall-clock limit in a unit test is flaky under load. (found during task 13)
+- Some test names pass 100 columns. oxfmt does not split strings, and the gate passes. (task 12)
