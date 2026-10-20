@@ -303,6 +303,12 @@ https://docs.github.com/en/rest/pulls/pulls#create-a-pull-request
 - "For organization-owned repositories, you must be a member of the organization that owns the repository to open or update a pull request."
 - "This endpoint triggers notifications. Creating content too quickly using this endpoint may result in secondary rate limiting."
 - **An open PR for the same head and base:** 422 with `{"message":"Validation Failed","errors":[{"resource":"PullRequest","code":"custom","message":"A pull request already exists for <owner>:<branch>."}],...}`. Reported; not probed. https://github.com/crowdin/github-action/issues/287 · https://github.com/google/go-github/issues/1441
+- **Probes under `2026-03-10`** (github-ops task 12, 2026-10-20, read-only GETs through `gh api` with the spec's two headers):
+  - `repos/acmelabs-15/brain/pulls?head=acmelabs-15%3Achangeset-release%2Fmain&base=main&state=all&per_page=100` returned exactly the 5 PRs from that head (#1, #2, #3, #4, #6). An encoded colon and slash pass through `gh api`, and GitHub decodes them.
+  - The same query with `head=changeset-release%2Fmain` (no owner) returned all 7 PRs of brain: GitHub ignores a head filter with no owner.
+  - `head=acmelabs-15%3Achangeset-release` (cut at the slash) returned `[]`.
+  - The encoded head with `state=open` returned `[]`.
+  - A list item carries `number`, `html_url`, `state`, `head.ref`, `head.label`, `head.repo.full_name` and `base.ref`, among about 35 fields; one item is about 16 KB.
 
 ### 2.8 Workflow runs
 

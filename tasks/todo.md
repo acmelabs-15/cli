@@ -27,7 +27,7 @@ Phase 3 The other steps
 
 - [ ] 10. ensureRepo creates a repo, or reuses only this run's repo
 - [ ] 11. push and clone through gh's login
-- [ ] 12. openPullRequest reuses an open PR or opens one
+- [x] 12. openPullRequest reuses an open PR or opens one
 - [ ] 13. watchRun waits for a run, and findTag reads a tag
 - [ ] Checkpoint: github-ops complete
 
@@ -253,12 +253,12 @@ Phase 3 The other steps
 **Description:** `openPullRequest` reads the open PRs from the head into the base, and opens one only when none exists.
 
 **Acceptance criteria:**
-- [ ] Through a sample command: an open PR gives a skipped step (`made: "reused"`) and no `POST`; none gives a `POST` with the title, head, base and body, and a done step.
-- [ ] The head in the query is URL-encoded, so a branch with `/` or `#` reaches GitHub whole.
+- [x] Through a sample command: an open PR gives a skipped step (`made: "reused"`) and no `POST`; none gives a `POST` with the title, head, base and body, and a done step.
+- [x] The head in the query is URL-encoded, so a branch with `/` or `#` reaches GitHub whole.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/github`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/github`
+- [x] `bun run check` is green.
 
 **Dependencies:** 5
 
