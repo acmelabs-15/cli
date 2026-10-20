@@ -278,3 +278,19 @@ Peter asked that everything from the interview be saved to Markdown in the layou
 - **Peter asked:** should `.claude/CLAUDE.md` be at the root instead?
 - **Facts (code.claude.com/docs/en/memory, read 2026-10-20):** a project `CLAUDE.md` loads the same from `./CLAUDE.md` or `./.claude/CLAUDE.md`. With either present, Claude Code reads `CLAUDE.md` only, and `AGENTS.md` arrives through the import, so nothing loads twice. With no `CLAUDE.md`, Claude Code 2.1.277 or later reads `AGENTS.md` directly.
 - **Agent's call (small, reversible):** the root, beside the `AGENTS.md` it imports, as in awaken-the-slumberer. A `CLAUDE.md` stays, because the Claude-only rules need a file that Codex does not read. brain and jev-gate keep `.claude/CLAUDE.md` until their migrations; new repos get the root file.
+
+### The gate's runtime — settled 2026-10-20 (module `config-presets`, open question 4)
+
+- **First version** explained the `#!/usr/bin/env node` line, PATH and `bunfig.toml`, and asked how to keep the gate on Bun. Peter answered `/wait-what`. Defects: an unclear consequence (why the runtime matters) and unexplained terms.
+- **Repaired version** opened with the problem: on Peter's machine, `bun run check` runs oxlint, oxfmt and tsc on Node v24 today; results can differ between machines; one `bunfig.toml` setting makes Bun run them.
+- **Recommended and answered:** `[run]` with `bun = true` in every repo's `bunfig.toml`. Peter's condition: "I want to make sure that everything actually runs on Bun, not Node." Recorded in ADR-0012; a test proves it with a `node` on PATH that fails when called.
+
+### The test seam for `config-presets` — settled 2026-10-20
+
+- **Facts given:** the three agreed seams test a command, a command line or a screen, and this module has none. A real run takes 0.09 s (oxlint), 0.07 s (oxfmt) and 0.88 s (tsc). oxlint's `extends` silently drops the ignore list, which only a real run shows.
+- **Recommended and answered:** a sample repo in a temp folder, with thin callers that import the built presets, and the real tools run through `bun run` with a failing `node` on PATH. Added to "Test seams" in `spec/README.md`.
+
+### The layout of `acmelabs.json` — settled 2026-10-20 (open question 18)
+
+- **Facts given:** `formatRepoConfig` writes a 145-column line for five packages, and oxfmt rewrites it as 13 lines, so the file changes back and forth.
+- **Recommended and answered:** `formatRepoConfig` writes oxfmt's layout, proven by a test that runs oxfmt on its output. Rule for later modules: every file `acmelabs` writes passes the format check unchanged.

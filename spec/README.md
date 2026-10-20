@@ -9,7 +9,7 @@ The index of the spec. Peter approved this map on 2026-10-20 (`docs/design/spec-
 | 1 | `repo-model` | The repo config (repo kind, hosts) and the host table: each host's manifests, version fields and validator | none | [built](SPEC-repo-model.md); merged in PR #1 (`082abe4`), 2026-10-20 |
 | 1 | `command-core` | The command list: each command's inputs, events, result, errors and exit codes | none | [built](SPEC-command-core.md); merged in PR #2 (`38888fa`), 2026-10-20 |
 | 1 | `tui-kit` | The theme, the vendored `@clack/ui` preview, and the Bubbles-style components with focus | none | not written; prototype first |
-| 1 | `config-presets` | `@acmelabs/config`: the oxlint, oxfmt and tsconfig presets, each deviation with its reason | none | not written |
+| 1 | `config-presets` | `@acmelabs/config`: the oxlint, oxfmt and tsconfig presets, each deviation with its reason | none | [draft](SPEC-config-presets.md); waiting for Peter's approval |
 | 1 | `github-ops` | GitHub steps: create a repo, set visibility, the Actions setting and the "Protect main" ruleset, push, open a PR, watch a run | none | not written |
 | 1 | `npm-ops` | npm steps: registry reads, web login, org creation, the placeholder version, the trusted publisher | none | not written |
 | 2 | `cli-frontend` | Direct calls: routing with `@bomb.sh/router`, help, CLI mode with themed clack prompts, JSON mode | `command-core`, `tui-kit` | not written |
@@ -38,6 +38,8 @@ From the brief and Peter's standing rules:
 - A new command is one file and one line in the command list, with its own tests. `acmelabs --help` lists every command.
 - Every repo, every package and every plugin has a `README.md`: what it is, how to install and use it, and where its records are. A package's README ships in its npm package.
 - Every repo, every package and every plugin keeps a changelog through changesets, set up as brain does: `.changeset/config.json` with `@changesets/changelog-github`, `.changeset/README.md` explaining the release flow, a `CHANGELOG.md` per package, and the `changeset` and `version` scripts. A user-facing change gets a changeset. This repo follows the rule from its first code commit.
+- The gate runs on Bun: every repo's `bunfig.toml` has `[run]` with `bun = true`, so no check runs on a Node that happens to be on PATH (ADR-0012).
+- Every file `acmelabs` writes passes the format check unchanged, so a repo can format every file and see no churn (Peter, 2026-10-20, open question 18). A writer proves it with a sample-repo test that runs oxfmt with the preset.
 
 ## Test seams
 
@@ -48,6 +50,7 @@ Peter confirmed these on 2026-10-20 (interview QS). Every module spec names whic
 | Command seam | every module with a command | Runs one command from the command list with typed input, a temp-folder repo and the fakes, then checks the result and the events. CLI mode, JSON mode, the MCP server and the TUI all call commands through this seam. |
 | Argv seam | `cli-frontend` only | Runs `acmelabs ...` in-process through the router, with fake terminal streams that drive the clack prompts, then checks the output and the exit code. |
 | Screen seam | `tui-kit`, `tui-app` | Sends key bytes in and checks the screen text that comes out, which tty's bytes-in, bytes-out design allows. |
+| Sample-repo seam | `config-presets`, and every writer of a file the format check covers | Writes a sample repo in a temp folder with thin callers, `run.bun` and the built presets, runs the real oxlint, oxfmt or tsc through `bun run` with a `node` on PATH that fails when called, then checks the exit code and the messages. Added by Peter on 2026-10-20 for `config-presets`, whose product is config, not a command. |
 
 Real-world proof stays outside unit tests: jev-gate's real release (`jev-gate-migration`), and one scratch repo from `acmelabs new` (`scaffold`), asked for before it is created.
 
@@ -90,7 +93,7 @@ The brief's done-when list, with Peter's additions from the interview:
 | 1 | ~~The test seams~~ Settled 2026-10-20: the three seams under "Test seams" | none | none |
 | 2 | ~~What job `@bomb.sh/args` does~~ Settled 2026-10-20: the router alone; args is not added (ADR-0009) | none | none |
 | 3 | Does the vendored `@clack/ui` preview work on tty 0.9 under Bun, and does a Bubbles-style text input and multi-select feel right? | `tui-kit` | A prototype, through the prototype skill |
-| 4 | Do oxlint and oxfmt load a TypeScript config under Bun with no Node on PATH? Answered on macOS (`docs/research/07-oxc-without-node.md`): yes, because `bun run` puts a Bun-backed `node` first on PATH. With Node installed, plain `bun run` uses that Node; `bun --bun run` forces Bun. Linux is UNVERIFIED. Open: should the gate and CI use `bun --bun run`? | `config-presets`, `shared-workflows` | Decide in those specs; verify on Linux in CI |
+| 4 | ~~Should the gate and CI force Bun?~~ Settled 2026-10-20: yes, through `run.bun` in every repo's `bunfig.toml` (ADR-0012; `docs/research/08-presets-in-a-consumer-repo.md`). Linux is still UNVERIFIED | `shared-workflows` | Prove it on Linux in CI, with a `node` on PATH that fails when called |
 | 5 | ~~Where the repo config lives~~ Settled 2026-10-20: `acmelabs.json` at the repo root | none | none |
 | 6 | Which plugin's skill runs on a shared name in a new repo: agent-skills (awaken-the-slumberer's rule) or brain? | `scaffold` | Ask Peter in that module's spec |
 | 7 | How do Codex, Gemini CLI and Antigravity CLI enable plugins at project scope, if they can? | `scaffold` | Research, written to `docs/research/` |
@@ -104,8 +107,9 @@ The brief's done-when list, with Peter's additions from the interview:
 | 15 | CI that runs `changeset status` must pass `--since=origin/main`: a checkout with no local `main` fails with "Failed to find where HEAD diverged from main" (seen on a clean clone, 2026-10-20) | `shared-workflows` | Use `--since=origin/main` with a full-history checkout |
 | 16 | ~~brain's changesets `$schema` is out of date~~ Settled 2026-10-20: fixed in this repo (`a02ed9e`), brain (PR #7, `b8ed465`) and jev-gate (PR #4, `0261a61`). No release: no changeset, as nothing users run changed; Peter chose to let the fixes ride along with each repo's next release | none | none |
 | 17 | ~~brain's helper-order wording~~ Settled 2026-10-20: fixed in brain (PR #7, with DEC-001) and jev-gate (PR #4) | none | none |
-| 18 | `formatRepoConfig` writes one line per repo kind. A library line over 100 columns (about four packages) is rewrapped by oxfmt, so the file churns if a repo's format check covers `acmelabs.json`. This repo's does not | `scaffold`, `config-presets` | Settle whether new repos format `acmelabs.json`, or let `formatRepoConfig` wrap long lists the way oxfmt does |
+| 18 | ~~`formatRepoConfig` and oxfmt disagree on a long line~~ Settled 2026-10-20: `formatRepoConfig` writes oxfmt's layout, in module `config-presets`, and every file `acmelabs` writes passes the format check unchanged ("Rules for every module") | none | none |
 | 19 | `acmelabs.json` may be a link to a file outside the repo, and a JSON parse error can quote a fragment of that file. Harmless locally; a risk if CI runs the CLI on an untrusted pull request (review finding 21) | `shared-workflows`, `repo-checks` | Decide with the CI design: reject links that leave the repo, or keep file content out of the parse error |
 | 20 | A Claude Code mod (a panel or status line) that shows `acmelabs` progress live, from JSON mode's progress lines. Peter named the idea on 2026-10-20 | `agent-guide` | Spec it with the agent guide |
 | 21 | Should outside programs get only an allowlist of environment variables, so a validator never sees `GH_TOKEN` or `NPM_TOKEN`? Deferred by Peter on 2026-10-20 from the `command-core` review (finding 9) | `github-ops`, `repo-checks` | Decide when the first commands show what each program needs |
 | 22 | Should an outside program's output and a request get a byte cap and a default time limit, so a hostile pull request cannot stall or flood CI? Deferred by Peter on 2026-10-20 from the `command-core` review (finding 10) | `github-ops`, `shared-workflows` | Decide with the CI design |
+| 23 | This repo's format check covers `packages`, where `changeset version` writes each package's `CHANGELOG.md`. Does that changelog pass `oxfmt --check`? If not, the gate fails on the Version Packages PR. Found in the `config-presets` spec | `cli-release` | Run `changeset version` on a scratch branch, then the format check |

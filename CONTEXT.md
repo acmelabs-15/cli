@@ -10,6 +10,10 @@ The one tool for ACMElabs repos. It makes a new repo start in the ACMElabs shape
 A repository in the acmelabs-15 GitHub organization that follows the ACMElabs shape: Bun-only TypeScript, the lint and format gate, tests beside the code, changesets releases.
 _Avoid_: project, package (for the whole repo)
 
+**Gate**:
+The checks an ACMElabs repo passes before every commit, run together by `bun run check`: typecheck, lint, format check, tests and the repo's own checks.
+_Avoid_: quality gate, pre-commit
+
 **Repo kind**:
 What a repo releases: a plugin, a library, or both. Each kind brings its own release flow.
 _Avoid_: type, template
@@ -65,6 +69,14 @@ The major version a repo follows for the shared workflows, such as `v1`. A repo 
 **Preset**:
 A shared lint, format or TypeScript configuration that a repo imports and builds on.
 _Avoid_: base config, template
+
+**Deviation**:
+A setting in which a preset differs from the Ultracite preset it starts from, kept with its reason.
+_Avoid_: relaxation (for all of them), override
+
+**Thin caller**:
+A small file in a repo that uses a shared piece instead of copying it: a workflow that calls a shared workflow, a config file that imports a preset, or a `package.json` script that calls `acmelabs`.
+_Avoid_: wrapper, shim, stub
 
 ### Hosts and plugins
 
