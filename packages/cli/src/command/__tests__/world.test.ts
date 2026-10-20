@@ -3,6 +3,7 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { CommandError } from "../outcome";
 import { fakeWorld, realWorld } from "../world";
 
 let work: string;
@@ -82,6 +83,26 @@ describe("realWorld", () => {
     expect(await Bun.file(marker).exists()).toBe(false);
   });
 
+  test("spawn of a program that is not on PATH rejects with an outside failure that names it", async () => {
+    const spawned = realWorld().spawn(["acmelabs-no-such-program-4f2b9c", "--version"]);
+    await expect(spawned).rejects.toBeInstanceOf(CommandError);
+    await expect(spawned).rejects.toMatchObject({
+      kind: "outside",
+      message: "acmelabs-no-such-program-4f2b9c is not installed or not on PATH",
+      issues: [],
+    });
+  });
+
+  test("any other spawn error stays as Bun gives it: a working folder that does not exist", async () => {
+    // Bun gives this error code ENOENT and the program's name too, so only its syscall tells it
+    // apart from a program that is not on PATH.
+    const spawned = realWorld().spawn(["bun", "--version"], {
+      cwd: path.join(work, "no-such-folder"),
+    });
+    await expect(spawned).rejects.toMatchObject({ code: "ENOENT", syscall: "posix_spawn" });
+    await expect(spawned).rejects.not.toBeInstanceOf(CommandError);
+  });
+
   test("root is the working folder, env the process environment, fetch the global fetch", () => {
     const world = realWorld();
     expect(world.root).toBe(process.cwd());
@@ -155,6 +176,22 @@ describe("fakeWorld", () => {
       stdout: "",
       stderr: "",
     });
+  });
+
+  test("a scripted missing program rejects as realWorld's spawn does, and is logged", async () => {
+    const world = fakeWorld({
+      spawn: [{ commandLine: ["claude", "plugin", "validate", "."], missing: true }],
+    });
+    const spawned = world.spawn(["claude", "plugin", "validate", "."]);
+    await expect(spawned).rejects.toBeInstanceOf(CommandError);
+    await expect(spawned).rejects.toMatchObject({
+      kind: "outside",
+      message: "claude is not installed or not on PATH",
+      issues: [],
+    });
+    expect(world.calls).toEqual([
+      { kind: "spawn", commandLine: ["claude", "plugin", "validate", "."] },
+    ]);
   });
 
   test("an unscripted fetch call fails with an error that names the method and URL", async () => {

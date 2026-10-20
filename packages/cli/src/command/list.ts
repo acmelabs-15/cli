@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { Command } from "./command";
 import type { Json } from "./outcome";
+import { sameWords } from "./words";
 
 /**
  * The command list: every command, whatever its input and its result. A result is JSON, so the
@@ -20,11 +21,6 @@ function nameOf(command: CommandList[number]): string {
   return command.path.join(" ");
 }
 
-/** Whether two paths have the same words in the same order. */
-function samePath(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((word, index) => word === right[index]);
-}
-
 /**
  * Whether `start` is the start of a longer path, word by word, as ["version"] is of
  * ["version", "sync"].
@@ -39,7 +35,7 @@ function startsLonger(start: readonly string[], path: readonly string[]): boolea
 function pathProblems(command: CommandList[number], list: CommandList): string[] {
   const name = nameOf(command);
   const problems: string[] = [];
-  const sharing = list.filter((other) => samePath(other.path, command.path)).length;
+  const sharing = list.filter((other) => sameWords(other.path, command.path)).length;
   if (sharing > 1) {
     problems.push(`${name}: ${sharing} commands have this path`);
   }

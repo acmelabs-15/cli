@@ -17,7 +17,7 @@ Phase 2 The rest of the frame
 - [x] 5. Questions mid-run, and cancel
 - [x] 6. JSON mode's lines
 - [x] 7. The command list and its rules
-- [ ] 8. Review fixes: secrets redacted, the progress sink guarded, a missing program exits 3, one shared helper
+- [x] 8. Review fixes: secrets redacted, the progress sink guarded, a missing program exits 3, one shared helper
 - [ ] 9. Review fixes: the front-end types in command.ts, and run.ts split into input, steps and run
 - [ ] 10. Review fixes: list rules apart, descriptions through wrappers, nits, glossary and spec records
 - [ ] Checkpoint: command-core complete
@@ -163,13 +163,13 @@ Phase 2 The rest of the frame
 **Description:** Fix the review's Required findings 1 to 4 (`docs/reviews/2026-10-20-command-core.md`), chosen by Peter on 2026-10-20.
 
 **Acceptance criteria:**
-- [ ] Every text that leaves `runCommand` (failure and issue messages, progress titles, details and messages) has secrets removed: the value of every `world.env` entry whose name holds `TOKEN`, `SECRET`, `KEY` or `PASSWORD`, URL credentials, and token-like query values; a thrown `new Error("https://x?token=abc")` leaves no `abc` in the outcome (finding 1).
-- [ ] A front-end whose `progress` throws cannot make `runCommand` reject: the outcome still comes, with its exit code (finding 2).
-- [ ] A program that is not installed ends with kind `outside`, exit 3, and a message that names the program, from `realWorld` and from `fakeWorld`; one shared helper replaces `sameWords` and `samePath` (findings 3 and 4).
+- [x] Every text that leaves `runCommand` (failure and issue messages, progress titles, details and messages) has secrets removed: the value of every `world.env` entry whose name holds `TOKEN`, `SECRET`, `KEY` or `PASSWORD`, URL credentials, and token-like query values; a thrown `new Error("https://x?token=abc")` leaves no `abc` in the outcome (finding 1).
+- [x] A front-end whose `progress` throws cannot make `runCommand` reject: the outcome still comes, with its exit code (finding 2).
+- [x] A program that is not installed ends with kind `outside`, exit 3, and a message that names the program, from `realWorld` and from `fakeWorld`; one shared helper replaces `sameWords` and `samePath` (findings 3 and 4).
 
 **Verification:**
-- [ ] Each new test fails first, then passes: `bun test packages/cli/src`
-- [ ] `bun run check` is green, by its own exit code.
+- [x] Each new test fails first, then passes: `bun test packages/cli/src`
+- [x] `bun run check` is green, by its own exit code.
 
 **Dependencies:** 7
 

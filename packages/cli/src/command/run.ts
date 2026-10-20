@@ -6,6 +6,7 @@ import { RepoConfigError } from "../repo/config";
 import type { Command, Context, ProgressUpdate } from "./command";
 import type { CommandFailure, Json, Outcome } from "./outcome";
 import { CommandError, exitCodes, inputError } from "./outcome";
+import { redactorFor } from "./redact";
 import type { World } from "./world";
 
 /** One question mid-run: what a front-end needs to ask the user for one optional input. */
@@ -323,6 +324,28 @@ function untilAborted<Value>(work: Promise<Value>, signal: AbortSignal): Promise
   });
 }
 
+/** A progress update with `redact` applied to its title and detail, or to its message text. */
+function redactedUpdate(update: ProgressUpdate, redact: (text: string) => string): ProgressUpdate {
+  if (update.kind === "message") {
+    return { ...update, text: redact(update.text) };
+  }
+  const { detail } = update;
+  const title = redact(update.title);
+  return detail === undefined ? { ...update, title } : { ...update, title, detail: redact(detail) };
+}
+
+/** A failure with `redact` applied to its message and to each issue's message. */
+function redactedFailure(
+  failure: CommandFailure,
+  redact: (text: string) => string,
+): CommandFailure {
+  return {
+    ...failure,
+    message: redact(failure.message),
+    issues: failure.issues.map((issue) => ({ ...issue, message: redact(issue.message) })),
+  };
+}
+
 /**
  * Whether JSON can write the result, as JSON mode's result line must. The Json type stops most
  * results that it cannot; a cycle, or a value typed `any`, gets past the type.
@@ -336,7 +359,10 @@ function writable(result: Json): boolean {
   }
 }
 
-/** Runs one command: checks the input, runs it, and turns every ending into an Outcome. */
+/**
+ * Runs one command: checks the input, runs it, and turns every ending into an Outcome. Every text
+ * that leaves it, in a progress update or a failure, has its secrets removed; the result does not.
+ */
 export async function runCommand<Input extends z.ZodObject, Result extends Json>(
   command: Command<Input, Result>,
   rawInput: unknown,
@@ -345,8 +371,23 @@ export async function runCommand<Input extends z.ZodObject, Result extends Json>
   const started = performance.now();
   const name = command.path.join(" ");
   const { signal } = frontEnd;
-  // Called through the front-end, so a front-end whose progress is a method keeps its `this`.
-  const steps = trackSteps((update) => frontEnd.progress(update));
+  const redact = redactorFor(frontEnd.world.env);
+
+  /**
+   * Sends one update to the front-end, with its secrets removed. A send that throws, such as a
+   * write to a closed pipe, is dropped: the front-end owns its own failure, and the run still ends
+   * with its outcome.
+   */
+  function send(update: ProgressUpdate): void {
+    try {
+      // Called through the front-end, so a front-end whose progress is a method keeps its `this`.
+      frontEnd.progress(redactedUpdate(update, redact));
+    } catch {
+      // The front-end reports its own failure; the command goes on to its outcome.
+    }
+  }
+
+  const steps = trackSteps(send);
 
   /** Checks the input and runs the command, unless the user cancelled before it starts. */
   async function checkAndRun(): Promise<Result> {
@@ -377,7 +418,7 @@ export async function runCommand<Input extends z.ZodObject, Result extends Json>
       command: name,
       exitCode: exitCodes[failure.kind],
       durationMs: millisecondsSince(started),
-      error: failure,
+      error: redactedFailure(failure, redact),
     };
   }
 }

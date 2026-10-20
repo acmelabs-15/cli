@@ -1,3 +1,7 @@
+import type { CommandError } from "./outcome";
+import { outsideError } from "./outcome";
+import { sameWords } from "./words";
+
 /**
  * How to run a spawned program: its working folder, the text it reads on stdin, and the signal that
  * stops it.
@@ -15,7 +19,8 @@ export type World = {
   env: Readonly<Record<string, string | undefined>>;
   /**
    * Runs a program, with no shell, and returns its exit code and output. When the signal aborts,
-   * the program stops and the call rejects with the signal's reason, as fetch does.
+   * the program stops and the call rejects with the signal's reason, as fetch does. A program that
+   * is not installed rejects with an outside failure that names it.
    */
   spawn: (commandLine: readonly string[], options?: SpawnOptions) => Promise<Spawned>;
   /** Sends an HTTP request. */
@@ -23,6 +28,49 @@ export type World = {
   /** The current time. */
   now: () => Date;
 };
+
+/** The outside failure for a program that is not installed: kind `outside`, exit 3. */
+function notInstalled(program: string): CommandError {
+  return outsideError(`${program} is not installed or not on PATH`);
+}
+
+/**
+ * The program that Bun found in no PATH folder, if `error` is the error Bun.spawn throws then. On
+ * Bun 1.4.0 that error has code ENOENT, the program as its `path`, and no `syscall`, because no
+ * program started. Any other error gives undefined: a working folder that does not exist also has
+ * code ENOENT and the program as its `path`, but `syscall` "posix_spawn".
+ */
+function notOnPath(error: unknown): string | undefined {
+  if (
+    error instanceof Error &&
+    "code" in error &&
+    error.code === "ENOENT" &&
+    !("syscall" in error) &&
+    "path" in error &&
+    typeof error.path === "string"
+  ) {
+    return error.path;
+  }
+  return undefined;
+}
+
+/**
+ * Starts a program with Bun. A program that is not on PATH is an outside failure that names it;
+ * any other error that Bun throws stays as it is.
+ */
+function startWithBun(commandLine: readonly string[], options: SpawnOptions) {
+  try {
+    return Bun.spawn([...commandLine], {
+      cwd: options.cwd,
+      stdin: options.stdin === undefined ? "ignore" : new Blob([options.stdin]),
+      stderr: "pipe",
+      signal: options.signal,
+    });
+  } catch (error) {
+    const program = notOnPath(error);
+    throw program === undefined ? error : notInstalled(program);
+  }
+}
 
 /**
  * Runs a program with Bun, with no shell, and collects its exit code and output as text. With no
@@ -36,12 +84,7 @@ async function spawnWithBun(
   const { signal } = options;
   // An aborted signal starts no program. Bun would throw its own AbortError; this keeps the reason.
   signal?.throwIfAborted();
-  const child = Bun.spawn([...commandLine], {
-    cwd: options.cwd,
-    stdin: options.stdin === undefined ? "ignore" : new Blob([options.stdin]),
-    stderr: "pipe",
-    signal,
-  });
+  const child = startWithBun(commandLine, options);
   const [stdout, stderr, code] = await Promise.all([
     child.stdout.text(),
     child.stderr.text(),
@@ -68,8 +111,15 @@ export function realWorld(): World {
   };
 }
 
-/** A scripted answer to a spawn call: the command line it matches, word for word, and its end. */
-export type ScriptedSpawn = { commandLine: readonly string[]; answer?: Partial<Spawned> };
+/**
+ * A scripted answer to a spawn call: the command line it matches, word for word, and its end. A
+ * `missing` program is not installed: the call rejects as realWorld's does, and `answer` is unused.
+ */
+export type ScriptedSpawn = {
+  commandLine: readonly string[];
+  answer?: Partial<Spawned>;
+  missing?: boolean;
+};
 
 /**
  * A scripted answer to a fetch call: the method (GET when unset) and the URL it matches, and the
@@ -113,11 +163,6 @@ function take<Entry>(script: Entry[], matches: (entry: Entry) => boolean): Entry
   return index === -1 ? undefined : script.splice(index, 1)[0];
 }
 
-/** Whether two command lines have the same words in the same order. */
-function sameWords(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((word, index) => word === right[index]);
-}
-
 /** Whether a scripted fetch matches a request: the same method, and the same URL in normal form. */
 function fetchMatches(entry: ScriptedFetch, request: Request): boolean {
   return (
@@ -152,6 +197,10 @@ export function fakeWorld(options: FakeWorldOptions = {}): FakeWorld {
       throw new Error(
         `fakeWorld has no scripted answer for spawn ${JSON.stringify(commandLine)}; add one to its spawn list`,
       );
+    }
+    if (scripted.missing === true) {
+      const [program = ""] = commandLine;
+      throw notInstalled(program);
     }
     const answer = scripted.answer ?? {};
     return { code: answer.code ?? 0, stdout: answer.stdout ?? "", stderr: answer.stderr ?? "" };

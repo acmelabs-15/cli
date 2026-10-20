@@ -13,7 +13,7 @@ import { exitCodes, inputError, loginNeeded, outsideError, problem } from "../ou
 import type { Question } from "../run";
 import { flagOf, runCommand } from "../run";
 import type { World } from "../world";
-import { fakeWorld } from "../world";
+import { fakeWorld, realWorld } from "../world";
 
 /** What a front-end gives runCommand: the world, a log of progress updates, and a live signal. */
 function frontEnd(world: World) {
@@ -1319,6 +1319,254 @@ describe("runCommand: cancel reaches outside programs", () => {
     };
     expect(await runCommand(read, {}, caller)).toEqual(cancelled("sample read"));
     expect(await finished.promise).toEqual([timeout, reason]);
+  });
+});
+
+/**
+ * A front-end whose progress logs each update, then throws, as a write to a closed pipe does.
+ * `before` runs first, such as a cancel.
+ */
+function brokenPipe(world: World, signal: AbortSignal, before = () => {}) {
+  const updates: ProgressUpdate[] = [];
+  return {
+    world,
+    signal,
+    progress(update: ProgressUpdate): void {
+      updates.push(update);
+      before();
+      throw new Error("EPIPE: broken pipe, write");
+    },
+    updates,
+  };
+}
+
+/** The release tag's step, with one status. */
+function pushTag(status: "started" | "done" | "failed"): ProgressUpdate {
+  return { kind: "step", step: "push-tag", title: "Push the release tag", status };
+}
+
+describe("runCommand: a program that is not installed", () => {
+  /** A sample command that runs the validator program it is given. */
+  const validate = defineCommand({
+    path: ["sample", "validate"],
+    summary: "Run a host's validator on the plugin.",
+    input: z.object({ validator: z.string().describe("The validator program to run.") }),
+    async run(input, context) {
+      const spawned = await context.spawn([input.validator, "plugin", "validate", "."]);
+      return spawned.code;
+    },
+  });
+
+  test("a real program that is not installed ends as an outside failure, exit 3, naming it", async () => {
+    const outcome = await runCommand(
+      validate,
+      { validator: "acmelabs-no-such-program-4f2b9c" },
+      frontEnd(realWorld()),
+    );
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample validate",
+      exitCode: 3,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "outside",
+        message: "acmelabs-no-such-program-4f2b9c is not installed or not on PATH",
+        issues: [],
+      },
+    });
+  });
+
+  test("a scripted missing program ends the same way", async () => {
+    const world = fakeWorld({
+      spawn: [{ commandLine: ["claude", "plugin", "validate", "."], missing: true }],
+    });
+    const outcome = await runCommand(validate, { validator: "claude" }, frontEnd(world));
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample validate",
+      exitCode: 3,
+      durationMs: expect.any(Number),
+      error: { kind: "outside", message: "claude is not installed or not on PATH", issues: [] },
+    });
+  });
+});
+
+describe("runCommand: a front-end whose progress throws on every update", () => {
+  /** A sample command that pushes the release tag, in one step. */
+  const push = defineCommand({
+    path: ["sample", "push"],
+    summary: "Push the release tag.",
+    input: z.object({}),
+    async run(_input, context) {
+      const step = { kind: "step", step: "push-tag", title: "Push the release tag" } as const;
+      context.progress({ ...step, status: "started" });
+      const pushed = await context.spawn(["git", "push", "origin", "v1.0.0"]);
+      if (pushed.code !== 0) {
+        throw problem("the push was rejected");
+      }
+      context.progress({ ...step, status: "done" });
+      return "pushed";
+    },
+  });
+
+  test("a normal end still gives ok and exit 0, and each update is still sent", async () => {
+    const world = fakeWorld({ spawn: [{ commandLine: ["git", "push", "origin", "v1.0.0"] }] });
+    const caller = brokenPipe(world, new AbortController().signal);
+    expect(await runCommand(push, {}, caller)).toEqual({
+      ok: true,
+      command: "sample push",
+      exitCode: 0,
+      durationMs: expect.any(Number),
+      result: "pushed",
+    });
+    expect(caller.updates).toEqual([pushTag("started"), pushTag("done")]);
+  });
+
+  test("a failure still gives its own exit code, and the open step is still closed", async () => {
+    const world = fakeWorld({
+      spawn: [{ commandLine: ["git", "push", "origin", "v1.0.0"], answer: { code: 1 } }],
+    });
+    const caller = brokenPipe(world, new AbortController().signal);
+    expect(await runCommand(push, {}, caller)).toEqual({
+      ok: false,
+      command: "sample push",
+      exitCode: 1,
+      durationMs: expect.any(Number),
+      error: { kind: "problem", message: "the push was rejected", issues: [] },
+    });
+    expect(caller.updates).toEqual([pushTag("started"), pushTag("failed")]);
+  });
+
+  test("a cancel still gives exit 130, and the open step is still closed", async () => {
+    const world = fakeWorld({ spawn: [{ commandLine: ["git", "push", "origin", "v1.0.0"] }] });
+    const controller = new AbortController();
+    // The user presses Ctrl+C once the step shows as running, and the terminal is gone too.
+    const caller = brokenPipe(world, controller.signal, () => controller.abort());
+    expect(await runCommand(push, {}, caller)).toEqual(cancelled("sample push"));
+    expect(caller.updates).toEqual([pushTag("started"), pushTag("failed")]);
+  });
+});
+
+describe("runCommand: secrets removed from every text that leaves it", () => {
+  test("a bug message keeps no token from a URL's query, and keeps the other parameters", async () => {
+    const read = defineCommand({
+      path: ["sample", "read"],
+      summary: "Read the API with a token in the URL.",
+      input: z.object({}),
+      // A fetch error holds the full URL, its query too.
+      run: () =>
+        Promise.reject(new Error("fetch https://x.example/api?token=abc123def&page=2 failed")),
+    });
+    const outcome = await runCommand(read, {}, frontEnd(fakeWorld()));
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample read",
+      exitCode: 70,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "bug",
+        message:
+          "acmelabs hit a bug: fetch https://x.example/api?token=[redacted]&page=2 failed. Please report it at https://github.com/acmelabs-15/cli/issues",
+        issues: [],
+      },
+    });
+    expect(JSON.stringify(outcome)).not.toContain("abc123def");
+  });
+
+  test("a token at the end of the error's text is removed, and the message keeps its period", async () => {
+    const read = defineCommand({
+      path: ["sample", "read"],
+      summary: "Read the API with a token in the URL.",
+      input: z.object({}),
+      run: () => Promise.reject(new Error("https://x?token=abc")),
+    });
+    expect(await runCommand(read, {}, frontEnd(fakeWorld()))).toMatchObject({
+      exitCode: 70,
+      error: {
+        kind: "bug",
+        message:
+          "acmelabs hit a bug: https://x?token=[redacted]. Please report it at https://github.com/acmelabs-15/cli/issues",
+      },
+    });
+  });
+
+  test("an env secret is not in a progress update or the failure that the front-end gets", async () => {
+    const login = defineCommand({
+      path: ["sample", "login"],
+      summary: "Check the GitHub token from the env.",
+      input: z.object({}),
+      async run(_input, context) {
+        const token = context.env.GH_TOKEN ?? "";
+        const check = {
+          kind: "step",
+          step: "check-token",
+          title: `Check the token ${token}`,
+        } as const;
+        context.progress({
+          kind: "step",
+          step: "read-token",
+          title: "Read the token",
+          status: "done",
+          detail: `found ${token}`,
+        });
+        context.progress({ ...check, status: "started" });
+        context.progress({ kind: "message", level: "warning", text: `GH_TOKEN=${token} is old` });
+        const spawned = await context.spawn(["gh", "auth", "status"]);
+        throw problem(`the token ${token} is not valid: ${spawned.stderr.trim()}`, [
+          { field: "GH_TOKEN", message: `${token} has expired` },
+        ]);
+      },
+    });
+    const caller = frontEnd(
+      fakeWorld({
+        env: { GH_TOKEN: "ghp_0123456789abcdef" },
+        spawn: [
+          {
+            commandLine: ["gh", "auth", "status"],
+            answer: { code: 1, stderr: "token ghp_0123456789abcdef is bad\n" },
+          },
+        ],
+      }),
+    );
+    const outcome = await runCommand(login, {}, caller);
+    expect(caller.updates).toEqual([
+      {
+        kind: "step",
+        step: "read-token",
+        title: "Read the token",
+        status: "done",
+        detail: "found [redacted]",
+      },
+      { kind: "step", step: "check-token", title: "Check the token [redacted]", status: "started" },
+      { kind: "message", level: "warning", text: "GH_TOKEN=[redacted] is old" },
+      { kind: "step", step: "check-token", title: "Check the token [redacted]", status: "failed" },
+    ]);
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample login",
+      exitCode: 1,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "problem",
+        message: "the token [redacted] is not valid: token [redacted] is bad",
+        issues: [{ field: "GH_TOKEN", message: "[redacted] has expired" }],
+      },
+    });
+    expect(JSON.stringify([caller.updates, outcome])).not.toContain("ghp_0123456789abcdef");
+  });
+
+  test("a command's result keeps its data as it is", async () => {
+    const show = defineCommand({
+      path: ["sample", "show"],
+      summary: "Show the GitHub token from the env.",
+      input: z.object({}),
+      run: (_input, context) => Promise.resolve({ token: context.env.GH_TOKEN ?? null }),
+    });
+    const world = fakeWorld({ env: { GH_TOKEN: "ghp_0123456789abcdef" } });
+    expect(await runCommand(show, {}, frontEnd(world))).toMatchObject({
+      ok: true,
+      result: { token: "ghp_0123456789abcdef" },
+    });
   });
 });
 
