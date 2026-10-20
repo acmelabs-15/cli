@@ -1,6 +1,6 @@
 # Spec: command-core
 
-Module `command-core`, layer 1 of the capability map (`spec/README.md`). It depends on no other module; `repo-model` errors map onto it through a plain `instanceof` check. Words follow `CONTEXT.md`. Status: approved by Peter on 2026-10-20, exit code 70 included.
+Module `command-core`, layer 1 of the capability map (`spec/README.md`). It depends on `repo-model` for one thing, `RepoConfigError`, which `runCommand` maps to kind `input` through a plain `instanceof` check. Words follow `CONTEXT.md`. Status: approved by Peter on 2026-10-20, exit code 70 included.
 
 ## Objective
 
@@ -24,7 +24,7 @@ Acceptance: see "Success criteria".
 
 ```ts
 // packages/cli/src/command/command.ts
-export type Command<Input extends z.ZodObject, Result> = {
+export type Command<Input extends z.ZodObject, Result extends Json> = {
   /** The words that call it, such as ["version", "sync"]. */
   path: readonly string[];
   /** One line for the help, the TUI's menu and the agent guide. */
@@ -33,16 +33,17 @@ export type Command<Input extends z.ZodObject, Result> = {
   input: Input;
   /** The input fields given by position, in order, such as ["name"] for `acmelabs new <name>`. */
   positionals?: readonly (keyof z.infer<Input> & string)[];
-  run(input: z.infer<Input>, context: Context<z.infer<Input>>): Promise<Result>;
+  run: (input: z.infer<Input>, context: Context<z.infer<Input>>) => Promise<Result>;
 };
 
-export function defineCommand<Input extends z.ZodObject, Result>(
+export function defineCommand<Input extends z.ZodObject, Result extends Json>(
   command: Command<Input, Result>,
 ): Command<Input, Result>;
 ```
 
+- **A result is JSON** (`Json`, below), because JSON mode's result line carries it. A bigint, a function, a `Date` or no result at all is a type error. A result that gets past the type, such as one with a cycle, ends as a bug (exit 70), so exit 0 always comes with a result line.
 - **Prompts come from the input's types**, so a command declares no prompt: a string is a text prompt, an enum a select, an array of an enum a multi-select, a boolean a yes/no question. The front-ends build them.
-- **A question mid-run is an input too.** A command declares it as an optional field, and calls `context.ask("field")` when the moment comes. If the caller gave the value up front, `ask` returns it. Otherwise a front-end with a terminal asks, and every other front-end fails with exit 2, naming the flag. So every question has a flag, as ADR-0007 requires. Example: `scaffold` declares `marketplace?: boolean` and asks it once the latest tag exists.
+- **A question mid-run is an input too.** A command declares it as an optional field, and calls `context.ask("field")` when the moment comes. If the caller gave the value up front, `ask` returns it. Otherwise a front-end with a terminal asks, and every other front-end fails with exit 2, naming the flag. So every question has a flag, as ADR-0007 requires. Once the user cancels, `ask` asks nothing more, and an answer that comes after the cancel is not used. Example: `scaffold` declares `marketplace?: boolean` and asks it once the latest tag exists.
 - **Positional data stays out of zod metadata**, because zod copies metadata into the JSON schema that the MCP server sends.
 
 ## The context a command runs in
@@ -52,23 +53,25 @@ export type World = {
   /** The repo folder the command acts on; the working folder by default. */
   root: string;
   env: Readonly<Record<string, string | undefined>>;
-  spawn(command: readonly string[], options?: { cwd?: string; stdin?: string }): Promise<Spawned>;
+  spawn: (commandLine: readonly string[], options?: { cwd?: string; stdin?: string }) => Promise<Spawned>;
   fetch: typeof globalThis.fetch;
-  now(): Date;
+  now: () => Date;
 };
 export type Spawned = { code: number; stdout: string; stderr: string };
 
 export type Context<Input> = World & {
   /** Reports one progress update to the front-end. */
-  progress(update: ProgressUpdate): void;
+  progress: (update: ProgressUpdate) => void;
   /** The value of an optional input: given up front, asked in a terminal, or an input error. */
-  ask<Field extends keyof Input & string>(field: Field): Promise<NonNullable<Input[Field]>>;
+  /** Only the optional input fields: a required field always has a value once the input is checked. */
+  ask: <Field extends OptionalField<Input>>(field: Field) => Promise<NonNullable<Input[Field]>>;
   /** Aborted when the user cancels (Ctrl+C). */
   signal: AbortSignal;
 };
 ```
 
 - **Commands reach the outside world only through `World`.** No command calls `Bun.spawn`, `fetch` or `process.env` itself. That makes the outside world one fake in tests (the command seam), and it keeps every outside call visible.
+- **`spawn` and `fetch` take the run's signal.** `spawn`'s options take a `signal`, as `fetch`'s do. `context.spawn` and `context.fetch` pass the context's `signal` unless the command passes its own, so a cancel also stops an outside program or request.
 - Files are not in `World`: commands use Bun's file APIs on paths under `root`, and tests use real files in a temp folder, as brain's tests do.
 - `realWorld()` builds the real one; `fakeWorld(options)` builds a fake with scripted `spawn` and `fetch` answers and a log of every call. Both live in `packages/cli/src/command/world.ts`, so later modules' tests use the same fake.
 
@@ -82,10 +85,17 @@ export type ProgressUpdate =
 
 A step has a stable id (`create-repo`) and a title for people ("Create the GitHub repo"). Every started step ends as done, failed or skipped before the command ends; `runCommand` closes any open step as failed when the command throws.
 
+A step started again while it is open ends the command as a bug (exit 70), because a front-end would show the step twice. The run keeps that bug, so a command that catches its error, or throws another failure after it, still ends as a bug. A step may start again once it has ended.
+
 ## How a command ends
 
 ```ts
-export type Outcome<Result> =
+/** A value JSON holds as it is; an object's field may be undefined, and JSON leaves it out. */
+export type Json =
+  | string | number | boolean | null
+  | readonly Json[]
+  | { readonly [field: string]: Json | undefined };
+export type Outcome<Result extends Json> =
   | { ok: true; command: string; exitCode: 0; durationMs: number; result: Result }
   | { ok: false; command: string; exitCode: ExitCode; durationMs: number; error: CommandFailure };
 export type CommandFailure = { kind: FailureKind; message: string; issues: Issue[] };
@@ -99,20 +109,30 @@ export type Issue = { field: string; message: string };
 | `outside` | 3 | an outside tool or service failed, or a required tool is missing | `outsideError(...)` |
 | `login` | 4 | a login is needed (gh, npm) | `loginNeeded(service)` |
 | `cancelled` | 130 | the user cancelled | `runCommand`, when `signal` aborts |
-| `bug` | 70 | anything else thrown: a defect in acmelabs itself | `runCommand` |
+| `bug` | 70 | anything else thrown: a bug in acmelabs itself | `runCommand` |
 
-**For Peter's review:** the agreed codes have no case for a defect inside acmelabs. This spec proposes 70, the standard "internal software error" code (`EX_SOFTWARE` in BSD's sysexits), so a bug never looks like "problem found" or "bad input". The message asks the user to report it.
+**For Peter's review:** the agreed codes have no case for a bug inside acmelabs. This spec proposes 70, the standard "internal software error" code (`EX_SOFTWARE` in BSD's sysexits), so a bug never looks like "problem found" or "bad input". The message asks the user to report it.
 
 An input issue names the field as the caller wrote it: `--host` for a flag, `<name>` for a positional, and the field path inside `acmelabs.json` for a repo config issue.
 
 ```ts
+/** What a front-end gives runCommand: its world, where progress updates go, its signal, and how it asks. */
+export type FrontEnd = {
+  world: World;
+  progress: (update: ProgressUpdate) => void;
+  signal: AbortSignal;
+  answer?: Answerer;
+};
+
 /** Runs one command: checks the input, runs it, and turns every ending into an Outcome. */
-export function runCommand<Input extends z.ZodObject, Result>(
+export function runCommand<Input extends z.ZodObject, Result extends Json>(
   command: Command<Input, Result>,
   rawInput: unknown,
-  host: { world: World; progress(update: ProgressUpdate): void; answer?: Answerer; signal: AbortSignal },
+  frontEnd: FrontEnd,
 ): Promise<Outcome<Result>>;
 ```
+
+The parameter is named after the glossary's **front-end**, not "host", which the glossary keeps for an agent program that loads a plugin.
 
 `runCommand` is the command seam. `answer` is how a front-end with a terminal asks a question; JSON mode and the MCP server pass none.
 
@@ -128,19 +148,21 @@ The shapes of JSON mode's lines are defined here, so `cli-frontend` and the MCP 
 
 `progressLine(command, update)` and `resultLine(outcome)` build them. The last line is always the result, as in Claude Code's `stream-json`; a script that wants only the answer reads the last line.
 
+Each line is one line for every reader. JSON escapes the control characters, and the lines also escape the characters that `JSON.stringify` leaves raw: DEL, the C1 controls (NEL among them), U+2028 and U+2029. Many readers treat NEL and the two separators as line breaks. The characters are escaped, not removed, so a reader gets the same text back.
+
 ## The command list
 
 ```ts
 // packages/cli/src/commands/index.ts
-export const commands = [versionSync, versionCheck /* , one line per command */] as const;
+export const commands: CommandList = [versionSync, versionCheck /* , one line per command */];
 ```
 
 Rules, each checked by a test over the real list:
 
-- Every path is unique, and no command's path is the start of another command's path.
-- Every summary is one line, and every input field has a description.
+- Every path has one word or more and is unique, and no command's path is the start of another command's path.
+- Every summary is one line, and every input field has a description, given before or after its optional, nullable or default wrapper.
 - Every positional names a required field of the input.
-- A command file imports only zod, `command-core` and `repo-model` at its top. Anything heavier (gh, npm, the TUI) loads inside `run` with `await import(...)`, so a quick command in CI stays quick.
+- A command file loads only zod, Node built-ins (`node:`), `command-core` and `repo-model` at its top. Anything heavier (gh, npm, the TUI) loads inside `run` with `await import(...)`, so a quick command in CI stays quick. Node built-ins are allowed because they load faster than zod (measured on Bun 1.4.0 during the build: `node:path` 8 ms, `node:fs/promises` 11 ms, zod 20 ms, median of 15 starts). A type-only import loads nothing and is allowed. Known gap: an `await import(...)` at the file's top level, outside `run`, is not caught.
 
 The list is empty until `repo-checks` adds the first real commands; this module's tests use sample commands.
 
@@ -151,19 +173,25 @@ The module adds no `acmelabs` command. Its checks run in the repo's gate: `bun r
 ## Project structure
 
 ```
-packages/cli/src/command/command.ts       Command, defineCommand, Context
+packages/cli/src/command/command.ts       Command, defineCommand, Context, and the front-end's types: FrontEnd, Question, Answerer
 packages/cli/src/command/world.ts         World, realWorld, fakeWorld
 packages/cli/src/command/outcome.ts       the failure kinds, exit codes, the throw helpers
+packages/cli/src/command/input.ts         flagOf, and the checks of the input and of an answer
+packages/cli/src/command/steps.ts         trackSteps: the open steps of one run
 packages/cli/src/command/run.ts           runCommand
+packages/cli/src/command/redact.ts        redactorFor: the secrets removed from each text that leaves runCommand
+packages/cli/src/command/words.ts         sameWords: two word lists with the same words in the same order
 packages/cli/src/command/lines.ts         progressLine, resultLine
-packages/cli/src/command/__tests__/       one test file per source file
+packages/cli/src/command/list.ts          CommandList, the type every front-end reads
+packages/cli/src/command/list-rules.ts    the command list's rules and the import scan, for the tests only
+packages/cli/src/command/__tests__/       tests beside the code, at the seams the spec names; a file tested only through runCommand has no test file of its own
 packages/cli/src/commands/index.ts        the command list
 packages/cli/src/commands/__tests__/index.test.ts   the list's rules
 ```
 
 ## Code style
 
-As in `repo-model`: `type` for shapes, function declarations with helpers above their callers, a one-line doc comment per export, Bun APIs, 100 columns, trailing commas. A command file reads like this:
+As in `repo-model`: `type` for shapes, functions inside a type written as properties (`spawn: (...) => ...`, as Ultracite's `method-signature-style` rule requires), function declarations with helpers above their callers, every export has a doc comment whose first line says what it is, Bun APIs, 100 columns, trailing commas. A command file reads like this:
 
 ```ts
 export const versionCheck = defineCommand({
@@ -206,7 +234,7 @@ Cases: a success; each failure kind with its exit code; zod input errors named b
 9. As a script in CI, I want one exit code per failure mode, so that I can retry an outside failure and fail fast on bad input.
 10. As a script, I want a bad flag reported by its flag name, so that I can fix the call without reading code.
 11. As a user who presses Ctrl+C, I want exit 130 and no half-finished step reported as done, so that I know where the command stopped.
-12. As a maintainer, I want a defect in acmelabs to exit with its own code, so that a bug never looks like a problem in my repo.
+12. As a maintainer, I want a bug in acmelabs to exit with its own code, so that it never looks like a problem in my repo.
 13. As a maintainer, I want a bad `acmelabs.json` reported with its file and field, as `repo-model` gives them, so that one fix list holds every issue.
 14. As the `cli-frontend` module, I want each input's type, description and position, so that I can build the router's flags and the help.
 15. As the `tui-app` module, I want the same declarations, so that the TUI's forms match CLI mode's prompts.

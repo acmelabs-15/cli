@@ -61,7 +61,7 @@ At a STOP, the next phase starts only after Peter approves in the conversation. 
 
 - **Bun 1.4.0 only.** No Node runtime ships. CI may run the npm CLI for the publish step only (ADR-0006).
 - **Tests first.** A failing test, then the code. Tests sit in `__tests__/` beside the file under test, named `<file>.test.ts`, with `bun:test`.
-- **The gate.** `bun run check` (typecheck, oxlint, oxfmt check, tests, version check) is green before every commit.
+- **The gate.** `bun run check` (typecheck, oxlint, oxfmt check, tests, version check) is green before every commit. Read its own exit code: a pipe such as `| tail` reports the last program's code, not the gate's, and once let a red commit through (`ee74078`).
 - **Commits and branches.** One commit per task. Stage the task's files by name. Records and docs go straight to `main`. A module's code, and the records that change with its build (its spec, `tasks/`, `docs/STATUS.md`), go on a branch named after its module id, pushed after every commit, and merges into `main` through one PR with a merge commit at the module's checkpoint, after Peter's review. Merging is asked.
 - **Outward-facing steps.** Push, PR, merge, release, repo creation, visibility, npm publish and npm org creation are asked once, then run as small separate shell commands.
 - **Verify or say unverified.** Check Claude Code, GitHub Actions and npm behaviour against their current docs; all three change fast.

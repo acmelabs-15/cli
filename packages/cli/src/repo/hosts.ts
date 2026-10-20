@@ -10,10 +10,10 @@ export type HostId = (typeof hostIds)[number];
 export type Manifest = { host: HostId; path: string; version: string | null };
 
 /**
- * A host's validator: the command that checks a plugin, and `required`, true when a missing tool
+ * A host's validator: the command line that checks a plugin, and `required`, true when a missing tool
  * fails the check.
  */
-export type Validator = { host: HostId; command: readonly string[]; required: boolean };
+export type Validator = { host: HostId; commandLine: readonly string[]; required: boolean };
 
 /** A manifest as the host table lists it: a Manifest without its host. */
 type ManifestEntry = Omit<Manifest, "host">;
@@ -37,9 +37,9 @@ export const hosts: Readonly<Record<HostId, Host>> = {
       { path: ".claude-plugin/marketplace.json", version: "plugins.0.version" },
     ],
     validators: [
-      { command: ["claude", "plugin", "validate", ".", "--strict"], required: true },
+      { commandLine: ["claude", "plugin", "validate", ".", "--strict"], required: true },
       {
-        command: ["claude", "plugin", "validate", ".claude-plugin/plugin.json", "--strict"],
+        commandLine: ["claude", "plugin", "validate", ".claude-plugin/plugin.json", "--strict"],
         required: true,
       },
     ],
@@ -55,12 +55,12 @@ export const hosts: Readonly<Record<HostId, Host>> = {
   "gemini-cli": {
     name: "Gemini CLI",
     manifests: [{ path: "gemini-extension.json", version: "version" }],
-    validators: [{ command: ["gemini", "extensions", "validate", "."], required: false }],
+    validators: [{ commandLine: ["gemini", "extensions", "validate", "."], required: false }],
   },
   "antigravity-cli": {
     name: "Antigravity CLI",
     manifests: [{ path: "plugin.json", version: null }],
-    validators: [{ command: ["agy", "plugin", "validate", "."], required: false }],
+    validators: [{ commandLine: ["agy", "plugin", "validate", "."], required: false }],
   },
 };
 

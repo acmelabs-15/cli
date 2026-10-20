@@ -78,7 +78,7 @@ export function formatRepoConfig(config: RepoConfig, schemaPath: string): string
 // packages/cli/src/repo/hosts.ts
 export type HostId = "claude-code" | "codex" | "gemini-cli" | "antigravity-cli";
 export type Manifest = { host: HostId; path: string; version: string | null };
-export type Validator = { host: HostId; command: readonly string[]; required: boolean };
+export type Validator = { host: HostId; commandLine: readonly string[]; required: boolean };
 export const hosts: Readonly<Record<HostId, Host>>;
 /** Every manifest of the repo's hosts, in host-table order. Empty for a library-only repo. */
 export function manifestsFor(config: RepoConfig): Manifest[];
@@ -119,7 +119,7 @@ The root's tooling (tsconfig, oxlint, oxfmt, changesets) comes in the plan's fir
 
 ## Code style
 
-Matches brain's scripts and DEC-001: `type` for object shapes, function declarations with helpers above their callers (Ultracite's `no-use-before-define` requires that order), a one-line doc comment per export, Bun file APIs, 100 columns, trailing commas.
+Matches brain's scripts and DEC-001: `type` for object shapes, function declarations with helpers above their callers (Ultracite's `no-use-before-define` requires that order), every export has a doc comment whose first line says what it is, Bun file APIs, 100 columns, trailing commas.
 
 ```ts
 /** Every manifest of the repo's hosts, in host-table order. Empty for a library-only repo. */

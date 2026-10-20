@@ -100,6 +100,10 @@ One plugin's record in a registry file. It points at the plugin repo's latest ta
 **Command**:
 One thing the CLI does, such as `version sync`, declared once with its inputs.
 
+**Command line**:
+The words that start one outside program, such as `gh auth status`, as a validator or a step of a command holds them.
+_Avoid_: command (for these words)
+
 **Command list**:
 The one list of commands that every front-end, the help output and the agent guide read.
 _Avoid_: registry, router (for the list itself)
@@ -121,6 +125,23 @@ _Avoid_: headless, silent mode
 **Component**:
 One reusable piece of the TUI, such as a text input or a list, in the look of Charm's Bubbles.
 _Avoid_: widget
+
+**Question**:
+An optional input that a command asks for mid-run, when the moment comes. A value given up front answers it; otherwise a terminal asks it, or the command ends with an input error that names its flag.
+_Avoid_: prompt (for the question itself; a prompt is how a terminal asks it)
+
+**World**:
+The outside world a command reaches: programs, the network and the environment.
+
+**Progress update**:
+One step's change or one message, sent while a command runs. A step has a stable id and a title for people.
+
+**Outcome**:
+How one run of a command ends: its result, or its failure with an exit code.
+
+**Failure kind**:
+How a command failed: problem, input, outside, login, cancelled or bug, each with its own exit code. A bug is in acmelabs itself, never in the repo or the input.
+_Avoid_: defect (for a bug)
 
 **Agent guide**:
 The skill and the MCP server that teach an agent how to use the CLI.
