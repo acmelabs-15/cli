@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, test } from "bun:test";
 
-import { type HostId, hostIds } from "../hosts";
+import type { HostId } from "../hosts";
+import { hostIds } from "../hosts";
 
 describe("hostIds", () => {
   test("names the four hosts in host-table order", () => {

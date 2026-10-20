@@ -7,7 +7,7 @@ The task list for `tasks/plan.md`. Tick a task in the checklist when it meets it
 Phase 1 Foundation
 
 - [x] 1. Workspace, TypeScript, and the first test: the four host ids
-- [ ] 2. Lint and format gate
+- [x] 2. Lint and format gate
 - [ ] 3. Changesets, as brain does
 - [ ] Checkpoint: foundation
 
@@ -45,14 +45,14 @@ Phase 2 repo-model
 **Description:** Add oxlint and oxfmt with brain's DEC-001 settings (Ultracite's presets, 100 columns, trailing commas everywhere, the four rule relaxations with their reasons), and add both to the gate. Find out whether they run with no Node on PATH.
 
 **Acceptance criteria:**
-- [ ] `oxlint.config.ts` and `oxfmt.config.ts` carry brain's settings, and each deviation names its reason.
-- [ ] `bun run check` runs typecheck, lint, format check and tests, in that order.
-- [ ] The result of running lint and format with Node removed from PATH is written to `docs/research/`, as a new note with a row in the index.
+- [x] `oxlint.config.ts` and `oxfmt.config.ts` carry brain's settings, and each deviation names its reason.
+- [x] `bun run check` runs typecheck, lint, format check and tests, in that order.
+- [x] The result of running lint and format with Node removed from PATH is written to `docs/research/`, as a new note with a row in the index.
 
 **Verification:**
-- [ ] `bun run lint` and `bun run format:check` pass on task 1's code.
-- [ ] A deliberate lint error makes `bun run check` fail, and removing it makes it pass again.
-- [ ] `env -i PATH="$HOME/.bun/bin:/usr/bin:/bin" bun run lint` (and `format:check`) is run, and its outcome is recorded either way.
+- [x] `bun run lint` and `bun run format:check` pass on task 1's code.
+- [x] A deliberate lint error makes `bun run check` fail, and removing it makes it pass again.
+- [x] `env -i PATH="$HOME/.bun/bin:/usr/bin:/bin" bun run lint` (and `format:check`) is run, and its outcome is recorded either way.
 
 **Dependencies:** 1
 
