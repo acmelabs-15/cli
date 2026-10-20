@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { CommandError } from "../outcome";
-import { fakeWorld, realWorld } from "../world";
+import { fakeWorld, limits, realWorld } from "../world";
 
 let work: string;
 
@@ -103,6 +103,31 @@ describe("realWorld", () => {
     await expect(spawned).rejects.not.toBeInstanceOf(CommandError);
   });
 
+  test("the program gets the whole environment, plus the call's env, whose value wins", async () => {
+    /** A program that prints four variables of its environment as a JSON list. */
+    const printEnv = [
+      "const { ACMELABS_WORLD_TEST_PARENT, ACMELABS_WORLD_TEST_BOTH, ACMELABS_WORLD_TEST_ADDED, HOME } = process.env;",
+      "process.stdout.write(JSON.stringify([ACMELABS_WORLD_TEST_PARENT, ACMELABS_WORLD_TEST_BOTH, ACMELABS_WORLD_TEST_ADDED, HOME]));",
+    ].join(" ");
+    // Variables set here, at run time, so the test knows each value the program must see.
+    process.env.ACMELABS_WORLD_TEST_PARENT = "from the environment";
+    process.env.ACMELABS_WORLD_TEST_BOTH = "from the environment";
+    try {
+      const spawned = await realWorld().spawn(["bun", "-e", printEnv], {
+        env: { ACMELABS_WORLD_TEST_BOTH: "from the call", ACMELABS_WORLD_TEST_ADDED: "added" },
+      });
+      expect(JSON.parse(spawned.stdout)).toEqual([
+        "from the environment",
+        "from the call",
+        "added",
+        process.env.HOME,
+      ]);
+    } finally {
+      Reflect.deleteProperty(process.env, "ACMELABS_WORLD_TEST_PARENT");
+      Reflect.deleteProperty(process.env, "ACMELABS_WORLD_TEST_BOTH");
+    }
+  });
+
   test("root is the working folder, env the process environment, fetch the global fetch", () => {
     const world = realWorld();
     expect(world.root).toBe(process.cwd());
@@ -115,6 +140,115 @@ describe("realWorld", () => {
     const now = realWorld().now().getTime();
     expect(now).toBeGreaterThanOrEqual(before);
     expect(now).toBeLessThanOrEqual(Date.now());
+  });
+});
+
+describe("realWorld: a program's time limit", () => {
+  /** A program that sleeps 2 seconds, then prints. */
+  const sleeper = "await Bun.sleep(2000); process.stdout.write('awake')";
+
+  test("a program gets 5 minutes unless the call sets its own time limit", () => {
+    expect(limits.programMs).toBe(300_000);
+  });
+
+  test("a program past its time limit is stopped, with an outside failure that names it and the limit", async () => {
+    const started = performance.now();
+    const spawned = realWorld().spawn(["bun", "-e", sleeper], { timeoutMs: 200 });
+    await expect(spawned).rejects.toBeInstanceOf(CommandError);
+    await expect(spawned).rejects.toMatchObject({
+      kind: "outside",
+      message: "bun -e ... ran longer than 200 milliseconds and was stopped",
+      issues: [],
+    });
+    // The program would print after 2 seconds; the call ends before that, so the program stopped.
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  test("with the time limit raised, the same program finishes with its output", async () => {
+    const spawned = await realWorld().spawn(["bun", "-e", sleeper], { timeoutMs: 10_000 });
+    expect(spawned).toEqual({ code: 0, stdout: "awake", stderr: "" });
+  });
+
+  test("a limit longer than a timer can hold still lets the program finish", async () => {
+    // setTimeout fires at once for a delay past 2^31 - 1 ms; the World must not.
+    const spawned = await realWorld().spawn(
+      ["bun", "-e", "await Bun.sleep(100); process.stdout.write('awake')"],
+      { timeoutMs: Number.POSITIVE_INFINITY },
+    );
+    expect(spawned).toEqual({ code: 0, stdout: "awake", stderr: "" });
+  });
+
+  test("a time limit that is not a positive number is a bug in the caller, and starts nothing", async () => {
+    const marker = path.join(work, "started-with-a-bad-limit");
+    const commandLine = ["bun", "-e", `await Bun.write(${JSON.stringify(marker)}, "started")`];
+    for (const timeoutMs of [Number.NaN, 0, -1]) {
+      const spawned = realWorld().spawn(commandLine, { timeoutMs });
+      await expect(spawned).rejects.toThrow(
+        `a program's time limit is a positive number of milliseconds, not ${timeoutMs}`,
+      );
+      await expect(spawned).rejects.not.toBeInstanceOf(CommandError);
+    }
+    const fake = fakeWorld({ spawn: [{ commandLine }] });
+    await expect(fake.spawn(commandLine, { timeoutMs: 0 })).rejects.toThrow(
+      "a program's time limit is a positive number of milliseconds, not 0",
+    );
+    expect(await Bun.file(marker).exists()).toBe(false);
+  });
+
+  test("a program's own child stops with it at the time limit, in under 2 seconds", async () => {
+    const started = performance.now();
+    // The child (sleep 2; echo late) and sleep 10 hold the stdout pipe: only a stop of the whole
+    // process group lets the call end before them.
+    const spawned = realWorld().spawn(["bash", "-c", "(sleep 2; echo late) & sleep 10"], {
+      timeoutMs: 200,
+    });
+    await expect(spawned).rejects.toMatchObject({
+      kind: "outside",
+      message: "bash -c ... ran longer than 200 milliseconds and was stopped",
+    });
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  test("a program's own child stops with it on a cancel, in under 2 seconds", async () => {
+    const marker = path.join(work, "child-started");
+    const controller = new AbortController();
+    const started = performance.now();
+    const spawned = realWorld().spawn(
+      ["bash", "-c", `(sleep 2; echo late) & echo started > "${marker}"; sleep 10`],
+      { signal: controller.signal },
+    );
+    // The program writes the marker once its child runs, so the cancel comes while both run.
+    while (!(await Bun.file(marker).exists())) {
+      await Bun.sleep(10);
+    }
+    const reason = new Error("the user pressed Ctrl+C");
+    controller.abort(reason);
+    await expect(spawned).rejects.toBe(reason);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  test("a program that ignores SIGTERM is killed after the grace", async () => {
+    const pidFile = path.join(work, "stubborn.pid");
+    const controller = new AbortController();
+    const spawned = realWorld({ graceMs: 200 }).spawn(
+      ["bash", "-c", `trap '' TERM; echo $$ > "${pidFile}"; sleep 10`],
+      { signal: controller.signal },
+    );
+    // The program writes its process id after its trap is set, so SIGTERM comes to a deaf program.
+    while (!(await Bun.file(pidFile).exists())) {
+      await Bun.sleep(10);
+    }
+    const reason = new Error("the user pressed Ctrl+C");
+    const aborted = performance.now();
+    controller.abort(reason);
+    await expect(spawned).rejects.toBe(reason);
+    const waited = performance.now() - aborted;
+    // SIGTERM did not stop it, so it ran until SIGKILL at the grace: 200 ms, not at once, not 10 s.
+    expect(waited).toBeGreaterThanOrEqual(150);
+    expect(waited).toBeLessThan(2000);
+    // Signal 0 checks that a process exists: the program no longer runs.
+    const pid = Number(await Bun.file(pidFile).text());
+    expect(() => process.kill(pid, 0)).toThrow();
   });
 });
 
@@ -191,6 +325,65 @@ describe("fakeWorld", () => {
     });
     expect(world.calls).toEqual([
       { kind: "spawn", commandLine: ["claude", "plugin", "validate", "."] },
+    ]);
+  });
+
+  test("a scripted time limit rejects with the same outside failure as realWorld's, and is logged", async () => {
+    const commandLine = ["bun", "-e", "await Bun.sleep(2000); process.stdout.write('awake')"];
+    const world = fakeWorld({ spawn: [{ commandLine, limit: "time" }] });
+    const spawned = world.spawn(commandLine, { timeoutMs: 200 });
+    await expect(spawned).rejects.toBeInstanceOf(CommandError);
+    await expect(spawned).rejects.toMatchObject({
+      kind: "outside",
+      message: "bun -e ... ran longer than 200 milliseconds and was stopped",
+      issues: [],
+    });
+    expect(world.calls).toEqual([{ kind: "spawn", commandLine, timeoutMs: 200 }]);
+  });
+
+  test("a scripted time limit names the call's limit in words, or 5 minutes when it sets none", async () => {
+    const world = fakeWorld({
+      spawn: [
+        { commandLine: ["gh", "api", "user"], limit: "time" },
+        { commandLine: ["bun", "install"], limit: "time" },
+        { commandLine: ["git", "push"], limit: "time" },
+        { commandLine: ["gh"], limit: "time" },
+        { commandLine: ["git", "ls-remote"], limit: "time" },
+      ],
+    });
+    await expect(world.spawn(["gh", "api", "user"])).rejects.toThrow(
+      "gh api ... ran longer than 5 minutes and was stopped",
+    );
+    await expect(world.spawn(["bun", "install"], { timeoutMs: 60_000 })).rejects.toThrow(
+      "bun install ran longer than 1 minute and was stopped",
+    );
+    await expect(world.spawn(["git", "push"], { timeoutMs: 90_000 })).rejects.toThrow(
+      "git push ran longer than 90 seconds and was stopped",
+    );
+    await expect(world.spawn(["gh"], { timeoutMs: 1000 })).rejects.toThrow(
+      "gh ran longer than 1 second and was stopped",
+    );
+    await expect(world.spawn(["git", "ls-remote"], { timeoutMs: 1500 })).rejects.toThrow(
+      "git ls-remote ran longer than 1500 milliseconds and was stopped",
+    );
+  });
+
+  test("the log keeps a spawn call's env and time limit, and leaves out its signal", async () => {
+    const world = fakeWorld({ spawn: [{ commandLine: ["git", "push"] }] });
+    await world.spawn(["git", "push"], {
+      cwd: work,
+      env: { GIT_TERMINAL_PROMPT: "0" },
+      timeoutMs: 60_000,
+      signal: new AbortController().signal,
+    });
+    expect(world.calls).toEqual([
+      {
+        kind: "spawn",
+        commandLine: ["git", "push"],
+        cwd: work,
+        env: { GIT_TERMINAL_PROMPT: "0" },
+        timeoutMs: 60_000,
+      },
     ]);
   });
 

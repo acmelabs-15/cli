@@ -49,11 +49,24 @@ export function defineCommand<Input extends z.ZodObject, Result extends Json>(
 ## The context a command runs in
 
 ```ts
+/** The limits that every outside program gets unless the call changes them. */
+export const limits = { programMs: 5 * 60 * 1000 } as const;
+
+export type SpawnOptions = {
+  cwd?: string;
+  stdin?: string;
+  signal?: AbortSignal;
+  /** Variables added to the environment the program gets; one here replaces one of the same name. */
+  env?: Readonly<Record<string, string>>;
+  /** The program's time limit in milliseconds: `limits.programMs` when unset. */
+  timeoutMs?: number;
+};
+
 export type World = {
   /** The repo folder the command acts on; the working folder by default. */
   root: string;
   env: Readonly<Record<string, string | undefined>>;
-  spawn: (commandLine: readonly string[], options?: { cwd?: string; stdin?: string }) => Promise<Spawned>;
+  spawn: (commandLine: readonly string[], options?: SpawnOptions) => Promise<Spawned>;
   fetch: typeof globalThis.fetch;
   now: () => Date;
 };
@@ -72,8 +85,10 @@ export type Context<Input> = World & {
 
 - **Commands reach the outside world only through `World`.** No command calls `Bun.spawn`, `fetch` or `process.env` itself. That makes the outside world one fake in tests (the command seam), and it keeps every outside call visible.
 - **`spawn` and `fetch` take the run's signal.** `spawn`'s options take a `signal`, as `fetch`'s do. `context.spawn` and `context.fetch` pass the context's `signal` unless the command passes its own, so a cancel also stops an outside program or request.
+- **An outside program gets the whole environment**, plus the call's `env` (ADR-0015).
+- **An outside program runs in its own process group, under a time limit.** At the limit (`limits.programMs`, 5 minutes, unless the call sets `timeoutMs`) and on a cancel, the World sends SIGTERM to the whole group, then SIGKILL after a grace of 5 seconds, so no program that the outside program started keeps the command waiting. A group that is already gone is not an error. A time limit rejects with an outside failure (exit 3) that names the program and the limit, such as `gh api ... ran longer than 5 minutes and was stopped`; a cancel rejects with the signal's reason (`spec/SPEC-github-ops.md`, "The World's limits").
 - Files are not in `World`: commands use Bun's file APIs on paths under `root`, and tests use real files in a temp folder, as brain's tests do.
-- `realWorld()` builds the real one; `fakeWorld(options)` builds a fake with scripted `spawn` and `fetch` answers and a log of every call. Both live in `packages/cli/src/command/world.ts`, so later modules' tests use the same fake.
+- `realWorld(options)` builds the real one; its `graceMs` shortens the grace for a test. `fakeWorld(options)` builds a fake with scripted `spawn` and `fetch` answers and a log of every call, with every spawn option except the signal. A scripted spawn answer can be `missing` or `limit: "time"`, which reject with the same outside failures as the real World. Both live in `packages/cli/src/command/world.ts`, so later modules' tests use the same fake.
 
 ## Progress updates
 
@@ -174,7 +189,7 @@ The module adds no `acmelabs` command. Its checks run in the repo's gate: `bun r
 
 ```
 packages/cli/src/command/command.ts       Command, defineCommand, Context, and the front-end's types: FrontEnd, Question, Answerer
-packages/cli/src/command/world.ts         World, realWorld, fakeWorld
+packages/cli/src/command/world.ts         World, limits, realWorld, fakeWorld
 packages/cli/src/command/outcome.ts       the failure kinds, exit codes, the throw helpers
 packages/cli/src/command/input.ts         flagOf, and the checks of the input and of an answer
 packages/cli/src/command/steps.ts         trackSteps: the open steps of one run

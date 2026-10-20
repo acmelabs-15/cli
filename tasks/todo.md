@@ -8,7 +8,7 @@ The task list for `tasks/plan.md`. Tick a task in the checklist, and each box in
 
 Phase 1 The World's limits
 
-- [ ] 1. A program runs in its own process group, under a time limit
+- [x] 1. A program runs in its own process group, under a time limit
 - [ ] 2. A program's output stops at its output limit
 - [ ] 3. A request stops at its time limit and its body limit
 - [ ] 4. The World can wait, and a fake World waits in no time
@@ -36,13 +36,13 @@ Phase 3 The other steps
 **Description:** `realWorld`'s spawn starts each program in its own process group (`detached: true`) and adds the call's `env` to the whole environment. At the time limit (`limits.programMs`, 5 minutes, unless the call sets `timeoutMs`) and on a cancel, it sends SIGTERM to the whole group, then SIGKILL after the grace (5 s; `realWorld({ graceMs })` changes it for tests). A group that is already gone is not an error. A time limit rejects with an outside failure that names the program and the limit; a cancel rejects with the signal's reason, as today. `fakeWorld` scripts `limit: "time"` with the same failure, and its log shows `env` and `timeoutMs`. The task also starts the changeset and updates the World section of `spec/SPEC-command-core.md`.
 
 **Acceptance criteria:**
-- [ ] A `bun -e` program past a 200 ms limit is stopped, and the call rejects with kind `outside` and a message that names the program and the limit; with the limit raised, the same program finishes with its output.
-- [ ] `bash -c "(sleep 2; echo late) & sleep 10"` ends, with its child, in under 2 s at a time limit and on a cancel; a program that ignores SIGTERM is killed after the grace; the existing cancel and pid-file tests still pass.
-- [ ] The call's `env` reaches the program beside the whole environment; `fakeWorld`'s `limit: "time"` rejects with the same failure as the real one, and its log shows `env` and `timeoutMs`.
+- [x] A `bun -e` program past a 200 ms limit is stopped, and the call rejects with kind `outside` and a message that names the program and the limit; with the limit raised, the same program finishes with its output.
+- [x] `bash -c "(sleep 2; echo late) & sleep 10"` ends, with its child, in under 2 s at a time limit and on a cancel; a program that ignores SIGTERM is killed after the grace; the existing cancel and pid-file tests still pass.
+- [x] The call's `env` reaches the program beside the whole environment; `fakeWorld`'s `limit: "time"` rejects with the same failure as the real one, and its log shows `env` and `timeoutMs`.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/command`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/command`
+- [x] `bun run check` is green.
 
 **Dependencies:** None
 

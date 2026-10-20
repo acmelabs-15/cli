@@ -2,11 +2,32 @@ import type { CommandError } from "./outcome";
 import { outsideError } from "./outcome";
 import { sameWords } from "./words";
 
+/** The limits that every outside program gets unless the call changes them. */
+export const limits = {
+  /** A program's time limit: 5 minutes. */
+  programMs: 5 * 60 * 1000,
+} as const;
+
 /**
- * How to run a spawned program: its working folder, the text it reads on stdin, and the signal that
- * stops it.
+ * How to run a spawned program: its working folder, the text it reads on stdin, the signal that
+ * stops it, the variables added to its environment, and its time limit.
  */
-export type SpawnOptions = { cwd?: string; stdin?: string; signal?: AbortSignal };
+export type SpawnOptions = {
+  cwd?: string;
+  stdin?: string;
+  signal?: AbortSignal;
+  /**
+   * Variables added to the environment the program gets, such as GIT_TERMINAL_PROMPT=0. A variable
+   * here replaces one of the same name. runCommand removes only the World's env secrets from its
+   * messages, so no secret goes here.
+   */
+  env?: Readonly<Record<string, string>>;
+  /**
+   * The program's time limit in milliseconds, a positive number: `limits.programMs` when unset. A
+   * limit past about 24 days, the longest a timer holds, acts as about 24 days.
+   */
+  timeoutMs?: number;
+};
 
 /** How a spawned program ended: its exit code, and its output as text. */
 export type Spawned = { code: number; stdout: string; stderr: string };
@@ -18,9 +39,11 @@ export type World = {
   /** The environment variables. */
   env: Readonly<Record<string, string | undefined>>;
   /**
-   * Runs a program, with no shell, and returns its exit code and output. When the signal aborts,
-   * the program stops and the call rejects with the signal's reason, as fetch does. A program that
-   * is not installed rejects with an outside failure that names it.
+   * Runs a program, with no shell, and returns its exit code and output. The program gets the whole
+   * environment plus the call's `env`. At its time limit, the program and every program it started
+   * stop, and the call rejects with an outside failure that names the program and the limit. When
+   * the signal aborts, they stop too, and the call rejects with the signal's reason, as fetch does.
+   * A program that is not installed rejects with an outside failure that names it.
    */
   spawn: (commandLine: readonly string[], options?: SpawnOptions) => Promise<Spawned>;
   /** Sends an HTTP request. */
@@ -32,6 +55,56 @@ export type World = {
 /** The outside failure for a program that is not installed: kind `outside`, exit 3. */
 function notInstalled(program: string): CommandError {
   return outsideError(`${program} is not installed or not on PATH`);
+}
+
+/**
+ * A command line, short, for a message: the program and its first argument, then "..." when more
+ * words follow, such as `gh api ...`. The progress step that ran the program tells which call it was.
+ */
+function shortCommandLine(commandLine: readonly string[]): string {
+  const shown = commandLine.slice(0, 2).join(" ");
+  return commandLine.length > 2 ? `${shown} ...` : shown;
+}
+
+/** A count and its unit in words: 1 minute, 90 seconds. */
+function countOf(count: number, unit: string): string {
+  return count === 1 ? `1 ${unit}` : `${count} ${unit}s`;
+}
+
+/** A time in words, in its largest whole unit: 5 minutes, 90 seconds, 1500 milliseconds. */
+function durationOf(ms: number): string {
+  if (ms >= 60_000 && ms % 60_000 === 0) {
+    return countOf(ms / 60_000, "minute");
+  }
+  if (ms >= 1000 && ms % 1000 === 0) {
+    return countOf(ms / 1000, "second");
+  }
+  return countOf(ms, "millisecond");
+}
+
+/**
+ * A spawn call's time limit: its own, or `limits.programMs`. A limit that is not a positive number
+ * is a bug in the caller, not an outside failure, so it throws a plain Error.
+ */
+function programTimeLimit(options: SpawnOptions): number {
+  const timeoutMs = options.timeoutMs ?? limits.programMs;
+  if (Number.isNaN(timeoutMs) || timeoutMs <= 0) {
+    throw new Error(
+      `a program's time limit is a positive number of milliseconds, not ${timeoutMs}`,
+    );
+  }
+  return timeoutMs;
+}
+
+/**
+ * The outside failure for a program stopped at its time limit, kind `outside`, exit 3: it names the
+ * program and the limit. realWorld and fakeWorld both give it, so a test of a limit sees the real
+ * failure.
+ */
+function timeLimitReached(commandLine: readonly string[], timeoutMs: number): CommandError {
+  return outsideError(
+    `${shortCommandLine(commandLine)} ran longer than ${durationOf(timeoutMs)} and was stopped`,
+  );
 }
 
 /**
@@ -62,9 +135,12 @@ function startWithBun(commandLine: readonly string[], options: SpawnOptions) {
   try {
     return Bun.spawn([...commandLine], {
       cwd: options.cwd,
+      // The whole environment, as the World shows it, plus the call's variables (ADR-0015).
+      env: { ...Bun.env, ...options.env },
       stdin: options.stdin === undefined ? "ignore" : new Blob([options.stdin]),
       stderr: "pipe",
-      signal: options.signal,
+      // Its own process group, so a stop reaches every program it starts (note 10, section 2).
+      detached: true,
     });
   } catch (error) {
     const program = notOnPath(error);
@@ -72,38 +148,128 @@ function startWithBun(commandLine: readonly string[], options: SpawnOptions) {
   }
 }
 
+/** Whether `error` is the error process.kill throws for a process or group that does not exist. */
+function isGone(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ESRCH";
+}
+
+/** Whether the process group that `pid` leads still has a process in it. */
+function groupExists(pid: number): boolean {
+  try {
+    // Signal 0 checks that the group exists, and sends nothing.
+    process.kill(-pid, 0);
+    return true;
+  } catch (error) {
+    return !isGone(error);
+  }
+}
+
 /**
- * Runs a program with Bun, with no shell, and collects its exit code and output as text. With no
- * stdin text, the program gets no stdin, so it can never wait on the user's terminal. Bun stops the
- * program (SIGTERM) when the signal aborts.
+ * The stop of the process group that `pid` leads, sent once however often `stop` is called:
+ * SIGTERM to every process in it, then SIGKILL after the grace. A group that is already gone is not
+ * an error; any other failure to send a signal rejects `failed`, because the group may still run.
+ * `dropKillIfGone` cancels the SIGKILL once the group is gone, so nothing waits for the grace.
+ */
+function groupStop(pid: number, graceMs: number) {
+  const failed = Promise.withResolvers<never>();
+  let killer: ReturnType<typeof setTimeout> | undefined;
+  function send(signal: "SIGTERM" | "SIGKILL"): void {
+    try {
+      process.kill(-pid, signal);
+    } catch (error) {
+      if (!isGone(error)) {
+        failed.reject(error);
+      }
+    }
+  }
+  return {
+    failed: failed.promise,
+    stop(): void {
+      if (killer === undefined) {
+        send("SIGTERM");
+        killer = setTimeout(() => {
+          send("SIGKILL");
+        }, graceMs);
+      }
+    },
+    dropKillIfGone(): void {
+      if (killer !== undefined && !groupExists(pid)) {
+        clearTimeout(killer);
+      }
+    },
+  };
+}
+
+/** The longest delay a timer holds: setTimeout fires at once for a longer one. */
+const longestTimerMs = 2 ** 31 - 1;
+
+/**
+ * Runs a program with Bun, with no shell, in its own process group, and collects its exit code and
+ * output as text. With no stdin text, the program gets no stdin, so it can never wait on the user's
+ * terminal. At the time limit, or when the signal aborts, it stops the whole group. Bun's own
+ * `timeout` and `signal` reach only the program, and a program it started keeps the pipes open, so
+ * the call would wait for it (note 10, section 2).
  */
 async function spawnWithBun(
   commandLine: readonly string[],
-  options: SpawnOptions = {},
+  options: SpawnOptions,
+  graceMs: number,
 ): Promise<Spawned> {
   const { signal } = options;
-  // An aborted signal starts no program. Bun would throw its own AbortError; this keeps the reason.
+  // An aborted signal starts no program, and the call keeps the signal's reason.
   signal?.throwIfAborted();
+  const timeoutMs = programTimeLimit(options);
   const child = startWithBun(commandLine, options);
-  const [stdout, stderr, code] = await Promise.all([
-    child.stdout.text(),
-    child.stderr.text(),
-    child.exited,
-  ]);
-  // A program stopped by the signal has no result to give.
-  signal?.throwIfAborted();
-  return { code, stdout, stderr };
+  const group = groupStop(child.pid, graceMs);
+  let timedOut = false;
+  const timer = setTimeout(
+    () => {
+      timedOut = true;
+      group.stop();
+    },
+    Math.min(timeoutMs, longestTimerMs),
+  );
+  signal?.addEventListener("abort", group.stop, { once: true });
+  try {
+    // The pipes close when the last program in the group that holds them ends.
+    const [stdout, stderr, code] = await Promise.race([
+      Promise.all([child.stdout.text(), child.stderr.text(), child.exited]),
+      group.failed,
+    ]);
+    // A program stopped by the signal or at its time limit has no result to give.
+    signal?.throwIfAborted();
+    if (timedOut) {
+      throw timeLimitReached(commandLine, timeoutMs);
+    }
+    return { code, stdout, stderr };
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", group.stop);
+    group.dropKillIfGone();
+  }
 }
+
+/** What realWorld takes: the grace between SIGTERM and SIGKILL when it stops a program. */
+export type RealWorldOptions = {
+  /** 5 seconds when unset; a test of a program that ignores SIGTERM sets less. */
+  graceMs?: number;
+};
+
+/** The grace between SIGTERM and SIGKILL when realWorld stops a program: 5 seconds. */
+const defaultGraceMs = 5 * 1000;
 
 /**
  * The real World: the working folder, the process environment, Bun's spawn, the global fetch and
  * the clock. It is the one place in the CLI that touches the process for these.
  */
-export function realWorld(): World {
+export function realWorld(options: RealWorldOptions = {}): World {
+  const graceMs = options.graceMs ?? defaultGraceMs;
   return {
     root: process.cwd(),
     env: Bun.env,
-    spawn: spawnWithBun,
+    spawn(commandLine, spawnOptions = {}) {
+      return spawnWithBun(commandLine, spawnOptions, graceMs);
+    },
     fetch: globalThis.fetch,
     now() {
       return new Date();
@@ -113,12 +279,15 @@ export function realWorld(): World {
 
 /**
  * A scripted answer to a spawn call: the command line it matches, word for word, and its end. A
- * `missing` program is not installed: the call rejects as realWorld's does, and `answer` is unused.
+ * `missing` program is not installed, and a program with a `limit` reached it: the call rejects as
+ * realWorld's does, and `answer` is unused.
  */
 export type ScriptedSpawn = {
   commandLine: readonly string[];
   answer?: Partial<Spawned>;
   missing?: boolean;
+  /** "time": the program ran past the call's time limit, or past `limits.programMs`. */
+  limit?: "time";
 };
 
 /**
@@ -192,6 +361,8 @@ export function fakeWorld(options: FakeWorldOptions = {}): FakeWorld {
     calls.push({ kind: "spawn", commandLine: [...commandLine], ...logged });
     // A cancelled call rejects, as the real one does, and uses up no scripted answer.
     signal?.throwIfAborted();
+    // So does a call with a time limit that is not a positive number.
+    const timeoutMs = programTimeLimit(spawnOptions);
     const scripted = take(spawnScript, (entry) => sameWords(entry.commandLine, commandLine));
     if (scripted === undefined) {
       throw new Error(
@@ -201,6 +372,9 @@ export function fakeWorld(options: FakeWorldOptions = {}): FakeWorld {
     if (scripted.missing === true) {
       const [program = ""] = commandLine;
       throw notInstalled(program);
+    }
+    if (scripted.limit === "time") {
+      throw timeLimitReached(commandLine, timeoutMs);
     }
     const answer = scripted.answer ?? {};
     return { code: answer.code ?? 0, stdout: answer.stdout ?? "", stderr: answer.stderr ?? "" };
