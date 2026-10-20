@@ -21,7 +21,7 @@ Phase 2 The tracer and the settings
 - [ ] 7. A command file may check a repo name at its top
 - [x] 8. Every repo can get Protect main
 - [x] 9. A step retries an unexpected 404 or 409
-- [ ] Checkpoint: the tracer and the settings
+- [x] Checkpoint: the tracer and the settings
 
 Phase 3 The other steps
 
@@ -207,9 +207,9 @@ Phase 3 The other steps
 
 ## Checkpoint: the tracer and the settings
 
-- [ ] `bun run check` is green.
-- [ ] Every case of `checkLogin`, `ensureActionsSetting` and `ensureProtectMain` in the spec's "Testing strategy" passes, and so does the answers-to-failure table.
-- [ ] A second run of both settings steps makes no write.
+- [x] `bun run check` is green: 396 tests at `6bbe16f`.
+- [x] Every case of `ensureActionsSetting` and `ensureProtectMain` in the spec's "Testing strategy" passes, and so does the answers-to-failure table. `checkLogin` (task 6) moved into the parallel batch, so its cases are checked at the final checkpoint.
+- [x] A second run of both settings steps makes no write: each one's "already set" case is a skipped step with reads only.
 
 ## Task 10: ensureRepo creates a repo, or reuses only this run's repo
 
@@ -288,6 +288,6 @@ Phase 3 The other steps
 ## Checkpoint: github-ops complete
 
 - [ ] `bun run check` is green, on the working copy and on a clean clone of the branch.
-- [ ] Every success criterion of `spec/SPEC-github-ops.md` passes.
+- [ ] Every success criterion of `spec/SPEC-github-ops.md` passes, `checkLogin`'s cases included.
 - [ ] `packages/cli/src/github` holds no `gh auth token`, no `--show-token` and no `--force`.
 - [ ] `/brain:review` on the branch, then the PR into `main`, asked first.
