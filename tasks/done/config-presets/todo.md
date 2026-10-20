@@ -32,7 +32,7 @@ Phase 4 Review fixes (Peter chose them on 2026-10-20; `docs/reviews/2026-10-20-c
 - [x] 11. The build uses the TypeScript preset, and each option has its own reason
 - [x] 12. The tool pins, the root typecheck and the test tsconfig stay true to the preset
 - [x] 13. Record fixes
-- [ ] Checkpoint: config-presets complete
+- [x] Checkpoint: config-presets complete
 
 ## Task 1: The gate runs on Bun in this repo
 
@@ -296,4 +296,4 @@ Phase 4 Review fixes (Peter chose them on 2026-10-20; `docs/reviews/2026-10-20-c
 - [x] Every success criterion in `spec/SPEC-config-presets.md` passes.
 - [x] `bun run check` is green, with the failing `node` too.
 - [x] `/brain:review` on the branch, and its findings fixed or recorded.
-- [ ] Peter reviews; the PR into `main` merges with a merge commit, after he asks for it.
+- [x] Peter reviews; the PR into `main` merges with a merge commit, after he asks for it (PR #3, `7fcb916`).
