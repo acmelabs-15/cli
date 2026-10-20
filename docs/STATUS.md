@@ -2,7 +2,7 @@
 
 The one place for where the project stands. Every session reads it first and rewrites it last (see "Session end" in `AGENTS.md`). Keep it short: facts a new session needs to continue, nothing else.
 
-**Updated:** 2026-10-20, 00:55 PDT, by the Claude Code session that ran the spec interview.
+**Updated:** 2026-10-20, after the repo-model foundation checkpoint, by the Claude Code session that ran the spec interview and drives the build.
 
 ## Where things stand
 
@@ -21,6 +21,6 @@ Nothing now. Peter approved the first commit, and the two global rules (research
 
 ## Next steps
 
-1. Build `repo-model`: `tasks/todo.md`, task 1 first. Peter approved the plan on 2026-10-20 (size right, edges right, no merge or split).
+1. Build `repo-model` on branch `repo-model`, in `/brain:build auto` mode (Peter's choice, 2026-10-20): one fresh sub-agent per task, one commit each, pushed. Done: tasks 1–3 (`d4fcafd`, `cb34e01`, `e15afa8`), the foundation checkpoint, tasks 4 (`60173a5`), 5 (`e197491`), 6 (`7c170ae`) and 7 (`d98208d`), then the `..` fix (`8bc3303`). The final review (`docs/reviews/2026-10-20-repo-model.md`) asked for changes; Peter chose all three groups of fixes, now tasks 8 and 9. Tasks 8 (`316c209`) and 9 (`a65ff19`) and the re-check are done; the review now says approve (`docs/reviews/2026-10-20-repo-model.md`). Next: Peter's review, then one PR into main with a merge commit.
 2. Then the other layer 1 specs in build order (`spec/README.md`): `command-core`, `config-presets`, `github-ops`, `npm-ops`. `tui-kit` waits for its prototype (open question 3).
 3. Each module spec goes to Peter for approval, then `/brain:plan` for that module.

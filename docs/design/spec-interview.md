@@ -252,6 +252,11 @@ Peter asked that everything from the interview be saved to Markdown in the layou
 - **Peter:** "push frequently." Standing permission to push after every commit, recorded in `AGENTS.md`.
 - **Push target, recommended and answered:** a branch per module, pushed after every commit, merged into main through one PR with a merge commit at the module's checkpoint, after Peter's review. Records and docs go straight to main.
 
+### `..` in package paths — settled 2026-10-20 (module `repo-model`, task 7)
+
+- **Found by task 7:** the editor schema rejects any `..` in a package path, because a JSON schema cannot tell whether `..` leaves the repo; the command accepted `..` that stays inside.
+- **Recommended and answered:** the command rejects any `..` too, so the two checks agree on every path. One accepted difference stays: an editor does not see `./packages/cli` and `packages/cli` as a repeat.
+
 ### Where `CLAUDE.md` lives — settled 2026-10-20
 
 - **Peter asked:** should `.claude/CLAUDE.md` be at the root instead?

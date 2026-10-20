@@ -13,7 +13,7 @@ Acceptance: see "Success criteria".
 ## Tech stack
 
 - Bun 1.4.0, TypeScript, `bun:test`.
-- zod 4 for the repo config schema. **Agent's call, small and reversible:** the router (ADR-0009) reads Standard Schema, which zod implements, and zod's `z.toJSONSchema` generates the JSON schema that editors check `acmelabs.json` against. The command list (`command-core`) and the MCP tool schemas (`agent-guide`) need the same generation.
+- zod 4 for the repo config schema. **Agent's call, small and reversible:** the router (ADR-0009) reads Standard Schema, which zod implements, and zod's `z.toJSONSchema` generates the editor schema that `acmelabs.json` is checked against. The command list (`command-core`) and the MCP tool schemas (`agent-guide`) need the same generation.
 
 ## The repo config
 
@@ -42,7 +42,7 @@ Rules:
 
 - At least one of `plugin` and `library` is present.
 - `plugin.hosts` is a non-empty list of distinct host ids from the host table.
-- `library.packages` is a non-empty list of distinct relative paths to package folders. A single-package library repo lists `"."`.
+- `library.packages` is a non-empty list of distinct relative paths to package folders, written from the repo root with `/` between folders: not blank, not absolute, no drive prefix such as `C:`, no backslash or NUL character, and no `..` segment (Peter, 2026-10-20, so the editor schema and the command agree). A single-package library repo lists `"."`.
 - No other field is allowed, so a typo fails instead of being ignored.
 - **Agent's call, small and reversible:** `$schema` points into `node_modules`, so the editor check follows the installed CLI version and works offline. This repo points at its own source.
 
@@ -50,12 +50,12 @@ Rules:
 
 Facts from `docs/research/01-acmelabs-repos.md`, and `agy plugin validate` run on 2026-10-20.
 
-| Host id | Manifests (path, version field) | Validators (required) |
-|---|---|---|
-| `claude-code` | `.claude-plugin/plugin.json` (`version`); `.claude-plugin/marketplace.json` (`plugins.0.version`) | `claude plugin validate . --strict` (yes); `claude plugin validate .claude-plugin/plugin.json --strict` (yes) |
-| `codex` | `.codex-plugin/plugin.json` (`version`); `.agents/plugins/marketplace.json` (`plugins.0.version`) | none exists |
-| `gemini-cli` | `gemini-extension.json` (`version`) | `gemini extensions validate .` (no: runs when `gemini` is on PATH) |
-| `antigravity-cli` | `plugin.json` (no version field) | `agy plugin validate .` (no: runs when `agy` is on PATH) |
+| Host id | Name | Manifests (path, version field) | Validators (required) |
+|---|---|---|---|
+| `claude-code` | Claude Code | `.claude-plugin/plugin.json` (`version`); `.claude-plugin/marketplace.json` (`plugins.0.version`) | `claude plugin validate . --strict` (yes); `claude plugin validate .claude-plugin/plugin.json --strict` (yes) |
+| `codex` | Codex | `.codex-plugin/plugin.json` (`version`); `.agents/plugins/marketplace.json` (`plugins.0.version`) | none exists |
+| `gemini-cli` | Gemini CLI | `gemini-extension.json` (`version`) | `gemini extensions validate .` (no: runs when `gemini` is on PATH) |
+| `antigravity-cli` | Antigravity CLI | `plugin.json` (no version field) | `agy plugin validate .` (no: runs when `agy` is on PATH) |
 
 A required validator that is not on PATH is a failure. An optional one is skipped with one line that says so, as brain's `validate.ts` does today.
 
@@ -119,13 +119,13 @@ The root's tooling (tsconfig, oxlint, oxfmt, changesets) comes in the plan's fir
 
 ## Code style
 
-Matches brain's scripts and DEC-001: `type` for object shapes, function declarations with helpers below their callers, a one-line doc comment per export, Bun file APIs, 100 columns, trailing commas.
+Matches brain's scripts and DEC-001: `type` for object shapes, function declarations with helpers above their callers (Ultracite's `no-use-before-define` requires that order), a one-line doc comment per export, Bun file APIs, 100 columns, trailing commas.
 
 ```ts
 /** Every manifest of the repo's hosts, in host-table order. Empty for a library-only repo. */
 export function manifestsFor(config: RepoConfig): Manifest[] {
-  const declared = new Set(config.plugin?.hosts ?? []);
-  return hostOrder
+  const declared = new Set(config.plugin?.hosts);
+  return hostIds
     .filter((id) => declared.has(id))
     .flatMap((id) => hosts[id].manifests.map((manifest) => ({ host: id, ...manifest })));
 }

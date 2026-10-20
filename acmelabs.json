@@ -1,0 +1,5 @@
+{
+  "$schema": "./packages/cli/schema/acmelabs.schema.json",
+  "plugin": { "hosts": ["claude-code", "codex", "gemini-cli", "antigravity-cli"] },
+  "library": { "packages": ["packages/cli", "packages/config"] }
+}
