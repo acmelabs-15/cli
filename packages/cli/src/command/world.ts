@@ -204,9 +204,10 @@ function isGone(error: unknown): boolean {
 
 /**
  * Whether `error`, from a signal to the process group that `pid` leads, means that nothing in the
- * group is left to stop. ESRCH: the group is gone. EPERM while the leader still answers: macOS
- * refuses a signal to a group whose programs have all ended but are not yet reaped, and a leader
- * that still ran as this user would take the signal. Any other EPERM is a real refusal.
+ * group is left to stop. ESRCH: the group is gone. EPERM: macOS still holds the group, but no
+ * program in it can take a signal from this process, because macOS skips the programs that have
+ * ended and are not yet reaped. When the leader has ended too, nothing is left to stop: a leader
+ * that still ran as this user would take the signal. An EPERM from the leader is a real refusal.
  */
 function nothingLeftToStop(error: unknown, pid: number): boolean {
   if (isGone(error)) {
@@ -219,28 +220,18 @@ function nothingLeftToStop(error: unknown, pid: number): boolean {
     // Signal 0 to the leader itself: an ended leader that is not yet reaped still answers.
     process.kill(pid, 0);
     return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Whether the process group that `pid` leads still has a process in it. */
-function groupExists(pid: number): boolean {
-  try {
-    // Signal 0 checks that the group exists, and sends nothing.
-    process.kill(-pid, 0);
-    return true;
-  } catch (error) {
-    return !isGone(error);
+  } catch (leaderError) {
+    // A leader that Bun has reaped is gone, and has ended too.
+    return isGone(leaderError);
   }
 }
 
 /**
  * The stop of the process group that `pid` leads, sent once however often `stop` is called:
- * SIGTERM to every process in it, then SIGKILL after the grace. A group that is already gone, or
- * whose programs have all ended, is not an error; any other failure to send a signal rejects
- * `failed`, because the group may still run. `dropKillIfGone` cancels the SIGKILL once the group is
- * gone, so nothing waits for the grace.
+ * SIGTERM to every process in it, then SIGKILL after the grace. A group with nothing left to stop
+ * is not an error; any other failure to send a signal rejects `failed`, because the group may still
+ * run. `dropKillIfGone` cancels the SIGKILL once nothing in the group is left to stop, so nothing
+ * waits for the grace.
  */
 function groupStop(pid: number, graceMs: number) {
   const failed = Promise.withResolvers<never>();
@@ -265,8 +256,17 @@ function groupStop(pid: number, graceMs: number) {
       }
     },
     dropKillIfGone(): void {
-      if (killer !== undefined && !groupExists(pid)) {
-        clearTimeout(killer);
+      if (killer === undefined) {
+        return;
+      }
+      try {
+        // Signal 0 checks the group and sends nothing. macOS checks it as it checks SIGKILL, so
+        // when nothing in the group can take signal 0, the SIGKILL would reach nothing either.
+        process.kill(-pid, 0);
+      } catch (error) {
+        if (nothingLeftToStop(error, pid)) {
+          clearTimeout(killer);
+        }
       }
     },
   };

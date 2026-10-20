@@ -250,6 +250,39 @@ describe("realWorld: a program's time limit", () => {
     const pid = Number(await Bun.file(pidFile).text());
     expect(() => process.kill(pid, 0)).toThrow();
   });
+
+  test("after a cancel, nothing keeps acmelabs running for the grace once the group's programs have ended", async () => {
+    const worldFile = path.join(import.meta.dir, "..", "world.ts");
+    /**
+     * A script, run as its own process as acmelabs is. Five times, it starts 10 programs through
+     * realWorld, each with 4 children, and cancels them all at once. Then it prints the time its
+     * last call ended, and lets its event loop end. Each program writes its marker after it starts
+     * its children, and starts nothing after it. Many ended children at once wait longer to be
+     * reaped, so the end of a call often finds a group that holds only ended programs.
+     */
+    const script = [
+      `import { realWorld } from ${JSON.stringify(worldFile)};`,
+      "const world = realWorld();",
+      `const program = "sleep 10 & sleep 10 & sleep 10 & sleep 10 & echo started > \\"$0\\"; wait";`,
+      "for (let round = 0; round < 5; round += 1) {",
+      "  const controller = new AbortController();",
+      "  const reason = new Error('the user pressed Ctrl+C');",
+      `  const markers = Array.from({ length: 10 }, (_, run) => ${JSON.stringify(work)} + "/cancelled-" + round + "-" + run);`,
+      "  const calls = markers.map((marker) => world.spawn(['bash', '-c', program, marker], { signal: controller.signal }));",
+      "  for (const marker of markers) while (!(await Bun.file(marker).exists())) await Bun.sleep(5);",
+      "  controller.abort(reason);",
+      "  for (const end of await Promise.allSettled(calls)) {",
+      "    if (end.status !== 'rejected' || end.reason !== reason) console.error('a call did not end with the cancel');",
+      "  }",
+      "}",
+      "process.stdout.write(String(Date.now()));",
+    ].join("\n");
+    const spawned = await realWorld().spawn(["bun", "-e", script]);
+    expect(spawned.stderr).toBe("");
+    // A SIGKILL timer kept for an ended group would keep the script alive for the grace, 5 s.
+    const lingered = Date.now() - Number(spawned.stdout);
+    expect(lingered).toBeLessThan(2000);
+  }, 10_000);
 });
 
 describe("realWorld: a program's output limit", () => {
