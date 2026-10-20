@@ -17,7 +17,6 @@ The one place for where the project stands. Every session reads it first and rew
 - **Open questions 21 and 22** (an environment allowlist for outside programs; output and time limits) wait for `github-ops`, by Peter's choice.
 - **New repos and the two plugins:** this repo runs brain's version of a skill both plugins carry; awaken-the-slumberer (now "Last of the Colossi") runs agent-skills' version. The rule for new repos is open question 6, for the `scaffold` spec.
 - **npm:** the local npm login is rejected (401). The first publishes need Peter's `npm login` and 2FA, in module `cli-release`.
-- **Two brain fixes are owed** (open questions 16 and 17): brain's changesets `$schema`, and its helper-order wording.
 
 ## Waiting on Peter
 
