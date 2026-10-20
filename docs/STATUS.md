@@ -8,7 +8,7 @@ The one place for where the project stands. Every session reads it first and rew
 
 - **Phase: Spec** (`/brain:spec`), for the whole initiative.
 - **Done:** `setup-brain` (local markdown tracker); the spec interview's decisions (`docs/design/spec-interview.md`); the capability map, approved by Peter on 2026-10-20 (`spec/README.md`); eleven decision records; the research notes; the glossary; `AGENTS.md`, the root `CLAUDE.md` and `.claude/settings.json`. Every interview question is settled, the test seams included.
-- **Module specs:** `repo-model` approved by Peter on 2026-10-20 (`spec/SPEC-repo-model.md`). No other module spec is written. No code exists. All commits are on this machine only; the repo has no remote.
+- **Module specs:** `repo-model` approved by Peter on 2026-10-20 (`spec/SPEC-repo-model.md`). No other module spec is written. No code exists. The repo is public at https://github.com/acmelabs-15/cli, created and pushed on 2026-10-20 with Peter's approval, with brain's Actions setting and the "Protect main" ruleset. Each push is asked first.
 
 ## Red and notes
 

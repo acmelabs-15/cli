@@ -239,6 +239,12 @@ Peter asked that everything from the interview be saved to Markdown in the layou
 - **Peter:** "make sure there are changelogs. I think the brain codebase has a standard setup for changesets and changelog management. This repo should have all that as well. So should packages and plugins."
 - **Effect:** a rule for every module in `spec/README.md`, and two done-when items. changesets cannot import its config from a shared package, so `acmelabs new` writes each repo's `.changeset/config.json` from its repo config. Open question 11 in `spec/README.md` asks where the agent-guide plugin's version and changelog live in this workspace.
 
+### The GitHub repo — settled 2026-10-20
+
+- **Peter:** "I just want to be sure this is getting created as a Git repo under the Acme Labs organization", then "would probably be good to push".
+- **Recommended and answered:** create acmelabs-15/cli as a public repo and push main, set up like brain. npm adds provenance only when the repo and the package are both public.
+- **Done:** https://github.com/acmelabs-15/cli created and main pushed; Actions setting `default_workflow_permissions: read`, `can_approve_pull_request_reviews: true`; ruleset "Protect main" (`non_fast_forward`, `deletion` on the default branch, no bypass), id 25461155.
+
 ### Where `CLAUDE.md` lives — settled 2026-10-20
 
 - **Peter asked:** should `.claude/CLAUDE.md` be at the root instead?

@@ -1,6 +1,6 @@
 # ACMElabs CLI
 
-`acmelabs` is the one tool for ACMElabs repos. It makes a new repo start in the ACMElabs shape and keeps every repo in that shape afterwards. This repo will be acmelabs-15/cli; it has no GitHub remote yet. It holds the CLI (`@acmelabs/cli`), the presets (`@acmelabs/config`) and the agent-guide plugin. Peter is the owner, and the decisions that are his go to him.
+`acmelabs` is the one tool for ACMElabs repos. It makes a new repo start in the ACMElabs shape and keeps every repo in that shape afterwards. This repo is acmelabs-15/cli on GitHub, public, with main protected by the "Protect main" ruleset. It holds the CLI (`@acmelabs/cli`), the presets (`@acmelabs/config`) and the agent-guide plugin. Peter is the owner, and the decisions that are his go to him.
 
 This file holds the project rules for every coding agent. Tool-specific setup is in the last section.
 
