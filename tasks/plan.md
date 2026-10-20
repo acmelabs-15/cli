@@ -1,6 +1,6 @@
 # Implementation plan — repo-model
 
-Status: **draft, waiting on Peter's approval** (the three plan questions). Written with `/brain:plan` from `spec/SPEC-repo-model.md`, approved on 2026-10-20. Words follow `CONTEXT.md`. The task details, with acceptance criteria and checks, are in `tasks/todo.md`.
+Status: **approved by Peter on 2026-10-20** through the three plan questions (size right, edges right, no merge or split). Written with `/brain:plan` from `spec/SPEC-repo-model.md`, approved on 2026-10-20. Words follow `CONTEXT.md`. The task details, with acceptance criteria and checks, are in `tasks/todo.md`.
 
 ## Overview
 

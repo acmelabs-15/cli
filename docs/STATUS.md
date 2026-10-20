@@ -21,6 +21,6 @@ Nothing now. Peter approved the first commit, and the two global rules (research
 
 ## Next steps
 
-1. `/brain:plan` for `repo-model`: `tasks/plan.md` and `tasks/todo.md`. Its first task sets up the repo's own tooling (workspace, tsconfig, oxlint, oxfmt, changesets).
+1. Build `repo-model`: `tasks/todo.md`, task 1 first. Peter approved the plan on 2026-10-20 (size right, edges right, no merge or split).
 2. Then the other layer 1 specs in build order (`spec/README.md`): `command-core`, `config-presets`, `github-ops`, `npm-ops`. `tui-kit` waits for its prototype (open question 3).
 3. Each module spec goes to Peter for approval, then `/brain:plan` for that module.
