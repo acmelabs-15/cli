@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { RepoConfigError } from "../repo/config";
 import type { Command, Context, ProgressUpdate } from "./command";
-import type { CommandFailure, Outcome } from "./outcome";
+import type { CommandFailure, Json, Outcome } from "./outcome";
 import { CommandError, exitCodes, inputError } from "./outcome";
 import type { World } from "./world";
 
@@ -137,7 +137,11 @@ type Steps = {
   progress: (update: ProgressUpdate) => void;
   /** The run's defect, if any: a step started again while it was open. */
   defect: () => Error | undefined;
-  /** At the command's normal end, throws the run's defect, or one that names each open step. */
+  /**
+   * At the command's normal end, throws the run's defect, or one that names each open step. After
+   * it, progress sends nothing on, so work the command did not wait for is not heard after the
+   * outcome, and the result stays JSON mode's last line.
+   */
   checkEnded: () => void;
   /**
    * Sends a `failed` update for each open step, in the order the steps started. After it, progress
@@ -179,6 +183,7 @@ function trackSteps(send: (update: ProgressUpdate) => void): Steps {
     },
     defect: () => restarted,
     checkEnded() {
+      closed = true;
       if (restarted !== undefined) {
         throw restarted;
       }
@@ -318,8 +323,21 @@ function untilAborted<Value>(work: Promise<Value>, signal: AbortSignal): Promise
   });
 }
 
+/**
+ * Whether JSON can write the result, as JSON mode's result line must. The Json type stops most
+ * results that it cannot; a cycle, or a value typed `any`, gets past the type.
+ */
+function writable(result: Json): boolean {
+  try {
+    // JSON.stringify throws on a cycle or a bigint, and gives undefined for a lone function.
+    return JSON.stringify(result) !== undefined;
+  } catch {
+    return false;
+  }
+}
+
 /** Runs one command: checks the input, runs it, and turns every ending into an Outcome. */
-export async function runCommand<Input extends z.ZodObject, Result>(
+export async function runCommand<Input extends z.ZodObject, Result extends Json>(
   command: Command<Input, Result>,
   rawInput: unknown,
   frontEnd: FrontEnd,
@@ -341,6 +359,10 @@ export async function runCommand<Input extends z.ZodObject, Result>(
     // A command that ignores the signal does not keep the outcome waiting.
     const result = await untilAborted(checkAndRun(), signal);
     steps.checkEnded();
+    // Checked before the outcome, so exit 0 always comes with a result line.
+    if (!writable(result)) {
+      throw new Error("the command's result cannot be written as JSON");
+    }
     return { ok: true, command: name, exitCode: 0, durationMs: millisecondsSince(started), result };
   } catch (error) {
     // No front-end shows a step as running after the command stopped.

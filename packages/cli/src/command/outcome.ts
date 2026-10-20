@@ -26,8 +26,23 @@ export type Issue = { field: string; message: string };
 /** Why a command failed: the kind, a message for people, and the issues behind it. */
 export type CommandFailure = { kind: FailureKind; message: string; issues: Issue[] };
 
-/** How a command ended: its result with exit 0, or its failure with that kind's exit code. */
-export type Outcome<Result> =
+/**
+ * A value that JSON holds as it is, so a reader of JSON mode's result line gets it back unchanged.
+ * An object's field may be undefined, as an optional field is: JSON leaves that field out.
+ */
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly Json[]
+  | { readonly [field: string]: Json | undefined };
+
+/**
+ * How a command ended: its result with exit 0, or its failure with that kind's exit code. The
+ * result is JSON, because JSON mode's result line carries it.
+ */
+export type Outcome<Result extends Json> =
   | { ok: true; command: string; exitCode: 0; durationMs: number; result: Result }
   | { ok: false; command: string; exitCode: ExitCode; durationMs: number; error: CommandFailure };
 

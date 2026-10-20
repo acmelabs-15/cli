@@ -1,5 +1,6 @@
 import type { z } from "zod";
 
+import type { Json } from "./outcome";
 import type { World } from "./world";
 
 /**
@@ -39,8 +40,11 @@ export type Context<Input> = World & {
   signal: AbortSignal;
 };
 
-/** One thing the CLI does, declared once with its inputs. Every front-end reads the declaration. */
-export type Command<Input extends z.ZodObject, Result> = {
+/**
+ * One thing the CLI does, declared once with its inputs. Every front-end reads the declaration. Its
+ * result is JSON, because JSON mode's result line carries it.
+ */
+export type Command<Input extends z.ZodObject, Result extends Json> = {
   /** The words that call it, such as ["version", "sync"]. */
   path: readonly string[];
   /** One line for the help, the TUI's menu and the agent guide. */
@@ -57,7 +61,7 @@ export type Command<Input extends z.ZodObject, Result> = {
 };
 
 /** Declares a command, with its input and result types inferred from the declaration. */
-export function defineCommand<Input extends z.ZodObject, Result>(
+export function defineCommand<Input extends z.ZodObject, Result extends Json>(
   command: Command<Input, Result>,
 ): Command<Input, Result> {
   return command;

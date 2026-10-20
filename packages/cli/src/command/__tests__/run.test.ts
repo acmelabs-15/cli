@@ -76,6 +76,71 @@ describe("runCommand: a command that ends normally", () => {
   });
 });
 
+describe("a command's result is JSON", () => {
+  /** A sample command's declaration, with no run. */
+  const count = {
+    path: ["sample", "count"],
+    summary: "Count the manifests.",
+    input: z.object({}),
+  } as const;
+
+  test("a result that JSON cannot hold as it is does not type-check", () => {
+    // A type test: tsc checks it in `bun run typecheck`, and no command runs.
+    // @ts-expect-error -- a bigint has no JSON form.
+    defineCommand({ ...count, run: () => Promise.resolve(3n) });
+    // @ts-expect-error -- a function has no JSON form.
+    defineCommand({ ...count, run: () => Promise.resolve(() => 3) });
+    // @ts-expect-error -- a command that returns nothing has no result for the result line.
+    defineCommand({ ...count, async run() {} });
+    // @ts-expect-error -- JSON turns a Date into a string, so a reader gets another type back.
+    defineCommand({ ...count, run: (_input, context) => Promise.resolve({ at: context.now() }) });
+    // @ts-expect-error -- a signal has no JSON form, inside an object too.
+    defineCommand({ ...count, run: (_input, context) => Promise.resolve([context.signal]) });
+  });
+
+  test("objects with optional fields, lists, text, numbers and null type-check", () => {
+    /** One manifest's version; a manifest with no version field has none. */
+    type Found = { path: string; version?: string; host?: string | undefined };
+    const found: readonly Found[] = [{ path: ".claude-plugin/plugin.json" }];
+    defineCommand({ ...count, run: () => Promise.resolve({ checked: 3, found }) });
+    defineCommand({ ...count, run: () => Promise.resolve(["claude-code", "codex"] as const) });
+    defineCommand({ ...count, run: () => Promise.resolve("synced") });
+    defineCommand({ ...count, run: () => Promise.resolve(null) });
+  });
+
+  test("a result that gets past the type but JSON cannot write ends as a bug, exit 70", async () => {
+    /** A host and the host it falls back to. The type allows a cycle, which JSON cannot write. */
+    type Fallback = { host: string; next?: Fallback };
+    const cycle = defineCommand({
+      ...count,
+      run() {
+        const codex: Fallback = { host: "codex" };
+        codex.next = codex;
+        return Promise.resolve(codex);
+      },
+    });
+    const message =
+      "acmelabs hit a bug: the command's result cannot be written as JSON. Please report it at https://github.com/acmelabs-15/cli/issues";
+    expect(await runCommand(cycle, {}, frontEnd(fakeWorld()))).toEqual({
+      ok: false,
+      command: "sample count",
+      exitCode: 70,
+      durationMs: expect.any(Number),
+      error: { kind: "bug", message, issues: [] },
+    });
+    // A value typed `any` gets past the type too: JSON.parse's reviver may give any value, here a
+    // function, as an untyped library may.
+    const untyped = defineCommand({
+      ...count,
+      run: () => Promise.resolve(JSON.parse("3", () => Math.max)),
+    });
+    expect(await runCommand(untyped, {}, frontEnd(fakeWorld()))).toMatchObject({
+      exitCode: 70,
+      error: { kind: "bug", message },
+    });
+  });
+});
+
 describe("the failure kinds", () => {
   test("each kind has the exit code the spec gives it", () => {
     expect(exitCodes).toEqual({
@@ -475,18 +540,20 @@ describe("runCommand: a bad repo config", () => {
 
 describe("runCommand: the context a command runs in", () => {
   test("root, env, now and spawn come from the world; the signal from the front-end", async () => {
+    // The signal is kept here, not in the result: a result is JSON, and a signal has no JSON form.
+    let signal: AbortSignal | undefined;
     const probe = defineCommand({
       path: ["sample", "probe"],
       summary: "Report what the context holds.",
       input: z.object({}),
       async run(_input, context) {
         const spawned = await context.spawn(["git", "rev-parse", "HEAD"], { cwd: context.root });
+        ({ signal } = context);
         return {
           root: context.root,
           token: context.env.GH_TOKEN,
           now: context.now().toISOString(),
           head: spawned.stdout,
-          signal: context.signal,
         };
       },
     });
@@ -507,7 +574,7 @@ describe("runCommand: the context a command runs in", () => {
         head: "cd3db7d",
       },
     });
-    expect(outcome.ok && outcome.result.signal).toBe(caller.signal);
+    expect(signal).toBe(caller.signal);
     expect(world.calls).toEqual([
       { kind: "spawn", commandLine: ["git", "rev-parse", "HEAD"], cwd: "/work/repo" },
     ]);
@@ -941,6 +1008,31 @@ describe("runCommand: progress updates", () => {
       exitCode: 70,
       error: { kind: "bug", message },
     });
+  });
+
+  test("an update sent after a normal end does not reach the front-end: the result stays last", async () => {
+    // The command's late work, and the update that work sends.
+    const late = Promise.withResolvers<string>();
+    const sent = Promise.withResolvers<string>();
+    const push = defineCommand({
+      path: ["sample", "push"],
+      summary: "Push the tag, and report the push without waiting for it.",
+      input: z.object({}),
+      run(_input, context) {
+        // The defect: work the command does not wait for.
+        late.promise.then((text) => {
+          context.progress({ kind: "message", level: "info", text });
+          sent.resolve(text);
+        });
+        return Promise.resolve("pushed");
+      },
+    });
+    const caller = frontEnd(fakeWorld());
+    const outcome = await runCommand(push, {}, caller);
+    late.resolve("the tag is pushed");
+    expect(await sent.promise).toBe("the tag is pushed");
+    expect(outcome).toMatchObject({ ok: true, exitCode: 0, result: "pushed" });
+    expect(caller.updates).toEqual([]);
   });
 
   test("a step may start again once it has ended", async () => {

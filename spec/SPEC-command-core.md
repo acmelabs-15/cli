@@ -24,7 +24,7 @@ Acceptance: see "Success criteria".
 
 ```ts
 // packages/cli/src/command/command.ts
-export type Command<Input extends z.ZodObject, Result> = {
+export type Command<Input extends z.ZodObject, Result extends Json> = {
   /** The words that call it, such as ["version", "sync"]. */
   path: readonly string[];
   /** One line for the help, the TUI's menu and the agent guide. */
@@ -36,11 +36,12 @@ export type Command<Input extends z.ZodObject, Result> = {
   run: (input: z.infer<Input>, context: Context<z.infer<Input>>) => Promise<Result>;
 };
 
-export function defineCommand<Input extends z.ZodObject, Result>(
+export function defineCommand<Input extends z.ZodObject, Result extends Json>(
   command: Command<Input, Result>,
 ): Command<Input, Result>;
 ```
 
+- **A result is JSON** (`Json`, below), because JSON mode's result line carries it. A bigint, a function, a `Date` or no result at all is a type error. A result that gets past the type, such as one with a cycle, ends as a bug (exit 70), so exit 0 always comes with a result line.
 - **Prompts come from the input's types**, so a command declares no prompt: a string is a text prompt, an enum a select, an array of an enum a multi-select, a boolean a yes/no question. The front-ends build them.
 - **A question mid-run is an input too.** A command declares it as an optional field, and calls `context.ask("field")` when the moment comes. If the caller gave the value up front, `ask` returns it. Otherwise a front-end with a terminal asks, and every other front-end fails with exit 2, naming the flag. So every question has a flag, as ADR-0007 requires. Example: `scaffold` declares `marketplace?: boolean` and asks it once the latest tag exists.
 - **Positional data stays out of zod metadata**, because zod copies metadata into the JSON schema that the MCP server sends.
@@ -87,7 +88,12 @@ A step has a stable id (`create-repo`) and a title for people ("Create the GitHu
 ## How a command ends
 
 ```ts
-export type Outcome<Result> =
+/** A value JSON holds as it is; an object's field may be undefined, and JSON leaves it out. */
+export type Json =
+  | string | number | boolean | null
+  | readonly Json[]
+  | { readonly [field: string]: Json | undefined };
+export type Outcome<Result extends Json> =
   | { ok: true; command: string; exitCode: 0; durationMs: number; result: Result }
   | { ok: false; command: string; exitCode: ExitCode; durationMs: number; error: CommandFailure };
 export type CommandFailure = { kind: FailureKind; message: string; issues: Issue[] };
@@ -117,7 +123,7 @@ export type FrontEnd = {
 };
 
 /** Runs one command: checks the input, runs it, and turns every ending into an Outcome. */
-export function runCommand<Input extends z.ZodObject, Result>(
+export function runCommand<Input extends z.ZodObject, Result extends Json>(
   command: Command<Input, Result>,
   rawInput: unknown,
   frontEnd: FrontEnd,

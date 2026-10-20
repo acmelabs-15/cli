@@ -15,7 +15,7 @@ Phase 2 The rest of the frame
 
 - [x] 4. Progress updates, and open steps closed on a throw
 - [x] 5. Questions mid-run, and cancel
-- [ ] 6. JSON mode's lines
+- [x] 6. JSON mode's lines
 - [ ] 7. The command list and its rules
 - [ ] Checkpoint: command-core complete
 
@@ -122,13 +122,13 @@ Phase 2 The rest of the frame
 **Description:** `progressLine` and `resultLine` build JSON mode's lines in the shapes the spec gives, so `cli-frontend` and the MCP server share them. Each line is one JSON object with a `type`, and the result line carries the outcome.
 
 **Acceptance criteria:**
-- [ ] `progressLine` gives a `progress` line for a step update and a `message` line for a message, each with the command's name.
-- [ ] `resultLine` gives a `result` line with `ok`, `exitCode`, `durationMs`, and either `result` or `error` with `kind`, `message` and `issues`.
-- [ ] Each line is one line of JSON: no line break inside it.
+- [x] `progressLine` gives a `progress` line for a step update and a `message` line for a message, each with the command's name.
+- [x] `resultLine` gives a `result` line with `ok`, `exitCode`, `durationMs`, and either `result` or `error` with `kind`, `message` and `issues`.
+- [x] Each line is one line of JSON: no line break inside it.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/command`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/command`
+- [x] `bun run check` is green.
 
 **Dependencies:** 2, 4
 
