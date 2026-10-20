@@ -272,6 +272,42 @@ describe("runCommand: a command that throws a failure helper", () => {
       },
     });
   });
+
+  test("loginNeeded with the command line that fixes the login names that command line", async () => {
+    const scopes = defineCommand({
+      path: ["sample", "scopes"],
+      summary: "Check that the gh login may push workflow files.",
+      input: z.object({}),
+      async run(_input, context) {
+        const spawned = await context.spawn(["gh", "auth", "status", "--json", "hosts"]);
+        if (!spawned.stdout.includes("workflow")) {
+          throw loginNeeded("gh", "gh auth refresh -h github.com -s workflow");
+        }
+        return "may push workflow files";
+      },
+    });
+    const world = fakeWorld({
+      spawn: [
+        {
+          commandLine: ["gh", "auth", "status", "--json", "hosts"],
+          answer: { stdout: '{"hosts":{"github.com":[{"scopes":"repo"}]}}' },
+        },
+      ],
+    });
+    const outcome = await runCommand(scopes, {}, frontEnd(world));
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample scopes",
+      exitCode: 4,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "login",
+        message:
+          "gh needs a login; run gh auth refresh -h github.com -s workflow, then run the command again",
+        issues: [],
+      },
+    });
+  });
 });
 
 describe("runCommand: a command that throws anything else", () => {

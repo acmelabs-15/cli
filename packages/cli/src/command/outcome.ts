@@ -77,10 +77,11 @@ export function outsideError(message: string, issues: readonly Issue[] = []): Co
   return new CommandError("outside", message, issues);
 }
 
-/** A login to `service`, such as gh or npm, is needed: kind `login`, exit 4. */
-export function loginNeeded(service: string): CommandError {
-  return new CommandError(
-    "login",
-    `${service} needs a login; log in to ${service}, then run the command again`,
-  );
+/**
+ * A login to `service`, such as gh or npm, is needed: kind `login`, exit 4. `fix`, when given, is
+ * the command line that fixes the login, such as `gh auth login`, and the message names it.
+ */
+export function loginNeeded(service: string, fix?: string): CommandError {
+  const how = fix === undefined ? `log in to ${service}` : `run ${fix}`;
+  return new CommandError("login", `${service} needs a login; ${how}, then run the command again`);
 }

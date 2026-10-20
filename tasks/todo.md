@@ -16,7 +16,7 @@ Phase 1 The World's limits
 
 Phase 2 The tracer and the settings
 
-- [ ] 5. Tracer: a sample command gives a repo the Actions setting
+- [x] 5. Tracer: a sample command gives a repo the Actions setting
 - [ ] 6. checkLogin names the gh command that fixes the login
 - [ ] 7. A command file may check a repo name at its top
 - [ ] 8. Every repo can get Protect main
@@ -118,13 +118,13 @@ Phase 3 The other steps
 **Description:** The whole GitHub path, for one step. `names.ts`: `ownerSchema`, `repoNameSchema` and `GitHubRepo`. `gh.ts`: `ghApi`, which builds the spec's `gh api` command line (host, method, the two headers, the JSON body on stdin, `GH_PROMPT_DISABLED=1` and `GH_NO_UPDATE_NOTIFIER=1`) and reads the answer; `StepContext`; and the spec's answers-to-failure table. `settings.ts`: `actionsSetting` and `ensureActionsSetting`. A shared test helper builds `gh api` command lines and scripted answers from the real bodies in note 09.
 
 **Acceptance criteria:**
-- [ ] Through a sample command: a repo that has the setting gives a skipped step and only the GET; a repo with another setting gets a PUT with the body and a done step; a 409 ends with exit 1 and names the organization's Actions settings page.
-- [ ] Through a sample command that calls `ghApi`: gh's exit 4 and a 401 end with exit 4 naming `gh auth login`; a 404 ends with exit 2 naming the repo; a rate-limit answer, a 5xx, an answer that is not JSON, and gh not installed each end with exit 3.
-- [ ] An owner or repo name that fails the name check ends with exit 2 before any call.
+- [x] Through a sample command: a repo that has the setting gives a skipped step and only the GET; a repo with another setting gets a PUT with the body and a done step; a 409 ends with exit 1 and names the organization's Actions settings page.
+- [x] Through a sample command that calls `ghApi`: gh's exit 4 and a 401 end with exit 4 naming `gh auth login`; a 404 ends with exit 2 naming the repo; a rate-limit answer, a 5xx, an answer that is not JSON, and gh not installed each end with exit 3.
+- [x] An owner or repo name that fails the name check ends with exit 2 before any call.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/github`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/github`
+- [x] `bun run check` is green.
 
 **Dependencies:** 1
 
