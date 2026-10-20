@@ -62,7 +62,7 @@ Each step is a function that a command calls inside `run`. Each one reports one 
 
 **Agent's calls for `watchRun`, small and reversible:** one poll every 10 seconds; the run must appear within 2 minutes and complete within 30 minutes. Each is an option of the step. Reasons: gh's own 3-second watch costs about 2,400 requests per hour of the 5,000 limit, and 10 seconds with one GET costs 360. brain's runs appeared 1 to 3 seconds after a push, and the runs list carries `Cache-Control: max-age=60`, so 2 minutes covers a stale list. At either limit the step ends with exit 3 and the run's URL; the run goes on in GitHub.
 
-**Agent's call, from reports:** right after a create, GitHub can answer 404 or 409 for a few seconds (note 09, section 3.1: go-github's doc comment, gh's own clone retry). A step retries such an answer, when the step does not expect it, up to 3 times, 3 seconds apart, before it treats the answer as final. The retry is UNVERIFIED against these endpoints; `scaffold`'s acceptance run proves the sequence.
+**Agent's call, from reports:** right after a create, GitHub can answer 404 or 409 for a few seconds (note 09, section 3.1: go-github's doc comment, gh's own clone retry). A step retries such an answer, when the step does not expect it, up to 3 times, 3 seconds apart, before it treats the answer as final. Only a GET or a PUT is retried: both are idempotent, so a second one leaves GitHub as one does. A POST is never sent again, because GitHub may have applied it, and a second POST could create twice. The retry is UNVERIFIED against these endpoints; `scaffold`'s acceptance run proves the sequence.
 
 ### Protect main and the Actions setting
 

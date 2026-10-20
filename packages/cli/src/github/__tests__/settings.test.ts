@@ -9,7 +9,14 @@ import { runCommand } from "../../command/run";
 import type { Spawned } from "../../command/world";
 import { ownerSchema, repoNameSchema } from "../names";
 import { ensureActionsSetting, ensureProtectMain } from "../settings";
-import { frontEnd, ghAnswers, ghLogged, ghScripted } from "./gh-answers";
+import {
+  frontEnd,
+  ghAnswers,
+  ghLogged,
+  ghLoggedEveryTry,
+  ghScripted,
+  ghScriptedEveryTry,
+} from "./gh-answers";
 
 /** A sample command that gives a GitHub repo the Actions setting. */
 const actionsSettingCommand = defineCommand({
@@ -188,9 +195,9 @@ describe("ensureActionsSetting", () => {
     expect(world.calls).toEqual([ghLogged(read), ghLogged(write)]);
   });
 
-  test("a 404 on the GET ends the step as failed with exit 2, and makes no PUT", async () => {
+  test("a 404 on the GET that stays after every try ends the step as failed with exit 2, and makes no PUT", async () => {
     const read = { path: settingPath("acmelabs-15/nope") };
-    const world = fakeWorld({ spawn: [ghScripted(read, ghAnswers.notFound)] });
+    const world = fakeWorld({ spawn: ghScriptedEveryTry(read, ghAnswers.notFound) });
     const caller = frontEnd(world);
     const outcome = await runCommand(
       actionsSettingCommand,
@@ -202,7 +209,62 @@ describe("ensureActionsSetting", () => {
       settingStep("acmelabs-15/nope", "started"),
       settingStep("acmelabs-15/nope", "failed"),
     ]);
-    expect(world.calls).toEqual([ghLogged(read)]);
+    expect(world.calls).toEqual(ghLoggedEveryTry(read));
+  });
+});
+
+describe("ensureActionsSetting: an unexpected 404 or 409 is tried again", () => {
+  test("a 404, then a 200 with another setting, on the GET gives a done step after one 3-second wait", async () => {
+    // Right after a create, GitHub can answer 404 for a few seconds (note 09, section 3.1).
+    const { read, write } = skills;
+    const world = fakeWorld({
+      spawn: [
+        ghScripted(read, ghAnswers.notFound),
+        ghScripted(read, ghAnswers.actionsSettingNoApproval),
+        ghScripted(write, ghAnswers.noContent),
+      ],
+    });
+    const caller = frontEnd(world);
+    const outcome = await runCommand(
+      actionsSettingCommand,
+      { owner: "acmelabs-15", name: "skills" },
+      caller,
+    );
+    expect(outcome).toMatchObject({ ok: true, exitCode: 0, result: "done" });
+    expect(caller.updates).toEqual([
+      settingStep("acmelabs-15/skills", "started"),
+      settingStep("acmelabs-15/skills", "done"),
+    ]);
+    expect(world.calls).toEqual([
+      ghLogged(read),
+      { kind: "sleep", ms: 3000 },
+      ghLogged(read),
+      ghLogged(write),
+    ]);
+  });
+
+  test("a 404, then a 204, on the PUT gives a done step after one 3-second wait", async () => {
+    // A PUT is idempotent, so a second one is safe to send.
+    const { read, write } = skills;
+    const world = fakeWorld({
+      spawn: [
+        ghScripted(read, ghAnswers.actionsSettingNoApproval),
+        ghScripted(write, ghAnswers.notFound),
+        ghScripted(write, ghAnswers.noContent),
+      ],
+    });
+    const outcome = await runCommand(
+      actionsSettingCommand,
+      { owner: "acmelabs-15", name: "skills" },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({ ok: true, exitCode: 0, result: "done" });
+    expect(world.calls).toEqual([
+      ghLogged(read),
+      ghLogged(write),
+      { kind: "sleep", ms: 3000 },
+      ghLogged(write),
+    ]);
   });
 });
 
@@ -760,9 +822,29 @@ describe("ensureProtectMain", () => {
     expect(world.calls).toEqual([ghLogged(list), ghLogged(create)]);
   });
 
-  test("a 404 on the list ends with exit 2, and makes no write", async () => {
+  test("a 404 on the POST is final at once, with no wait", async () => {
+    // GitHub may have applied the POST, and a second one could make a second ruleset.
+    const { list, create } = protectCalls("acmelabs-15/cli");
+    const world = fakeWorld({
+      spawn: [ghScripted(list, ghAnswers.noRulesets), ghScripted(create, ghAnswers.notFound)],
+    });
+    const caller = frontEnd(world);
+    const outcome = await runCommand(
+      protectMainCommand,
+      { owner: "acmelabs-15", name: "cli" },
+      caller,
+    );
+    expect(outcome).toMatchObject({ ok: false, exitCode: 2, error: { kind: "input" } });
+    expect(caller.updates).toEqual([
+      protectStep("acmelabs-15/cli", "started"),
+      protectStep("acmelabs-15/cli", "failed"),
+    ]);
+    expect(world.calls).toEqual([ghLogged(list), ghLogged(create)]);
+  });
+
+  test("a 404 on the list that stays after every try ends with exit 2, and makes no write", async () => {
     const { list } = protectCalls("acmelabs-15/nope");
-    const world = fakeWorld({ spawn: [ghScripted(list, ghAnswers.notFound)] });
+    const world = fakeWorld({ spawn: ghScriptedEveryTry(list, ghAnswers.notFound) });
     const caller = frontEnd(world);
     const outcome = await runCommand(
       protectMainCommand,
@@ -774,7 +856,7 @@ describe("ensureProtectMain", () => {
       protectStep("acmelabs-15/nope", "started"),
       protectStep("acmelabs-15/nope", "failed"),
     ]);
-    expect(world.calls).toEqual([ghLogged(list)]);
+    expect(world.calls).toEqual(ghLoggedEveryTry(list));
   });
 
   test("a repo name that fails the name check ends with exit 2 before the step starts, and makes no call", async () => {

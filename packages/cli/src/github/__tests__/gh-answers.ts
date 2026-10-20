@@ -63,6 +63,24 @@ export function ghScripted(call: GhCall, answer: Spawned): ScriptedSpawn {
   return { commandLine: ghCommandLine(call), answer };
 }
 
+/**
+ * The scripted answers to every try of a call that GitHub answers with the same unexpected 404 or
+ * 409 each time: 4 answers, for the first try and the 3 tries again of the spec's "What each step
+ * does". The answer becomes final after the last try.
+ */
+export function ghScriptedEveryTry(call: GhCall, answer: Spawned): ScriptedSpawn[] {
+  return Array.from({ length: 4 }, () => ghScripted(call, answer));
+}
+
+/**
+ * fakeWorld's log entries for every try of a call that GitHub answers with the same unexpected 404
+ * or 409 each time: the call, then a 3-second sleep and the call again, three times.
+ */
+export function ghLoggedEveryTry(call: GhCall): WorldCall[] {
+  const retry: WorldCall[] = [{ kind: "sleep", ms: 3000 }, ghLogged(call)];
+  return [ghLogged(call), ...retry, ...retry, ...retry];
+}
+
 /** gh's answer to an HTTP error: GitHub's error body on stdout, gh's line on stderr, and exit 1. */
 function httpError(body: string, stderr: string): Spawned {
   return { code: 1, stdout: body, stderr };

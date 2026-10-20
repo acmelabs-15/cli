@@ -20,7 +20,7 @@ Phase 2 The tracer and the settings
 - [ ] 6. checkLogin names the gh command that fixes the login
 - [ ] 7. A command file may check a repo name at its top
 - [x] 8. Every repo can get Protect main
-- [ ] 9. A step retries an unexpected 404 or 409
+- [x] 9. A step retries an unexpected 404 or 409
 - [ ] Checkpoint: the tracer and the settings
 
 Phase 3 The other steps
@@ -192,12 +192,12 @@ Phase 3 The other steps
 **Description:** `ghApi` takes the statuses a call expects. A 404 or 409 that the call does not expect is tried again up to 3 times, 3 seconds apart, through `context.sleep`, before it becomes final. The settings steps use it.
 
 **Acceptance criteria:**
-- [ ] Through a sample command: a 404, then a 200, on the Actions setting's GET gives a done step after one 3-second sleep in `calls`.
-- [ ] Four 404s end with exit 2 after three sleeps; a status the call expects, and any status other than 404 and 409, is never tried again.
+- [x] Through a sample command: a 404, then a 200, on the Actions setting's GET gives a done step after one 3-second sleep in `calls`.
+- [x] Four 404s end with exit 2 after three sleeps; a status the call expects, and any status other than 404 and 409, is never tried again.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/github`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/github`
+- [x] `bun run check` is green.
 
 **Dependencies:** 4, 5
 

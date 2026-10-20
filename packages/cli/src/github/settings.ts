@@ -62,7 +62,13 @@ export async function ensureActionsSetting(
     context.progress({ ...step, status: "skipped", detail: "already set" });
     return "skipped";
   }
-  const written = await ghApi(context, { method: "PUT", path, body: actionsSetting });
+  // A 409 here is the organization's answer, not a new repo's delay, so it comes back at once.
+  const written = await ghApi(context, {
+    method: "PUT",
+    path,
+    body: actionsSetting,
+    expected: [409],
+  });
   if (!written.ok && written.status === 409) {
     throw problem(
       `the ${repo.owner} organization forbids the Actions setting on ${fullName(repo)}; an owner of the organization turns on "Allow GitHub Actions to create and approve pull requests" at ${orgActionsPage(repo.owner)}, then runs the command again`,

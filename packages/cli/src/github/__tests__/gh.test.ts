@@ -6,9 +6,17 @@ import type { Context } from "../../command/command";
 import { defineCommand } from "../../command/command";
 import { fakeWorld } from "../../command/fake-world";
 import { runCommand } from "../../command/run";
-import type { StepContext } from "../gh";
+import type { GhRequest, StepContext } from "../gh";
 import { answerOrThrow, ghApi, readBody, repoPath } from "../gh";
-import { frontEnd, ghAnswers, ghCommandLine, ghLogged, ghScripted } from "./gh-answers";
+import {
+  frontEnd,
+  ghAnswers,
+  ghCommandLine,
+  ghLogged,
+  ghLoggedEveryTry,
+  ghScripted,
+  ghScriptedEveryTry,
+} from "./gh-answers";
 
 /** A sample command that reads one of a repo's resources through ghApi, and gives its body. */
 const read = defineCommand({
@@ -40,6 +48,13 @@ describe("StepContext", () => {
   });
 });
 
+describe("GhRequest", () => {
+  test("expected names only a 404 or a 409, the statuses that ghApi tries again", () => {
+    // A type test: tsc checks it in `bun run typecheck`.
+    expectTypeOf<GhRequest["expected"]>().toEqualTypeOf<readonly (404 | 409)[] | undefined>();
+  });
+});
+
 describe("ghApi: an ok answer", () => {
   test("gives GitHub's JSON body, from one gh api call with gh's two variables", async () => {
     const world = fakeWorld({ spawn: [ghScripted(brainSetting.call, ghAnswers.actionsSetting)] });
@@ -55,8 +70,84 @@ describe("ghApi: an ok answer", () => {
   });
 });
 
-describe("ghApi: an answer that is not ok goes back to the step", () => {
-  /** A sample command that reads a repo's latest tag, and gives a failed answer as its result. */
+describe("ghApi: an unexpected 404 or 409 is tried again", () => {
+  test.each([
+    ["a 404", ghAnswers.notFound],
+    ["a 409", ghAnswers.repositoryEmpty],
+  ])("%s, then a 200, gives the 200 after one 3-second wait", async (_case, first) => {
+    const world = fakeWorld({
+      spawn: [
+        ghScripted(brainSetting.call, first),
+        ghScripted(brainSetting.call, ghAnswers.actionsSetting),
+      ],
+    });
+    const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
+    expect(outcome).toMatchObject({
+      ok: true,
+      result: { default_workflow_permissions: "read", can_approve_pull_request_reviews: true },
+    });
+    expect(world.calls).toEqual([
+      ghLogged(brainSetting.call),
+      { kind: "sleep", ms: 3000 },
+      ghLogged(brainSetting.call),
+    ]);
+  });
+
+  test("four 409s end with exit 3 after three 3-second waits, as the table's other answers", async () => {
+    const world = fakeWorld({
+      spawn: ghScriptedEveryTry(brainSetting.call, ghAnswers.repositoryEmpty),
+    });
+    const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
+    expect(outcome).toMatchObject({
+      exitCode: 3,
+      error: {
+        kind: "outside",
+        message:
+          "GitHub answered GET repos/acmelabs-15/brain/actions/permissions/workflow with HTTP 409: Git Repository is empty.",
+      },
+    });
+    expect(world.calls).toEqual(ghLoggedEveryTry(brainSetting.call));
+  });
+
+  test.each([
+    ["a 401", ghAnswers.badCredentials, 4],
+    ["a 403", ghAnswers.orgAdminNeeded, 2],
+    ["a rate-limit 403", ghAnswers.rateLimited, 3],
+    ["a rate-limit 429", ghAnswers.secondaryRateLimited, 3],
+    ["a 451", ghAnswers.accessBlocked, 3],
+    ["a 502", ghAnswers.serverError, 3],
+  ])("%s is final at once: only a 404 or a 409 is tried again", async (_case, answer, exitCode) => {
+    const world = fakeWorld({ spawn: [ghScripted(brainSetting.call, answer)] });
+    const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
+    expect(outcome).toMatchObject({ ok: false, exitCode });
+    expect(world.calls).toEqual([ghLogged(brainSetting.call)]);
+  });
+
+  test("a cancel during a wait ends with exit 130, and the call goes to gh no more", async () => {
+    const world = fakeWorld({ spawn: ghScriptedEveryTry(brainSetting.call, ghAnswers.notFound) });
+    const cancel = new AbortController();
+    // The user presses Ctrl+C as the first wait starts.
+    const cancelledAtSleep = {
+      ...world,
+      sleep(ms: number, options?: { signal?: AbortSignal }) {
+        cancel.abort();
+        return world.sleep(ms, options);
+      },
+    };
+    const outcome = await runCommand(read, brainSetting.input, {
+      ...frontEnd(cancelledAtSleep),
+      signal: cancel.signal,
+    });
+    expect(outcome).toMatchObject({ ok: false, exitCode: 130, error: { kind: "cancelled" } });
+    expect(world.calls).toEqual([ghLogged(brainSetting.call), { kind: "sleep", ms: 3000 }]);
+  });
+});
+
+describe("ghApi: an expected answer that is not ok goes back to the step at once", () => {
+  /**
+   * A sample command that reads a repo's latest tag, and gives a failed answer as its result. It
+   * expects a 404, no such tag, and a 409, an empty repo, so neither is tried again.
+   */
   const latestTag = defineCommand({
     path: ["sample", "latest-tag"],
     summary: "Read a GitHub repo's latest tag.",
@@ -65,7 +156,10 @@ describe("ghApi: an answer that is not ok goes back to the step", () => {
       name: z.string().describe("The repo's name."),
     }),
     async run(input, context) {
-      const answer = await ghApi(context, { path: repoPath(input, "git/ref/tags/latest") });
+      const answer = await ghApi(context, {
+        path: repoPath(input, "git/ref/tags/latest"),
+        expected: [404, 409],
+      });
       return answer.ok
         ? "found"
         : { status: answer.status, message: answer.message, body: answer.body };
@@ -95,7 +189,7 @@ describe("ghApi: an answer that is not ok goes back to the step", () => {
     expect(world.calls).toEqual([ghLogged(call)]);
   });
 
-  test("a 404, no such tag, comes back with its status", async () => {
+  test("a 404, no such tag, comes back with its status, and no wait", async () => {
     const call = { path: "repos/acmelabs-15/cli/git/ref/tags/latest" };
     const world = fakeWorld({ spawn: [ghScripted(call, ghAnswers.notFound)] });
     const outcome = await runCommand(
@@ -104,12 +198,13 @@ describe("ghApi: an answer that is not ok goes back to the step", () => {
       frontEnd(world),
     );
     expect(outcome).toMatchObject({ ok: true, result: { status: 404, message: "Not Found" } });
+    expect(world.calls).toEqual([ghLogged(call)]);
   });
 });
 
 describe("answerOrThrow: an answer that the step does not expect", () => {
-  test("a 404 ends with exit 2, naming the repo and the gh login", async () => {
-    const world = fakeWorld({ spawn: [ghScripted(brainSetting.call, ghAnswers.notFound)] });
+  test("four 404s end with exit 2 after three 3-second waits, naming the repo and the gh login", async () => {
+    const world = fakeWorld({ spawn: ghScriptedEveryTry(brainSetting.call, ghAnswers.notFound) });
     const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
     expect(outcome).toEqual({
       ok: false,
@@ -123,19 +218,18 @@ describe("answerOrThrow: an answer that the step does not expect", () => {
         issues: [],
       },
     });
+    expect(world.calls).toEqual(ghLoggedEveryTry(brainSetting.call));
   });
 
   test("an error body with no status gets its status from gh's line on stderr", async () => {
     // GitHub's error bodies carried `status` in every probe of note 09, and older reports show
     // bodies without it; gh's stderr line names the HTTP code in either case (note 09, 1.2).
     const world = fakeWorld({
-      spawn: [
-        ghScripted(brainSetting.call, {
-          code: 1,
-          stdout: '{"message":"Not Found","documentation_url":"https://docs.github.com/rest"}',
-          stderr: "gh: Not Found (HTTP 404)\n",
-        }),
-      ],
+      spawn: ghScriptedEveryTry(brainSetting.call, {
+        code: 1,
+        stdout: '{"message":"Not Found","documentation_url":"https://docs.github.com/rest"}',
+        stderr: "gh: Not Found (HTTP 404)\n",
+      }),
     });
     const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
     expect(outcome).toMatchObject({ exitCode: 2, error: { kind: "input" } });
@@ -246,7 +340,7 @@ describe("readBody: an ok answer's body, read with a schema", () => {
   });
 
   test("an answer that is not ok ends with the table's failure, as answerOrThrow gives it", async () => {
-    const world = fakeWorld({ spawn: [ghScripted(brainRulesets, ghAnswers.notFound)] });
+    const world = fakeWorld({ spawn: ghScriptedEveryTry(brainRulesets, ghAnswers.notFound) });
     const outcome = await runCommand(
       rulesetNames,
       { owner: "acmelabs-15", name: "brain" },

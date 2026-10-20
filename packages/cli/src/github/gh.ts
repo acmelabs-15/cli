@@ -13,8 +13,26 @@ export type StepContext = Omit<Context<unknown>, "ask">;
 /** The HTTP methods the steps send. No step deletes. */
 export type Method = "GET" | "POST" | "PUT";
 
-/** One REST call through gh: the method (GET when unset), the API path, and a write's JSON body. */
-export type GhRequest = { method?: Method; path: string; body?: Json };
+/**
+ * The two statuses that GitHub can give for a few seconds right after a create, before the new repo
+ * reaches every server (note 09, section 3.1). ghApi tries a call again after either one, unless
+ * the call expects it.
+ */
+export type RetriedStatus = 404 | 409;
+
+/**
+ * One REST call through gh: the method (GET when unset), the API path, a write's JSON body, and
+ * `expected`: each 404 or 409 that the step reads itself, such as 404 for "no such tag". A 404 or
+ * 409 named in `expected` comes back at once. One that is not named is tried again first, on a
+ * GET or a PUT (see `ghApi`). Every other status comes back at once in any case, so a step reads a
+ * 422, say, with no entry here.
+ */
+export type GhRequest = {
+  method?: Method;
+  path: string;
+  body?: Json;
+  expected?: readonly RetriedStatus[];
+};
 
 /**
  * GitHub's answer to one call, ok or not, with the call's method and path. An ok answer (2xx) has
@@ -119,15 +137,14 @@ function ghCall(
   return [[...read, "--input", "-"], { env: ghEnv, stdin: JSON.stringify(body) }];
 }
 
-/**
- * Makes one REST call through `gh api` and reads GitHub's answer. gh with no login at all is a
- * login failure, and an answer that is not JSON is an outside failure; every HTTP answer comes
- * back, ok or not. Only gh.ts starts gh for the API.
- */
-export async function ghApi(context: StepContext, request: GhRequest): Promise<GhAnswer> {
-  const method = request.method ?? "GET";
-  const { path } = request;
-  const spawned = await context.spawn(...ghCall(method, path, request.body));
+/** Sends one call to gh once and reads GitHub's answer, as `ghApi` describes. */
+async function callOnce(
+  context: StepContext,
+  method: Method,
+  path: string,
+  body: Json | undefined,
+): Promise<GhAnswer> {
+  const spawned = await context.spawn(...ghCall(method, path, body));
   // gh exits 4 when it has no login at all, before it calls GitHub (note 09, section 1.3).
   if (spawned.code === 4) {
     throw loginNeeded("gh", ghLogin);
@@ -145,6 +162,46 @@ export async function ghApi(context: StepContext, request: GhRequest): Promise<G
     throw unreadable(`${method} ${path}`, spawned);
   }
   return { ok: false, method, path, status, message: messageOf(answer), body: answer };
+}
+
+/** The statuses of `RetriedStatus`, which ghApi checks an answer against. */
+const retriedStatuses: ReadonlySet<number> = new Set<RetriedStatus>([404, 409]);
+
+/** How often ghApi tries a call again, and how long it waits before each try, as the spec says. */
+const retry = { times: 3, waitMs: 3000 } as const;
+
+/**
+ * Whether ghApi tries a call again after this answer: a 404 or 409 that the call does not expect,
+ * to a GET or a PUT. Both are idempotent (RFC 9110, section 9.2.2): a second one leaves GitHub as
+ * one does. A POST is never sent again, because GitHub may have applied it, and a second POST
+ * could create twice.
+ */
+function triesAgainAfter(answer: GhAnswer, expected: readonly number[]): boolean {
+  return (
+    !answer.ok &&
+    answer.method !== "POST" &&
+    retriedStatuses.has(answer.status) &&
+    !expected.includes(answer.status)
+  );
+}
+
+/**
+ * Makes one REST call through `gh api` and reads GitHub's answer. gh with no login at all is a
+ * login failure, and an answer that is not JSON is an outside failure; every HTTP answer comes
+ * back, ok or not. A 404 or 409 that the call does not expect is tried again up to 3 times, 3
+ * seconds apart, before it comes back: right after a create, GitHub can give either for a few
+ * seconds. Each wait goes through `context.sleep`, so a cancel stops it. Only gh.ts starts gh for
+ * the API.
+ */
+export async function ghApi(context: StepContext, request: GhRequest): Promise<GhAnswer> {
+  const method = request.method ?? "GET";
+  const { path, body, expected = [] } = request;
+  let answer = await callOnce(context, method, path, body);
+  for (let tried = 0; tried < retry.times && triesAgainAfter(answer, expected); tried += 1) {
+    await context.sleep(retry.waitMs);
+    answer = await callOnce(context, method, path, body);
+  }
+  return answer;
 }
 
 /** An answer that is not ok. */
