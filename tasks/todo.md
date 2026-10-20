@@ -142,7 +142,7 @@ Phase 2 The rest of the frame
 
 **Acceptance criteria:**
 - [x] The rules are tested: unique paths; no path is the start of another; a one-line summary; a description on every input field; every positional names a required field.
-- [x] A test reads each command file's import lines and fails on any import beyond zod, `command-core` and `repo-model`.
+- [x] A test reads each command file's import lines and fails on any import beyond zod, `command-core` and `repo-model` (Node built-ins were added after a load-time measurement; see the spec).
 - [x] One changeset for `@acmelabs/cli`, type `minor`, describes the exit codes and JSON mode's lines.
 
 **Verification:**
