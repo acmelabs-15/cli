@@ -1,0 +1,20 @@
+{
+  "extraKnownMarketplaces": {
+    "addy-agent-skills": {
+      "source": {
+        "source": "github",
+        "repo": "addyosmani/agent-skills"
+      }
+    },
+    "acmelabs": {
+      "source": {
+        "source": "github",
+        "repo": "acmelabs-15/marketplace"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "agent-skills@addy-agent-skills": true,
+    "brain@acmelabs": true
+  }
+}

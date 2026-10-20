@@ -1,0 +1,53 @@
+# GitHub Actions, shared configs and plugin validation
+
+What this is: research on reusable workflows, pinning, tokens, the oxlint and oxfmt config formats, tsconfig `extends`, and `claude plugin validate`. Researched on 2026-10-20. Produced by a research agent of the spec session, read-only, with Exa and the docs.github.com article API. The docs.github.com, oxc.rs and code.claude.com pages show no page dates. Where a date matters, it is the date of the issue, PR or changelog entry.
+
+## 1. Reusable workflows
+
+- **Call syntax:** a job-level `uses: {owner}/{repo}/.github/workflows/{file}@{ref}`. `{ref}` can be a SHA, a tag or a branch; a tag wins over a branch of the same name. Expressions are not allowed there, and the file cannot sit in a subdirectory of `workflows/`. https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows
+- **The `.github` repo is not special for reusable workflows.** Any repo works. It is special only for `workflow-templates/` and for default community health files, which require it to be public. https://docs.github.com/en/actions/how-tos/reuse-automations/create-workflow-templates · https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/creating-a-default-community-health-file
+- **Access:** a public caller can call public repos only. The org policy must allow public reusable workflows, and the caller's Actions settings must allow them. https://docs.github.com/en/actions/reference/workflows-and-actions/reusable-workflows
+- **Inputs and secrets:** inputs are typed (boolean, number or string). `secrets: inherit` works only within the same org or enterprise. Secrets pass to the directly called workflow only. Workflow-level `env` does not propagate. (same reuse-workflows page)
+- **Permissions:** the calling job's `permissions` apply. If the job sets none, the default token permissions apply. The called workflow can only downgrade them, never elevate. (reusable-workflows reference)
+- **Which repo it acts on:** the `github` context is the caller's, and the called workflow gets the caller's `github.token`. `actions/checkout` defaults to `${{ github.repository }}`, so it checks out the caller. `changesets/action` defaults its token to `github.token`. So the called workflow can open the PR and push tags in the caller repo. This last step is an inference from the docs; it was not run. https://github.com/actions/checkout/blob/main/action.yml · https://github.com/changesets/action/blob/main/action.yml
+- **Repo setting for the PR:** "Allow GitHub Actions to create and approve pull requests" must be on, at org or repo level. https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository
+- **Limits:** at most 10 levels (the caller plus 9 nested), no loops, and at most 50 unique reusable workflows per caller file.
+- **Re-runs:** "re-run failed jobs" uses the SHA of the first attempt; "re-run all jobs" resolves the ref again.
+- **How the called workflow finds its own ref:** `github.workflow_ref` and `github.workflow_sha` point to the caller. Use the new `job.workflow_ref`, `job.workflow_sha`, `job.workflow_repository` and `job.workflow_file_path` (added Apr 2026; not on GHES). The docs give this example: `actions/checkout` with `repository: ${{ job.workflow_repository }}` and `ref: ${{ job.workflow_sha }}`. The older `github.job_workflow_sha` never worked; it exists only as an OIDC claim. https://docs.github.com/en/actions/reference/workflows-and-actions/contexts · https://github.com/actions/runner/issues/2417 · https://docs.github.com/en/actions/reference/security/oidc
+
+## 2. Pinning
+
+- **GitHub's guidance:** the strongest option is a workflow dependency lockfile, `.github/workflows/actions.lock`, made by `gh actions-lock`. It is in public preview. It covers transitive actions, but a reusable workflow is covered by the lockfile of the repo that defines it. Without a lockfile, pin to the full SHA. Use a tag only if you trust the creator; branches are not recommended. The same rules apply to reusable workflows. https://docs.github.com/en/actions/reference/security/secure-use · https://docs.github.com/en/actions/concepts/security/workflow-dependency-lockfiles
+- **Dependabot (`github-actions` ecosystem):** it updates actions and reusable workflows referenced as `owner/repo@...`. It ignores local `./` refs. It updates a same-line comment such as `@<sha> # v1.2.3`. If the SHA has no tag, it moves to the latest commit. https://docs.github.com/en/code-security/reference/supply-chain-security/supported-ecosystems-and-repositories · https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/auto-update-actions
+- **Renovate:** reusable-workflow calls get `depType: workflow`. It updates SHA pins that carry a version comment, and skips bare SHAs without one. `helpers:pinGitHubActionDigests` does the pinning. Support for `actions.lock` is experimental. https://docs.renovatebot.com/modules/manager/github-actions/
+- **A moving `v1` tag plus immutable tags:** this is GitHub's documented pattern. A GitHub release creates an immutable `vX.Y.Z` tag. A plain git tag with no release stays movable, so you force-push it. https://docs.github.com/en/actions/how-tos/create-and-publish-actions/using-immutable-releases-and-tags-to-manage-your-actions-releases
+- **Immutable releases:** generally available since 2025-10-28, enabled per repo or org. The tag is locked and cannot be moved or deleted, the assets are locked, and an attestation is created. **Risk for the current design:** if a `latest` release exists in a repo with immutability on, its tag cannot be force-moved. Keep `latest` as a plain tag with no release. https://github.blog/changelog/2025-10-28-immutable-releases-are-now-generally-available/ · https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases
+
+## 3. Tags and tokens
+
+- **Confirmed:** events from `GITHUB_TOKEN` (push, tag) do not start new workflow runs. The exceptions are `workflow_dispatch` and `repository_dispatch`. **New behaviour:** a PR that `GITHUB_TOKEN` opens or updates now starts `pull_request` runs in an approval-required state. So CI on the "Version Packages" PR needs a manual approval unless a GitHub App token or a PAT opens it. https://docs.github.com/en/actions/concepts/security/github_token
+- **Permissions:** `contents: write` covers creating a release and pushing or force-pushing a tag. `changesets/action` also needs `pull-requests: write`. https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
+- **Caveat:** "Create a release" fails with 404 or 403 for `GITHUB_TOKEN` if the target commit adds or changes files under `.github/workflows/` relative to the default branch. https://docs.github.com/en/rest/releases/releases
+
+## 4. oxlint and oxfmt
+
+- **Current versions:** oxlint 1.89.0 and oxfmt 0.74.0, both published 2026-10-19 (npm registry).
+- **oxlint config files:** `.oxlintrc.json`, `.oxlintrc.jsonc`, `oxlint.config.ts` or `oxlint.config.mts`. https://oxc.rs/docs/guide/usage/linter/config.html
+- **oxlint `extends` in JSON:** relative file paths only. The docs say "Package imports are not supported in the `.oxlintrc.json` format". A relative path into `./node_modules/...` should work as a file path, but that is UNVERIFIED.
+- **oxlint `extends` in TS:** `extends: [importedObject]`, and the docs show importing it from a shared package. **Caveat:** only `rules`, `plugins` and `overrides` are inherited. `categories`, `env`, `settings`, `ignorePatterns` and `options` are not. https://oxc.rs/docs/guide/usage/linter/nested-config.html
+- **oxfmt config files:** `.oxfmtrc.json`, `.oxfmtrc.jsonc`, `oxfmt.config.ts` or `oxfmt.config.mts`. https://oxc.rs/docs/guide/usage/formatter/config.html
+- **oxfmt has no `extends`, by design.** The maintainers closed the request on 2026-04-07. Share config by importing it in `oxfmt.config.ts` and spreading it, or by importing JSON `with { type: "json" }`. https://github.com/oxc-project/oxc/issues/16394
+- **Runtime caveat for TS configs (relevant to Pure Bun):** the docs require Node 22.18+ or 24+, through the npm package. Under `bun run`, the bin used whatever Node was on PATH (https://github.com/oxc-project/oxc/issues/20695). Whether the TS configs load under `bunx --bun` with no Node installed is UNVERIFIED.
+
+## 5. tsconfig
+
+- **`extends`:** accepts a package specifier with Node-style resolution. TypeScript 5.0+ accepts an array, where later entries win. `references` is not inherited, and `files`, `include` and `exclude` are overwritten. https://www.typescriptlang.org/tsconfig/extends.html · https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-0.html
+- **Bun caveat:** Bun's runtime and bundler follow only relative `extends`. They silently drop package specifiers and arrays, so inherited `paths`, `jsx` and decorator flags are lost. `tsc` type-checking is not affected. The tracking issue is open as of 2026-10-16, and the fix PR is still open. Bun's latest version is 1.4.3. https://github.com/oven-sh/bun/issues/6326 · https://github.com/oven-sh/bun/pull/40823
+
+## 6. Claude Code plugins (code.claude.com)
+
+- **`claude plugin validate <path>`:** checks a plugin, a marketplace, or component directories. Exit codes are 0 (pass), 1 (fail) and 2 (validator error). There is also a `--json` flag (v2.1.259+). https://code.claude.com/docs/en/plugins/cli-reference
+- **`--strict`:** turns warnings into errors, so unknown fields and missing metadata fail the run. Example warnings are `Unknown field`, "No marketplace description provided", and a `version` mismatch between the entry and `plugin.json`. https://code.claude.com/docs/en/plugins/marketplace-reference
+- **`url` source:** has fields `url`, `ref` and `sha`. A `.git` suffix is not required. `ref` is a branch or tag, so `"ref": "latest"` is valid. `sha` must be a full 40-character lowercase SHA; when both are set, Claude Code checks out `sha`.
+- **Entry `version`:** optional; only `name` and `source` are required. Version resolves from `plugin.json`, then the entry, then the 12-character commit SHA. If you omit it everywhere, users follow commits. If a fixed version stays the same while `latest` moves, users stay on their cached copy. Do not set it in both places. https://code.claude.com/docs/en/plugins/loading · https://code.claude.com/docs/en/plugins/host-marketplace
+- **Tag naming:** `claude plugin tag` creates `<name>--v<version>` tags, and plugin dependency version ranges resolve against that naming. The org's plain `v<version>` tags would not match it.
