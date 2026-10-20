@@ -579,7 +579,7 @@ describe("ensureRepo: GitHub refuses the create", () => {
       error: {
         kind: "outside",
         message:
-          "GitHub answered POST orgs/acmelabs-15/repos with HTTP 422: Repository creation failed.",
+          "GitHub answered POST orgs/acmelabs-15/repos with HTTP 422: Repository creation failed. (visibility is invalid)",
       },
     });
   });

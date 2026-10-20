@@ -286,6 +286,65 @@ function nameTaken(body: Json): boolean {
   );
 }
 
+/** The most characters of one text from gh or GitHub that a failure message shows. */
+const shownChars = 300;
+
+/**
+ * A text from gh or GitHub, as a failure message shows it: on one line, cut at 300 characters.
+ * Each run of control, format and line-separator characters becomes one space, so no line break,
+ * escape sequence or bidi mark reaches the terminal. Such a text is untrusted: GitHub's can echo
+ * what a request sent, and gh's can hold an answer's body.
+ */
+export function shownText(text: string): string {
+  const line = text.replaceAll(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+/gu, " ").trim();
+  // Cut by code points, so the cut never splits a character in two.
+  const characters = [...line];
+  return characters.length <= shownChars ? line : `${characters.slice(0, shownChars).join("")}...`;
+}
+
+/** An item of GitHub's `errors`, as its text: a text itself, or an object's `message`. */
+function errorText(item: Json | undefined): string | undefined {
+  if (typeof item === "string") {
+    return item;
+  }
+  return isJsonObject(item) && typeof item.message === "string" ? item.message : undefined;
+}
+
+/**
+ * The first error with a text in GitHub's error body, as `shownText` gives it: `errors` as one
+ * text, or the first item of the `errors` list that is a text or an object with a `message`, as gh
+ * reads them (`parseErrorResponse` in `pkg/cmd/api/api.go` at v2.98.0). A 422 names its cause
+ * there, such as "No commits between main and add-brain", while its message says only "Validation
+ * Failed". Undefined when the body has none.
+ */
+function firstErrorOf(body: Json): string | undefined {
+  const errors = isJsonObject(body) ? body.errors : undefined;
+  let items: readonly (Json | undefined)[] = [];
+  if (typeof errors === "string") {
+    items = [errors];
+  } else if (Array.isArray(errors)) {
+    items = errors;
+  }
+  for (const item of items) {
+    const text = shownText(errorText(item) ?? "");
+    if (text !== "") {
+      return text;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * GitHub's message in an answer, as a failure shows it: the message, then the body's first error
+ * in brackets when it has one, such as `Validation Failed (No commits between main and add-brain)`,
+ * each as `shownText` gives it.
+ */
+function messageWithError(answer: FailedAnswer): string {
+  const message = shownText(answer.message);
+  const first = firstErrorOf(answer.body);
+  return first === undefined ? message : `${message} (${first})`;
+}
+
 /**
  * The failure for an answer that a step does not expect, by the spec's table "GitHub's answers and
  * the failure kinds". gh does not tell the login, so a message that names it says "the gh login".
@@ -294,16 +353,18 @@ function nameTaken(body: Json): boolean {
  * write names the access, and only a 404 on a read says that GitHub found no repo. A 422 "name
  * already exists" comes from a create whose name another run or a person took after the step's
  * read, or a repo that the login cannot see: an input failure, exit 2. Any other 422 is an outside
- * failure, as the table's other answers are.
+ * failure, as the table's other answers are. A message that names GitHub's message names the
+ * body's first error too, where a 422 says what failed.
  */
 function failureFor(answer: FailedAnswer, repo: GitHubRepo): CommandError {
   const call = `${answer.method} ${answer.path}`;
+  const said = messageWithError(answer);
   if (answer.status === 401) {
     return loginNeeded("gh", ghLogin);
   }
   if (rateLimited(answer)) {
     return outsideError(
-      `GitHub's rate limit stopped ${call}; wait, then run the command again (HTTP ${answer.status}): ${answer.message}`,
+      `GitHub's rate limit stopped ${call}; wait, then run the command again (HTTP ${answer.status}): ${said}`,
     );
   }
   if (answer.missingScope !== undefined) {
@@ -321,7 +382,7 @@ function failureFor(answer: FailedAnswer, repo: GitHubRepo): CommandError {
   }
   if (answer.status === 403) {
     return inputError(
-      `GitHub refused ${call} for the gh login, which needs more access to ${fullName(repo)} (HTTP 403): ${answer.message}`,
+      `GitHub refused ${call} for the gh login, which needs more access to ${fullName(repo)} (HTTP 403): ${said}`,
     );
   }
   if (answer.status === 422 && nameTaken(answer.body)) {
@@ -329,7 +390,7 @@ function failureFor(answer: FailedAnswer, repo: GitHubRepo): CommandError {
       `GitHub refused ${call} for the gh login: a repo named ${fullName(repo)} already exists, made a moment ago by another run or a person, or hidden from the login (HTTP 422); run the command again, or pick another name`,
     );
   }
-  return outsideError(`GitHub answered ${call} with HTTP ${answer.status}: ${answer.message}`);
+  return outsideError(`GitHub answered ${call} with HTTP ${answer.status}: ${said}`);
 }
 
 /**

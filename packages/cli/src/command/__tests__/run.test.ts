@@ -308,6 +308,40 @@ describe("runCommand: a command that throws a failure helper", () => {
       },
     });
   });
+
+  test("loginNeeded with several ways to fix the login and a reason names each way, then the reason", async () => {
+    const tokenCheck = defineCommand({
+      path: ["sample", "token-check"],
+      summary: "Check the token that gh reads from GH_TOKEN.",
+      input: z.object({}),
+      async run(_input, context) {
+        const spawned = await context.spawn(["gh", "auth", "status", "--json", "hosts"]);
+        if (spawned.code === 0) {
+          throw loginNeeded("gh", {
+            ways: ["replace the token in GH_TOKEN", "clear GH_TOKEN and run gh auth login"],
+            reason: "HTTP 401: Bad credentials",
+          });
+        }
+        return "the token works";
+      },
+    });
+    const world = fakeWorld({
+      spawn: [{ commandLine: ["gh", "auth", "status", "--json", "hosts"], answer: {} }],
+    });
+    const outcome = await runCommand(tokenCheck, {}, frontEnd(world));
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample token-check",
+      exitCode: 4,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "login",
+        message:
+          "gh needs a login; replace the token in GH_TOKEN, or clear GH_TOKEN and run gh auth login, then run the command again: HTTP 401: Bad credentials",
+        issues: [],
+      },
+    });
+  });
 });
 
 describe("runCommand: a command that throws anything else", () => {

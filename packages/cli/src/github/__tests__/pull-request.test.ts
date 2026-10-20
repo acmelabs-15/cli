@@ -375,7 +375,7 @@ describe("openPullRequest: a PR that opens between the read and the POST", () =>
       error: {
         kind: "outside",
         message:
-          "GitHub answered POST repos/acmelabs-15/marketplace/pulls with HTTP 422: Validation Failed",
+          "GitHub answered POST repos/acmelabs-15/marketplace/pulls with HTTP 422: Validation Failed (No commits between main and add-brain)",
       },
     });
     expect(caller.updates).toEqual([

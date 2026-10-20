@@ -261,6 +261,18 @@ function withScopeLine(answer: Spawned, scope: string): Spawned {
   return { ...answer, stderr: `${answer.stderr}${line}` };
 }
 
+/**
+ * Built: gh's answer to a 422 whose error body adds these fields to GitHub's "Validation Failed":
+ * the body on stdout, and gh's line for it, which leaves out the errors (note 09, section 1.2).
+ */
+function validationFailed(fields: object): Spawned {
+  return {
+    code: 1,
+    stdout: JSON.stringify({ message: "Validation Failed", ...fields, status: "422" }),
+    stderr: "gh: Validation Failed (HTTP 422)\n",
+  };
+}
+
 describe("answerOrThrow: a scope that the gh login lacks", () => {
   test("a 403 for which gh names a missing scope ends with exit 4, naming gh auth refresh with that scope", async () => {
     // Real: the org's Actions setting with a token that lacks admin:org (note 09, section 2.5).
@@ -470,6 +482,200 @@ describe("answerOrThrow: a 404 on a write names the access, not a missing repo",
       },
     });
     expect(world.calls).toEqual([ghLogged(call)]);
+  });
+});
+
+describe("answerOrThrow: GitHub's first error joins its message", () => {
+  /** A sample command that opens a pull request on a repo from a body of no fields. */
+  const create = defineCommand({
+    path: ["sample", "create"],
+    summary: "Open a pull request on a GitHub repo.",
+    input: z.object({
+      owner: z.string().describe("The repo's owner, such as acmelabs-15."),
+      name: z.string().describe("The repo's name."),
+    }),
+    async run(input, context) {
+      const answer = await ghApi(context, {
+        method: "POST",
+        path: repoPath(input, "pulls"),
+        body: {},
+      });
+      return answerOrThrow(answer, input);
+    },
+  });
+
+  /** The POST of a pull request on acmelabs-15/marketplace: the input, and the call. */
+  const marketplacePull = {
+    input: { owner: "acmelabs-15", name: "marketplace" },
+    call: { method: "POST", path: "repos/acmelabs-15/marketplace/pulls", stdin: "{}" },
+  } as const;
+
+  test("a 422 names GitHub's message, then the first error, such as No commits between the branches", async () => {
+    // Built: GitHub's 422 when the head holds no commit that the base lacks (task 12's body,
+    // reported, not probed).
+    const noCommits = {
+      code: 1,
+      stdout:
+        '{"message":"Validation Failed","errors":[{"resource":"PullRequest","code":"custom","message":"No commits between main and add-brain"}],"documentation_url":"https://docs.github.com/rest/pulls/pulls#create-a-pull-request","status":"422"}',
+      stderr: "gh: Validation Failed (HTTP 422)\n",
+    };
+    const world = fakeWorld({ spawn: [ghScripted(marketplacePull.call, noCommits)] });
+    const outcome = await runCommand(create, marketplacePull.input, frontEnd(world));
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample create",
+      exitCode: 3,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "outside",
+        message:
+          "GitHub answered POST repos/acmelabs-15/marketplace/pulls with HTTP 422: Validation Failed (No commits between main and add-brain)",
+        issues: [],
+      },
+    });
+    expect(world.calls).toEqual([ghLogged(marketplacePull.call)]);
+  });
+
+  // gh reads `errors` in these shapes too: one text, or a list of texts and objects; an object
+  // without a message adds nothing (`parseErrorResponse` in pkg/cmd/api/api.go at v2.98.0).
+  test.each([
+    ["one text", { errors: "No commits between main and add-brain" }],
+    ["a list of texts", { errors: ["No commits between main and add-brain", "a second error"] }],
+    [
+      "a list whose first object has no message",
+      {
+        errors: [
+          { resource: "PullRequest", field: "head", code: "invalid" },
+          {
+            resource: "PullRequest",
+            code: "custom",
+            message: "No commits between main and add-brain",
+          },
+        ],
+      },
+    ],
+  ])("errors as %s: the first error with a text joins GitHub's message", async (_case, body) => {
+    const world = fakeWorld({
+      spawn: [ghScripted(marketplacePull.call, validationFailed(body))],
+    });
+    const outcome = await runCommand(create, marketplacePull.input, frontEnd(world));
+    expect(outcome).toMatchObject({
+      exitCode: 3,
+      error: {
+        kind: "outside",
+        message:
+          "GitHub answered POST repos/acmelabs-15/marketplace/pulls with HTTP 422: Validation Failed (No commits between main and add-brain)",
+      },
+    });
+  });
+
+  test("errors with no text keep GitHub's message alone", async () => {
+    const world = fakeWorld({
+      spawn: [
+        ghScripted(
+          marketplacePull.call,
+          validationFailed({
+            errors: [{ resource: "PullRequest", field: "head", code: "invalid" }],
+          }),
+        ),
+      ],
+    });
+    const outcome = await runCommand(create, marketplacePull.input, frontEnd(world));
+    expect(outcome).toMatchObject({
+      exitCode: 3,
+      error: {
+        message:
+          "GitHub answered POST repos/acmelabs-15/marketplace/pulls with HTTP 422: Validation Failed",
+      },
+    });
+  });
+
+  test("GitHub's texts show on one line, with no escape or bidi character, and each stops at 300 characters", async () => {
+    // Built: GitHub's texts can echo what a request sent, so they reach a terminal as untrusted
+    // text. An error of only a line break counts as no text.
+    const world = fakeWorld({
+      spawn: [
+        ghScripted(
+          marketplacePull.call,
+          validationFailed({
+            message: "Validation\u001B[31m Failed",
+            errors: ["\n", `No commits\nbetween‮main and add-brain ${"x".repeat(400)}`],
+          }),
+        ),
+      ],
+    });
+    const outcome = await runCommand(create, marketplacePull.input, frontEnd(world));
+    // The first 300 characters of the error: the 38 of "No commits ... add-brain ", then 262 x.
+    expect(outcome).toMatchObject({
+      exitCode: 3,
+      error: {
+        message: `GitHub answered POST repos/acmelabs-15/marketplace/pulls with HTTP 422: Validation [31m Failed (No commits between main and add-brain ${"x".repeat(262)}...)`,
+      },
+    });
+  });
+
+  test("the cut at 300 characters keeps a two-unit character whole", async () => {
+    // An emoji is two UTF-16 units; a cut by units would leave half of one.
+    const world = fakeWorld({
+      spawn: [
+        ghScripted(
+          marketplacePull.call,
+          validationFailed({ errors: [`${"x".repeat(299)}\u{1F600}\u{1F600}`] }),
+        ),
+      ],
+    });
+    const outcome = await runCommand(create, marketplacePull.input, frontEnd(world));
+    expect(outcome).toMatchObject({
+      error: {
+        message: `GitHub answered POST repos/acmelabs-15/marketplace/pulls with HTTP 422: Validation Failed (${"x".repeat(299)}\u{1F600}...)`,
+      },
+    });
+  });
+
+  test("a 403 that is not a rate limit names the first error too", async () => {
+    // Built: a 403 whose body carries errors.
+    const world = fakeWorld({
+      spawn: [
+        ghScripted(brainSetting.call, {
+          code: 1,
+          stdout:
+            '{"message":"Must have admin rights to Repository.","errors":[{"message":"the login has write access only"}],"status":"403"}',
+          stderr: "gh: Must have admin rights to Repository. (HTTP 403)\n",
+        }),
+      ],
+    });
+    const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
+    expect(outcome).toMatchObject({
+      exitCode: 2,
+      error: {
+        kind: "input",
+        message:
+          "GitHub refused GET repos/acmelabs-15/brain/actions/permissions/workflow for the gh login, which needs more access to acmelabs-15/brain (HTTP 403): Must have admin rights to Repository. (the login has write access only)",
+      },
+    });
+  });
+
+  test("a rate-limit 403 names the first error too", async () => {
+    // Built: a rate-limit 403 whose body carries errors.
+    const world = fakeWorld({
+      spawn: [
+        ghScripted(brainSetting.call, {
+          code: 1,
+          stdout:
+            '{"message":"API rate limit exceeded for user ID 1234567.","errors":["the limit resets in 30 minutes"],"status":"403"}',
+          stderr: "gh: API rate limit exceeded for user ID 1234567. (HTTP 403)\n",
+        }),
+      ],
+    });
+    const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
+    expect(outcome).toMatchObject({
+      exitCode: 3,
+      error: {
+        kind: "outside",
+        message:
+          "GitHub's rate limit stopped GET repos/acmelabs-15/brain/actions/permissions/workflow; wait, then run the command again (HTTP 403): API rate limit exceeded for user ID 1234567. (the limit resets in 30 minutes)",
+      },
+    });
   });
 });
 

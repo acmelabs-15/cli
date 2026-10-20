@@ -164,19 +164,172 @@ describe("checkLogin: a login is needed", () => {
     expect(world.calls).toEqual([statusLogged]);
   });
 
-  test("an active account in the state error ends with exit 4 naming gh auth login, though another account is fine", async () => {
-    const world = fakeWorld({ spawn: [statusScripted(statusAnswers.badEnvToken)] });
+  test("a keyring login in the state error ends with exit 4 naming gh auth login, then gh's own error", async () => {
+    // Built: a keyring token that GitHub rejects. gh's error is go-gh's HTTPError text for its
+    // GET of the API root (`GetScopes` in oauth_scopes.go; errors.go at go-gh v2.13.0).
+    const world = fakeWorld({
+      spawn: [
+        statusScripted(
+          statusAnswer({
+            "github.com": [
+              {
+                state: "error",
+                error: "HTTP 401: Bad credentials (https://api.github.com/)",
+                active: true,
+                host: "github.com",
+                login: "loriensleafs",
+                tokenSource: "keyring",
+                gitProtocol: "https",
+              },
+            ],
+          }),
+        ),
+      ],
+    });
     const caller = frontEnd(world);
     const outcome = await runCommand(loginCommand, { scopes: ["repo", "workflow"] }, caller);
-    expect(outcome).toMatchObject({
+    expect(outcome).toEqual({
       ok: false,
+      command: "sample login",
+      exitCode: 4,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "login",
+        message:
+          "gh needs a login; run gh auth login, then run the command again: HTTP 401: Bad credentials (https://api.github.com/)",
+        issues: [],
+      },
+    });
+    expect(caller.updates).toEqual([loginStep("started"), loginStep("failed")]);
+    expect(world.calls).toEqual([statusLogged]);
+  });
+
+  test("gh's error shows on one line and stops at 300 characters, as a proxy's long page can fill it", async () => {
+    // Built: go-gh's HTTPError text puts a second line of the answer after a line break.
+    const world = fakeWorld({
+      spawn: [
+        statusScripted(
+          statusAnswer({
+            "github.com": [
+              {
+                state: "error",
+                error: `HTTP 502: Bad Gateway (https://api.github.com/)\r\n${"<p>".repeat(200)}`,
+                active: true,
+                host: "github.com",
+                login: "loriensleafs",
+                tokenSource: "keyring",
+                gitProtocol: "https",
+              },
+            ],
+          }),
+        ),
+      ],
+    });
+    const outcome = await runCommand(
+      loginCommand,
+      { scopes: ["repo", "workflow"] },
+      frontEnd(world),
+    );
+    // The first 300 characters: the 47 of the first line, one space, then 84 of the 200 "<p>".
+    expect(outcome).toMatchObject({
+      exitCode: 4,
+      error: {
+        kind: "login",
+        message: `gh needs a login; run gh auth login, then run the command again: HTTP 502: Bad Gateway (https://api.github.com/) ${"<p>".repeat(84)}...`,
+      },
+    });
+  });
+
+  test("gh's error of only a line break adds no reason to the message", async () => {
+    // Built: gh leaves out an empty error, but not one of only control characters.
+    const world = fakeWorld({
+      spawn: [
+        statusScripted(
+          statusAnswer({
+            "github.com": [
+              {
+                state: "error",
+                error: "\r\n",
+                active: true,
+                host: "github.com",
+                login: "loriensleafs",
+                tokenSource: "keyring",
+                gitProtocol: "https",
+              },
+            ],
+          }),
+        ),
+      ],
+    });
+    const outcome = await runCommand(
+      loginCommand,
+      { scopes: ["repo", "workflow"] },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
       exitCode: 4,
       error: {
         kind: "login",
         message: "gh needs a login; run gh auth login, then run the command again",
       },
     });
+  });
+
+  test("a token from GH_TOKEN in the state error ends with exit 4 naming GH_TOKEN, gh auth login and gh's error, though the keyring login is fine", async () => {
+    // gh auth login refuses to run while GH_TOKEN is set (note 09, section 1.4), so the message
+    // names the variable: replace its token, or clear it first.
+    const world = fakeWorld({ spawn: [statusScripted(statusAnswers.badEnvToken)] });
+    const caller = frontEnd(world);
+    const outcome = await runCommand(loginCommand, { scopes: ["repo", "workflow"] }, caller);
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample login",
+      exitCode: 4,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "login",
+        message: String.raw`gh needs a login; replace the token in GH_TOKEN, or clear GH_TOKEN and run gh auth login, then run the command again: non-200 OK status code: 401 Unauthorized body: "{\r\n  \"message\": \"Bad credentials\",\r\n  \"documentation_url\": \"https://docs.github.com/rest\",\r\n  \"status\": \"401\"\r\n}"`,
+        issues: [],
+      },
+    });
     expect(caller.updates).toEqual([loginStep("started"), loginStep("failed")]);
+    expect(world.calls).toEqual([statusLogged]);
+  });
+
+  test("a token from GITHUB_TOKEN in the state error names GITHUB_TOKEN", async () => {
+    // Built: as badEnvToken, with the token in GITHUB_TOKEN and no keyring login, as in CI.
+    const world = fakeWorld({
+      spawn: [
+        statusScripted(
+          statusAnswer({
+            "github.com": [
+              {
+                state: "error",
+                error: "non-200 OK status code: 401 Unauthorized body: ...",
+                active: true,
+                host: "github.com",
+                login: "",
+                tokenSource: "GITHUB_TOKEN",
+                gitProtocol: "https",
+              },
+            ],
+          }),
+        ),
+      ],
+    });
+    const outcome = await runCommand(
+      loginCommand,
+      { scopes: ["repo", "workflow"] },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 4,
+      error: {
+        kind: "login",
+        message:
+          "gh needs a login; replace the token in GITHUB_TOKEN, or clear GITHUB_TOKEN and run gh auth login, then run the command again: non-200 OK status code: 401 Unauthorized body: ...",
+      },
+    });
   });
 });
 
@@ -455,9 +608,10 @@ describe("checkLogin: the active account", () => {
     });
   });
 
-  test("a token from GH_TOKEN is the active account, and the step checks it like any other", async () => {
+  test("a token from GH_TOKEN is the active account: a scope it lacks names GH_TOKEN, then gh auth refresh after it is cleared", async () => {
     // Built: as badEnvToken, with a token in GH_TOKEN that GitHub accepts. Its scopes, not the
-    // keyring login's, decide the check: every gh call and gh's git helper use that token.
+    // keyring login's, decide the check: every gh call and gh's git helper use that token. gh
+    // auth refresh refuses to run while GH_TOKEN is set (note 09, section 1.4).
     const world = fakeWorld({
       spawn: [
         statusScripted(
@@ -479,6 +633,78 @@ describe("checkLogin: the active account", () => {
                 login: "loriensleafs",
                 tokenSource: "keyring",
                 scopes: "admin:public_key, gist, read:org, repo, workflow",
+                gitProtocol: "https",
+              },
+            ],
+          }),
+        ),
+      ],
+    });
+    const outcome = await runCommand(
+      loginCommand,
+      { scopes: ["repo", "workflow"] },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 4,
+      error: {
+        kind: "login",
+        message:
+          "gh needs a login; give the workflow scope to the token in GH_TOKEN, or clear GH_TOKEN and run gh auth refresh -h github.com -s workflow, then run the command again",
+      },
+    });
+  });
+
+  test("a token from GITHUB_TOKEN that lacks both asked scopes names both, and GITHUB_TOKEN", async () => {
+    // Built: a classic token in GITHUB_TOKEN, with no keyring login.
+    const world = fakeWorld({
+      spawn: [
+        statusScripted(
+          statusAnswer({
+            "github.com": [
+              {
+                state: "success",
+                active: true,
+                host: "github.com",
+                login: "loriensleafs",
+                tokenSource: "GITHUB_TOKEN",
+                scopes: "gist, read:org",
+                gitProtocol: "https",
+              },
+            ],
+          }),
+        ),
+      ],
+    });
+    const outcome = await runCommand(
+      loginCommand,
+      { scopes: ["repo", "workflow"] },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 4,
+      error: {
+        kind: "login",
+        message:
+          "gh needs a login; give the repo and workflow scopes to the token in GITHUB_TOKEN, or clear GITHUB_TOKEN and run gh auth refresh -h github.com -s repo,workflow, then run the command again",
+      },
+    });
+  });
+
+  test("a token source that is no variable of gh's names gh auth refresh alone", async () => {
+    // Built: a token from gh's hosts.yml, whose tokenSource is the file's path (buildEntry).
+    const world = fakeWorld({
+      spawn: [
+        statusScripted(
+          statusAnswer({
+            "github.com": [
+              {
+                state: "success",
+                active: true,
+                host: "github.com",
+                login: "loriensleafs",
+                tokenSource: "/Users/loriensleafs/.config/gh/hosts.yml",
+                scopes: "gist, read:org, repo",
                 gitProtocol: "https",
               },
             ],
