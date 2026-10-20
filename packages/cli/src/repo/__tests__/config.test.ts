@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, expectTypeOf, test } from "bun:test";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -110,6 +110,60 @@ describe("readRepoConfig errors", () => {
     expect(error.issues).toHaveLength(1);
     expect(error.issues[0]?.path).toBe("");
     expect(error.message).toStartWith(`${root}/acmelabs.json: the file is not valid JSON: `);
+  });
+
+  test("a folder named acmelabs.json: the error says the path is a folder", async () => {
+    const root = await fixture("folder-not-file");
+    await mkdir(`${root}/acmelabs.json`);
+    const error = await rejection(root);
+    expect(error.file).toBe(`${root}/acmelabs.json`);
+    expect(error.issues).toEqual([
+      { path: "", message: "the path is a folder, not a file; acmelabs.json must be a file" },
+    ]);
+    expect(error.message).toBe(
+      `${root}/acmelabs.json: the path is a folder, not a file; acmelabs.json must be a file`,
+    );
+  });
+
+  test("a file over 1 MiB: the error says so; a file of exactly 1 MiB still reads", async () => {
+    const content = json({ library: { packages: ["."] } });
+    const atCap = await fixture("size-at-cap", content.padEnd(1_048_576));
+    expect(await readRepoConfig(atCap)).toEqual({ library: { packages: ["."] } });
+    const overCap = await fixture("size-over-cap", content.padEnd(1_048_577));
+    const error = await rejection(overCap);
+    expect(error.file).toBe(`${overCap}/acmelabs.json`);
+    expect(error.issues).toEqual([
+      { path: "", message: "the file is larger than 1 MiB; a repo config is a few lines" },
+    ]);
+  });
+
+  // Root reads a file whatever its mode, so a chmod 000 file is readable there.
+  const runsAsRoot = process.getuid?.() === 0;
+
+  test.skipIf(runsAsRoot)("an unreadable file: the error names the reason", async () => {
+    const root = await fixture("unreadable", json({ library: { packages: ["."] } }));
+    const file = `${root}/acmelabs.json`;
+    await chmod(file, 0o000);
+    try {
+      const error = await rejection(root);
+      expect(error.file).toBe(file);
+      expect(error.issues).toHaveLength(1);
+      expect(error.issues[0]?.path).toBe("");
+      expect(error.issues[0]?.message).toStartWith("the file cannot be read: ");
+      expect(error.issues[0]?.message).toContain("permission denied");
+    } finally {
+      await chmod(file, 0o644);
+    }
+  });
+
+  test("a device, not a regular file: the error says the file cannot be read", async () => {
+    // A device such as /dev/zero reports size 0 and never ends; /dev/null is its safe stand-in.
+    const root = await fixture("device-not-file");
+    await symlink("/dev/null", `${root}/acmelabs.json`);
+    const error = await rejection(root);
+    expect(error.issues).toEqual([
+      { path: "", message: "the file cannot be read: it is not a regular file" },
+    ]);
   });
 
   test("neither repo kind: the error names both fields", async () => {
@@ -243,11 +297,11 @@ describe("readRepoConfig errors", () => {
       {
         path: "library.packages[0]",
         message:
-          '"/abs/x" is not a relative path inside the repo; write it from the repo root, with no ".." segment',
+          '"/abs/x" is not a relative path inside the repo; write it from the repo root, with "/" between folders and no ".." segment',
       },
     ]);
     expect(error.message).toBe(
-      `${root}/acmelabs.json: library.packages[0]: "/abs/x" is not a relative path inside the repo; write it from the repo root, with no ".." segment`,
+      `${root}/acmelabs.json: library.packages[0]: "/abs/x" is not a relative path inside the repo; write it from the repo root, with "/" between folders and no ".." segment`,
     );
   });
 
@@ -265,17 +319,17 @@ describe("readRepoConfig errors", () => {
       {
         path: "library.packages[0]",
         message:
-          '"../sibling" is not a relative path inside the repo; write it from the repo root, with no ".." segment',
+          '"../sibling" is not a relative path inside the repo; write it from the repo root, with "/" between folders and no ".." segment',
       },
       {
         path: "library.packages[1]",
         message:
-          '"packages/../.." is not a relative path inside the repo; write it from the repo root, with no ".." segment',
+          '"packages/../.." is not a relative path inside the repo; write it from the repo root, with "/" between folders and no ".." segment',
       },
       {
         path: "library.packages[3]",
         message:
-          '"packages/../packages/config" is not a relative path inside the repo; write it from the repo root, with no ".." segment',
+          '"packages/../packages/config" is not a relative path inside the repo; write it from the repo root, with "/" between folders and no ".." segment',
       },
     ]);
   });
@@ -287,7 +341,75 @@ describe("readRepoConfig errors", () => {
       {
         path: "library.packages[0]",
         message:
-          '"" is not a relative path inside the repo; write it from the repo root, with no ".." segment',
+          '"" is not a relative path inside the repo; write it from the repo root, with "/" between folders and no ".." segment',
+      },
+    ]);
+  });
+
+  test("a blank package path: the error names each such field", async () => {
+    const root = await fixture("blank-package-path", json({ library: { packages: [" ", "\t"] } }));
+    const error = await rejection(root);
+    expect(error.issues).toEqual([
+      {
+        path: "library.packages[0]",
+        message:
+          '" " is not a relative path inside the repo; write it from the repo root, with "/" between folders and no ".." segment',
+      },
+      {
+        path: "library.packages[1]",
+        message: String.raw`"\t" is not a relative path inside the repo; write it from the repo root, with "/" between folders and no ".." segment`,
+      },
+    ]);
+  });
+
+  test("a package path with a drive prefix: the error names each such field", async () => {
+    const root = await fixture(
+      "drive-prefix-package",
+      json({ library: { packages: ["C:/x", "c:x", "packages/cli"] } }),
+    );
+    const error = await rejection(root);
+    expect(error.issues).toEqual([
+      {
+        path: "library.packages[0]",
+        message:
+          '"C:/x" is not a relative path inside the repo; write it from the repo root, with "/" between folders and no ".." segment',
+      },
+      {
+        path: "library.packages[1]",
+        message:
+          '"c:x" is not a relative path inside the repo; write it from the repo root, with "/" between folders and no ".." segment',
+      },
+    ]);
+  });
+
+  test("a package path with a backslash: the error names each such field", async () => {
+    const root = await fixture(
+      "backslash-package",
+      json({ library: { packages: [String.raw`packages\cli`, String.raw`a\..\..\x`] } }),
+    );
+    const error = await rejection(root);
+    expect(error.issues).toEqual([
+      {
+        path: "library.packages[0]",
+        message: String.raw`"packages\\cli" is not a relative path inside the repo; write it from the repo root, with "/" between folders and no ".." segment`,
+      },
+      {
+        path: "library.packages[1]",
+        message: String.raw`"a\\..\\..\\x" is not a relative path inside the repo; write it from the repo root, with "/" between folders and no ".." segment`,
+      },
+    ]);
+  });
+
+  test("a package path with a NUL character: the error names the field", async () => {
+    const root = await fixture(
+      "nul-package",
+      json({ library: { packages: ["packages/cli\u0000"] } }),
+    );
+    const error = await rejection(root);
+    expect(error.issues).toEqual([
+      {
+        path: "library.packages[0]",
+        message: String.raw`"packages/cli\u0000" is not a relative path inside the repo; write it from the repo root, with "/" between folders and no ".." segment`,
       },
     ]);
   });

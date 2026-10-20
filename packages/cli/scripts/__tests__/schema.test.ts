@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { repoConfigSchema } from "../../src/repo/config";
 import { editorSchema, schemaFile, schemaText, syncSchema } from "../schema";
 
 let work: string;
@@ -63,20 +64,70 @@ describe("the overrides for the zod refinements", () => {
     });
   });
 
-  test("a relative path inside the repo: the pattern rejects '', a leading / and any ..", () => {
-    const items = node(editorSchema(), "properties.library.properties.packages.items");
-    // JSON Schema patterns are ECMA-262 and match anywhere; editors compile them with the u flag.
-    const pattern = new RegExp(String(items.pattern), "u");
-    const accepted = [".", "./", "packages/cli", "./packages/cli", "packages/cli/", "..cache"];
-    const rejected = ["", "/", "/abs/x", "..", "../sibling", "packages/../..", "packages/../cli"];
-    expect(accepted.filter((value) => !pattern.test(value))).toEqual([]);
-    expect(rejected.filter((value) => pattern.test(value))).toEqual([]);
+  test("an override key that matches no node: editorSchema throws and names the key", () => {
+    const renamed = { "properties.libary.properties.packages": { uniqueItems: true } };
+    expect(() => editorSchema(renamed)).toThrow(
+      'the override key "properties.libary.properties.packages" matches no node in the JSON schema',
+    );
   });
 
   test("a relative path inside the repo: the package path description names the one rule", () => {
     const items = node(editorSchema(), "properties.library.properties.packages.items");
     expect(items.description).toContain('no ".." segment');
     expect(items.description).not.toContain("acmelabs accepts");
+  });
+});
+
+type Verdict = "accept" | "reject";
+
+function verdict(accepted: boolean): Verdict {
+  return accepted ? "accept" : "reject";
+}
+
+describe("the package path rule, in the command and in the editor schema", () => {
+  /** One shared list of sample package paths, each with the verdict both forms must give. */
+  const samples: readonly (readonly [string, Verdict])[] = [
+    ["packages/cli", "accept"],
+    ["./packages/cli", "accept"],
+    ["packages/cli/", "accept"],
+    ["packages/./cli", "accept"],
+    [".", "accept"],
+    ["./", "accept"],
+    ["..cache", "accept"],
+    ["a/..b", "accept"],
+    ["a/b..", "accept"],
+    ["", "reject"],
+    [" ", "reject"],
+    ["\t\n", "reject"],
+    ["\u00A0", "reject"],
+    ["/", "reject"],
+    ["/abs", "reject"],
+    ["/abs/x", "reject"],
+    ["..", "reject"],
+    ["../x", "reject"],
+    ["a/..", "reject"],
+    ["a/../b", "reject"],
+    ["packages/../..", "reject"],
+    ["a\n/../b", "reject"],
+    [String.raw`a\b`, "reject"],
+    [String.raw`a\..\..\x`, "reject"],
+    ["a\n\\b", "reject"],
+    ["a\u0000b", "reject"],
+    ["C:/x", "reject"],
+    ["c:x", "reject"],
+  ];
+
+  test("the command and the editor schema give each sample the same verdict", () => {
+    const items = node(editorSchema(), "properties.library.properties.packages.items");
+    // JSON Schema patterns are ECMA-262 and match anywhere; VS Code compiles them with the u flag.
+    const pattern = new RegExp(String(items.pattern), "u");
+    const actual = samples.map(([sample]) => ({
+      sample,
+      command: verdict(repoConfigSchema.safeParse({ library: { packages: [sample] } }).success),
+      editor: verdict(pattern.test(sample)),
+    }));
+    const expected = samples.map(([sample, both]) => ({ sample, command: both, editor: both }));
+    expect(actual).toEqual(expected);
   });
 });
 

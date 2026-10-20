@@ -42,7 +42,7 @@ Rules:
 
 - At least one of `plugin` and `library` is present.
 - `plugin.hosts` is a non-empty list of distinct host ids from the host table.
-- `library.packages` is a non-empty list of distinct relative paths to package folders, written from the repo root with no `..` segment (Peter, 2026-10-20, so the editor schema and the command agree). A single-package library repo lists `"."`.
+- `library.packages` is a non-empty list of distinct relative paths to package folders, written from the repo root with `/` between folders: not blank, not absolute, no drive prefix such as `C:`, no backslash or NUL character, and no `..` segment (Peter, 2026-10-20, so the editor schema and the command agree). A single-package library repo lists `"."`.
 - No other field is allowed, so a typo fails instead of being ignored.
 - **Agent's call, small and reversible:** `$schema` points into `node_modules`, so the editor check follows the installed CLI version and works offline. This repo points at its own source.
 

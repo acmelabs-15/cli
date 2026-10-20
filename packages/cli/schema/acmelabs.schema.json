@@ -29,8 +29,8 @@
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^(?!/|$)(?!(?:[^/]*/)*\\.\\.(?:/|$))",
-            "description": "A package folder's path from the repo root: not empty, no leading \"/\", and no \"..\" segment."
+            "pattern": "^(?!\\s*$)(?!/)(?![A-Za-z]:)(?![^\\\\]*\\\\)(?![^\\x00]*\\x00)(?!(?:[^/]*/)*\\.\\.(?:/|$))",
+            "description": "A package folder's path from the repo root, with \"/\" between folders: not blank, not absolute, no drive prefix such as \"C:\", no backslash or NUL character, and no \"..\" segment."
           },
           "uniqueItems": true,
           "description": "The package folders that publish, as relative paths from the repo root, each one once. Editors compare the paths as written, so \"./packages/cli\" and \"packages/cli\" are no repeat to an editor; acmelabs counts them as one."
