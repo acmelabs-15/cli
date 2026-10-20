@@ -11,7 +11,7 @@ export type World = {
   /** The environment variables. */
   env: Readonly<Record<string, string | undefined>>;
   /** Runs a program, with no shell, and returns its exit code and output. */
-  spawn: (command: readonly string[], options?: SpawnOptions) => Promise<Spawned>;
+  spawn: (commandLine: readonly string[], options?: SpawnOptions) => Promise<Spawned>;
   /** Sends an HTTP request. */
   fetch: typeof globalThis.fetch;
   /** The current time. */
@@ -23,10 +23,10 @@ export type World = {
  * stdin text, the program gets no stdin, so it can never wait on the user's terminal.
  */
 async function spawnWithBun(
-  command: readonly string[],
+  commandLine: readonly string[],
   options: SpawnOptions = {},
 ): Promise<Spawned> {
-  const child = Bun.spawn([...command], {
+  const child = Bun.spawn([...commandLine], {
     cwd: options.cwd,
     stdin: options.stdin === undefined ? "ignore" : new Blob([options.stdin]),
     stderr: "pipe",
@@ -56,7 +56,7 @@ export function realWorld(): World {
 }
 
 /** A scripted answer to a spawn call: the command line it matches, word for word, and its end. */
-export type ScriptedSpawn = { command: readonly string[]; answer?: Partial<Spawned> };
+export type ScriptedSpawn = { commandLine: readonly string[]; answer?: Partial<Spawned> };
 
 /**
  * A scripted answer to a fetch call: the method (GET when unset) and the URL it matches, and the
@@ -79,7 +79,7 @@ export type FakeWorldOptions = {
 
 /** One spawn or fetch call that a fake World received. */
 export type WorldCall =
-  | ({ kind: "spawn"; command: readonly string[] } & SpawnOptions)
+  | ({ kind: "spawn"; commandLine: readonly string[] } & SpawnOptions)
   | { kind: "fetch"; method: string; url: string };
 
 /** A fake World, and the log of every spawn and fetch call it received, in order. */
@@ -125,12 +125,12 @@ export function fakeWorld(options: FakeWorldOptions = {}): FakeWorld {
   const spawnScript = [...(options.spawn ?? [])];
   const fetchScript = [...(options.fetch ?? [])];
 
-  function answerSpawn(command: readonly string[], spawnOptions?: SpawnOptions): Spawned {
-    calls.push({ kind: "spawn", command: [...command], ...spawnOptions });
-    const scripted = take(spawnScript, (entry) => sameWords(entry.command, command));
+  function answerSpawn(commandLine: readonly string[], spawnOptions?: SpawnOptions): Spawned {
+    calls.push({ kind: "spawn", commandLine: [...commandLine], ...spawnOptions });
+    const scripted = take(spawnScript, (entry) => sameWords(entry.commandLine, commandLine));
     if (scripted === undefined) {
       throw new Error(
-        `fakeWorld has no scripted answer for spawn ${JSON.stringify(command)}; add one to its spawn list`,
+        `fakeWorld has no scripted answer for spawn ${JSON.stringify(commandLine)}; add one to its spawn list`,
       );
     }
     const answer = scripted.answer ?? {};
@@ -155,8 +155,11 @@ export function fakeWorld(options: FakeWorldOptions = {}): FakeWorld {
   }
 
   // Promise.try turns a throw into a rejection, as the real spawn and fetch fail.
-  function fakeSpawn(command: readonly string[], spawnOptions?: SpawnOptions): Promise<Spawned> {
-    return Promise.try(answerSpawn, command, spawnOptions);
+  function fakeSpawn(
+    commandLine: readonly string[],
+    spawnOptions?: SpawnOptions,
+  ): Promise<Spawned> {
+    return Promise.try(answerSpawn, commandLine, spawnOptions);
   }
 
   function fakeFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {

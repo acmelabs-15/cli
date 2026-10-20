@@ -33,7 +33,7 @@ export type Command<Input extends z.ZodObject, Result> = {
   input: Input;
   /** The input fields given by position, in order, such as ["name"] for `acmelabs new <name>`. */
   positionals?: readonly (keyof z.infer<Input> & string)[];
-  run(input: z.infer<Input>, context: Context<z.infer<Input>>): Promise<Result>;
+  run: (input: z.infer<Input>, context: Context<z.infer<Input>>) => Promise<Result>;
 };
 
 export function defineCommand<Input extends z.ZodObject, Result>(
@@ -52,17 +52,17 @@ export type World = {
   /** The repo folder the command acts on; the working folder by default. */
   root: string;
   env: Readonly<Record<string, string | undefined>>;
-  spawn(command: readonly string[], options?: { cwd?: string; stdin?: string }): Promise<Spawned>;
+  spawn: (commandLine: readonly string[], options?: { cwd?: string; stdin?: string }) => Promise<Spawned>;
   fetch: typeof globalThis.fetch;
-  now(): Date;
+  now: () => Date;
 };
 export type Spawned = { code: number; stdout: string; stderr: string };
 
 export type Context<Input> = World & {
   /** Reports one progress update to the front-end. */
-  progress(update: ProgressUpdate): void;
+  progress: (update: ProgressUpdate) => void;
   /** The value of an optional input: given up front, asked in a terminal, or an input error. */
-  ask<Field extends keyof Input & string>(field: Field): Promise<NonNullable<Input[Field]>>;
+  ask: <Field extends keyof Input & string>(field: Field) => Promise<NonNullable<Input[Field]>>;
   /** Aborted when the user cancels (Ctrl+C). */
   signal: AbortSignal;
 };
@@ -110,7 +110,7 @@ An input issue names the field as the caller wrote it: `--host` for a flag, `<na
 export function runCommand<Input extends z.ZodObject, Result>(
   command: Command<Input, Result>,
   rawInput: unknown,
-  host: { world: World; progress(update: ProgressUpdate): void; answer?: Answerer; signal: AbortSignal },
+  host: { world: World; progress: (update: ProgressUpdate) => void; answer?: Answerer; signal: AbortSignal },
 ): Promise<Outcome<Result>>;
 ```
 
@@ -163,7 +163,7 @@ packages/cli/src/commands/__tests__/index.test.ts   the list's rules
 
 ## Code style
 
-As in `repo-model`: `type` for shapes, function declarations with helpers above their callers, a one-line doc comment per export, Bun APIs, 100 columns, trailing commas. A command file reads like this:
+As in `repo-model`: `type` for shapes, functions inside a type written as properties (`spawn: (...) => ...`, as Ultracite's `method-signature-style` rule requires), function declarations with helpers above their callers, a one-line doc comment per export, Bun APIs, 100 columns, trailing commas. A command file reads like this:
 
 ```ts
 export const versionCheck = defineCommand({

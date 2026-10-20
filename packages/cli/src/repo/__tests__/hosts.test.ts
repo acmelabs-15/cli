@@ -99,16 +99,20 @@ describe("validatorsFor", () => {
     expect(validators).toEqual([
       {
         host: "claude-code",
-        command: ["claude", "plugin", "validate", ".", "--strict"],
+        commandLine: ["claude", "plugin", "validate", ".", "--strict"],
         required: true,
       },
       {
         host: "claude-code",
-        command: ["claude", "plugin", "validate", ".claude-plugin/plugin.json", "--strict"],
+        commandLine: ["claude", "plugin", "validate", ".claude-plugin/plugin.json", "--strict"],
         required: true,
       },
-      { host: "gemini-cli", command: ["gemini", "extensions", "validate", "."], required: false },
-      { host: "antigravity-cli", command: ["agy", "plugin", "validate", "."], required: false },
+      {
+        host: "gemini-cli",
+        commandLine: ["gemini", "extensions", "validate", "."],
+        required: false,
+      },
+      { host: "antigravity-cli", commandLine: ["agy", "plugin", "validate", "."], required: false },
     ]);
   });
 
@@ -128,10 +132,10 @@ describe("validatorsFor", () => {
     expect(validatorsFor({ library: { packages: ["."] } })).toEqual([]);
   });
 
-  test("Validator is a host, a command and whether it is required", () => {
+  test("Validator is a host, a command line and whether it is required", () => {
     expectTypeOf<Validator>().toEqualTypeOf<{
       host: HostId;
-      command: readonly string[];
+      commandLine: readonly string[];
       required: boolean;
     }>();
   });

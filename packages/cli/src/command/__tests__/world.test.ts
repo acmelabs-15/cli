@@ -90,8 +90,8 @@ describe("fakeWorld", () => {
   test("spawn returns the scripted answer; an unset field is code 0 or no output", async () => {
     const world = fakeWorld({
       spawn: [
-        { command: ["gh", "auth", "status"], answer: { code: 1, stderr: "not logged in\n" } },
-        { command: ["git", "status", "--short"] },
+        { commandLine: ["gh", "auth", "status"], answer: { code: 1, stderr: "not logged in\n" } },
+        { commandLine: ["git", "status", "--short"] },
       ],
     });
     expect(await world.spawn(["git", "status", "--short"])).toEqual({
@@ -107,7 +107,7 @@ describe("fakeWorld", () => {
   });
 
   test("spawn matches a scripted command line word for word", async () => {
-    const world = fakeWorld({ spawn: [{ command: ["gh", "auth", "status"] }] });
+    const world = fakeWorld({ spawn: [{ commandLine: ["gh", "auth", "status"] }] });
     await expect(world.spawn(["gh", "auth"])).rejects.toThrow(
       'fakeWorld has no scripted answer for spawn ["gh","auth"]',
     );
@@ -172,8 +172,8 @@ describe("fakeWorld", () => {
     const ruleset = '{"name":"Protect main"}';
     const world = fakeWorld({
       spawn: [
-        { command: ["gh", "auth", "status"] },
-        { command: ["gh", "api", "repos/acmelabs-15/cli/rulesets", "--input", "-"] },
+        { commandLine: ["gh", "auth", "status"] },
+        { commandLine: ["gh", "api", "repos/acmelabs-15/cli/rulesets", "--input", "-"] },
       ],
       fetch: [{ url: "https://registry.npmjs.org/@acmelabs/cli" }],
     });
@@ -187,14 +187,14 @@ describe("fakeWorld", () => {
       "no scripted answer",
     );
     expect(world.calls).toEqual([
-      { kind: "spawn", command: ["gh", "auth", "status"], cwd: work },
+      { kind: "spawn", commandLine: ["gh", "auth", "status"], cwd: work },
       { kind: "fetch", method: "GET", url: "https://registry.npmjs.org/@acmelabs/cli" },
       {
         kind: "spawn",
-        command: ["gh", "api", "repos/acmelabs-15/cli/rulesets", "--input", "-"],
+        commandLine: ["gh", "api", "repos/acmelabs-15/cli/rulesets", "--input", "-"],
         stdin: ruleset,
       },
-      { kind: "spawn", command: ["git", "push"] },
+      { kind: "spawn", commandLine: ["git", "push"] },
       { kind: "fetch", method: "DELETE", url: "https://example.com/" },
     ]);
   });
@@ -202,8 +202,8 @@ describe("fakeWorld", () => {
   test("each scripted spawn answers one call, in list order, so a retry can succeed", async () => {
     const world = fakeWorld({
       spawn: [
-        { command: ["gh", "api", "user"], answer: { code: 1, stderr: "HTTP 502\n" } },
-        { command: ["gh", "api", "user"], answer: { stdout: '{"login":"octocat"}' } },
+        { commandLine: ["gh", "api", "user"], answer: { code: 1, stderr: "HTTP 502\n" } },
+        { commandLine: ["gh", "api", "user"], answer: { stdout: '{"login":"octocat"}' } },
       ],
     });
     expect(await world.spawn(["gh", "api", "user"])).toEqual({

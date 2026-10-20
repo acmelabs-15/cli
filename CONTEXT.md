@@ -100,6 +100,10 @@ One plugin's record in a registry file. It points at the plugin repo's latest ta
 **Command**:
 One thing the CLI does, such as `version sync`, declared once with its inputs.
 
+**Command line**:
+The words that start one outside program, such as `gh auth status`, as a validator or a step of a command holds them.
+_Avoid_: command (for these words)
+
 **Command list**:
 The one list of commands that every front-end, the help output and the agent guide read.
 _Avoid_: registry, router (for the list itself)
