@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import path from "node:path";
 
 import { z } from "zod";
 
@@ -321,6 +322,55 @@ import { stat } from "node:fs/promises";
 export const tools = [path, stat];
 `;
     expect(heavyImports(text)).toEqual([]);
+  });
+
+  test("a command file may load github-ops's names file at its top, to check a repo name", () => {
+    const text = `import { z } from "zod";
+
+import { defineCommand } from "../command/command";
+import { ownerSchema, repoNameSchema } from "../github/names";
+
+export const marketplaceAdd = defineCommand({
+  path: ["marketplace", "add"],
+  summary: "Add a plugin repo to the marketplace.",
+  input: z.object({
+    owner: ownerSchema.describe("The plugin repo's owner."),
+    name: repoNameSchema.describe("The plugin repo's name."),
+  }),
+  run: (input) => Promise.resolve(input),
+});
+`;
+    expect(heavyImports(text)).toEqual([]);
+  });
+
+  test("every other github-ops file is heavy, even one whose name starts with names", () => {
+    // Only the one specifier ../github/names is light; the rule allows no prefix of it.
+    const text = `import { repoNameSchema } from "../github/names";
+import { ghApi } from "../github/gh";
+import { ensureActionsSetting } from "../github/settings";
+import { fullNames } from "../github/names-extra";
+import * as github from "../github/";
+
+export const tools = [repoNameSchema, ghApi, ensureActionsSetting, fullNames, github];
+`;
+    expect(heavyImports(text)).toEqual([
+      "../github/gh",
+      "../github/settings",
+      "../github/names-extra",
+      "../github/",
+    ]);
+  });
+
+  test("github-ops's names file loads only zod, so it stays light for a command file", async () => {
+    // The rule trusts this: each import that names.ts gains loads at the top of every command file.
+    const file = path.join(import.meta.dir, "..", "..", "github", "names.ts");
+    const text = await Bun.file(file).text();
+    // Bun's own scanner, as heavyImports reads a file: a type-only import loads nothing. Every
+    // other import counts, an await import(...) too, because the spec keeps names.ts to zod only.
+    const loaded = new Bun.Transpiler({ loader: "ts" })
+      .scanImports(text)
+      .map((found) => found.path);
+    expect(loaded).toEqual(["zod"]);
   });
 
   test("a module loaded in run with await import(...), or for its types only, is not heavy", () => {

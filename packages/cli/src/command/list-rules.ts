@@ -116,8 +116,11 @@ export async function commandListProblems(list: CommandList): Promise<string[]> 
 
 /**
  * Whether a command file may load a module at its top: zod, a Node built-in (`node:`),
- * command-core (`../command/`) or repo-model (`../repo/`). A Node built-in is light: on Bun 1.4.0
- * it loads faster than zod (median of 15 starts: node:path 8 ms, node:fs/promises 11 ms, zod 20 ms).
+ * command-core (`../command/`), repo-model (`../repo/`) or github-ops's names file
+ * (`../github/names`). A Node built-in is light: on Bun 1.4.0 it loads faster than zod (median of
+ * 15 starts: node:path 8 ms, node:fs/promises 11 ms, zod 20 ms). github-ops's names file loads
+ * only zod, and a command's input checks a repo name with it. Every other github-ops file is
+ * heavy, so the rule allows this one specifier, not a prefix.
  */
 function light(specifier: string): boolean {
   return (
@@ -125,15 +128,16 @@ function light(specifier: string): boolean {
     specifier.startsWith("zod/") ||
     specifier.startsWith("node:") ||
     specifier.startsWith("../command/") ||
-    specifier.startsWith("../repo/")
+    specifier.startsWith("../repo/") ||
+    specifier === "../github/names"
   );
 }
 
 /**
- * The modules a command file loads at its top beyond zod, command-core and repo-model, in the order
- * the file loads them. Bun's own scanner reads the text, as Bun loads it, so a type-only import,
- * which loads nothing, is not one. A module loaded with `await import(...)` loads when the import
- * runs, inside `run`, so it is not one either.
+ * The modules a command file loads at its top beyond the light ones that `light` names, in the
+ * order the file loads them. Bun's own scanner reads the text, as Bun loads it, so a type-only
+ * import, which loads nothing, is not one. A module loaded with `await import(...)` loads when the
+ * import runs, inside `run`, so it is not one either.
  */
 export function heavyImports(text: string): string[] {
   return new Bun.Transpiler({ loader: "ts" })
