@@ -1,5 +1,7 @@
 # Outside programs keep the whole environment, and run under time and output limits
 
+Partly superseded by ADR-0016: git calls run without git's GIT_ variables.
+
 Decided by Peter on 2026-10-20 (module `github-ops`, open questions 21 and 22, deferred from the `command-core` review, findings 9 and 10).
 
 Every program that acmelabs starts gets the whole environment, as before: no variable is removed. Every program and request runs under limits that a call can change: 5 minutes per program, 1 minute per request, and 10 MB per output stream and per response body. At a limit, acmelabs stops the program and every program it started, and the command ends with exit 3 and a message that names the limit. Before, nothing limited a program: a 200 MB flood used 599 MB, and a program's own child kept acmelabs waiting 10 seconds after a cancel (`docs/research/10-outside-program-limits.md`).

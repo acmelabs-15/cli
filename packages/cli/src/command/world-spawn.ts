@@ -1,6 +1,6 @@
 import type { CommandError } from "./outcome";
 import { outsideError } from "./outcome";
-import type { SpawnOptions, Spawned } from "./world";
+import type { SpawnOptions, Spawned, World } from "./world";
 import type { OutputStream } from "./world-limits";
 import {
   byteCounter,
@@ -36,15 +36,17 @@ function notOnPath(error: unknown): string | undefined {
 }
 
 /**
- * Starts a program with Bun. A program that is not on PATH is an outside failure that names it;
- * any other error that Bun throws stays as it is.
+ * Starts a program with Bun, with the World's `env` plus the call's. A program that is not on PATH
+ * is an outside failure that names it; any other error that Bun throws stays as it is.
  */
-function startWithBun(commandLine: readonly string[], options: SpawnOptions) {
+function startWithBun(commandLine: readonly string[], options: SpawnOptions, env: World["env"]) {
   try {
     return Bun.spawn([...commandLine], {
       cwd: options.cwd,
-      // The whole environment, as the World shows it, plus the call's variables (ADR-0015).
-      env: { ...Bun.env, ...options.env },
+      // The whole environment, as the World shows it, plus the call's variables (ADR-0015). Bun
+      // 1.4.0 starts the program without a variable whose value is undefined. That is how a call
+      // removes one (ADR-0016; note 12, section 1.7).
+      env: { ...env, ...options.env },
       stdin: options.stdin === undefined ? "ignore" : new Blob([options.stdin]),
       stderr: "pipe",
       // Its own process group, so a stop reaches every program it starts (note 10, section 2).
@@ -159,21 +161,23 @@ async function readOutput(
 
 /**
  * Runs a program with Bun, with no shell, in its own process group, and collects its exit code and
- * output as text. With no stdin text, the program gets no stdin, so it can never wait on the user's
- * terminal. At the time limit, past the output limit, or when the signal aborts, it stops the whole
- * group. Bun's own `timeout` and `signal` reach only the program, and a program it started keeps
- * the pipes open, so the call would wait for it (note 10, section 2).
+ * output as text. The program gets `env`, the World's env, plus the call's. With no stdin text, the
+ * program gets no stdin, so it can never wait on the user's terminal. At the time limit, past the
+ * output limit, or when the signal aborts, it stops the whole group. Bun's own `timeout` and
+ * `signal` reach only the program, and a program it started keeps the pipes open, so the call
+ * would wait for it (note 10, section 2).
  */
 export async function spawnWithBun(
   commandLine: readonly string[],
   options: SpawnOptions,
   graceMs: number,
+  env: World["env"],
 ): Promise<Spawned> {
   const { signal } = options;
   // An aborted signal starts no program, and the call keeps the signal's reason.
   signal?.throwIfAborted();
   const { timeoutMs, maxOutputBytes } = programLimits(options);
-  const child = startWithBun(commandLine, options);
+  const child = startWithBun(commandLine, options, env);
   const group = groupStop(child.pid, graceMs);
   // The first limit the program reaches: the call rejects with it once the group has stopped.
   let reached: CommandError | undefined;

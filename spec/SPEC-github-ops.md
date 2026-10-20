@@ -18,7 +18,7 @@ Acceptance: see "Success criteria".
 |---|---|
 | Every GitHub REST call runs `gh api`; push and clone run git with gh's credential helper. One login, gh's; acmelabs never holds a token | Peter, 2026-10-20; ADR-0014 |
 | A step reads before it writes and reports itself as skipped when its result is already there. An existing repo is reused only when it is empty or its main commit is in the local history; any other existing repo, or one with the other visibility, ends the command with exit 2 | Peter, 2026-10-20 |
-| Outside programs get the whole environment, as today (open question 21) | Peter, 2026-10-20; ADR-0015 |
+| Outside programs get the whole environment, as today (open question 21), except that git's calls run without the `GIT_` variables | Peter, 2026-10-20; ADR-0015; ADR-0016 |
 | Every program and request has a time limit and an output limit that a call can change: 5 minutes per program, 1 minute per request, 10 MB per output. At a limit, acmelabs stops the program and every program it started, and the command ends with exit 3 (open question 22) | Peter, 2026-10-20; ADR-0015 |
 | Protect main is brain's ruleset; the Actions setting is brain's: read-only tokens, and workflows may create and approve pull requests | interview Q5; `docs/research/09-github-steps.md`, sections 2.5 and 2.6 |
 | An entry's source and every remote use the HTTPS URL, never the `owner/repo` SSH form | the marketplace's README; note 01 |
@@ -90,7 +90,7 @@ The body is the one that made acmelabs-15/cli's ruleset (note 09, section 5). br
 ### How a step calls gh and git
 
 - **`gh api`:** `["gh", "api", "--hostname", "github.com", "--method", <method>, "-H", "Accept: application/vnd.github+json", "-H", "X-GitHub-Api-Version: 2026-03-10", <path>]`, plus `["--input", "-"]` with the JSON body on stdin for a write. The call adds `GH_PROMPT_DISABLED=1` and `GH_NO_UPDATE_NOTIFIER=1` to the environment. On exit 0, stdout is the JSON answer, or empty for a 204. On exit 1, stdout is GitHub's JSON error body, with `status` as a string (note 09, section 1.2).
-- **git:** every call that reaches GitHub starts with `-c credential.https://github.com.helper= -c "credential.https://github.com.helper=!gh auth git-credential"`, the arguments gh itself gives git for a clone (note 09, section 1.5). The first clears any other helper for github.com, so gh's login is the one login. The call adds `GIT_TERMINAL_PROMPT=0`, so git never asks for a password on the terminal: a command asks only through `context.ask` (ADR-0007).
+- **git:** every call that reaches GitHub starts with `-c credential.https://github.com.helper= -c "credential.https://github.com.helper=!gh auth git-credential"`, the arguments gh itself gives git for a clone (note 09, section 1.5). The first clears any other helper for github.com, so gh's login is the one login. Each git call runs without the `GIT_` variables, then adds `GIT_TERMINAL_PROMPT=0` (ADR-0016; `gitEnv` in `git.ts` gives that `env`). Without the `GIT_` variables, a git hook's `GIT_DIR` cannot move the call to another repo. With `GIT_TERMINAL_PROMPT=0`, git never asks for a password on the terminal: a command asks only through `context.ask` (ADR-0007).
 - **Names:** an owner and a repo name pass a check before any call, because they go into an API path: an owner is 1 to 39 letters, digits or hyphens and starts with a letter or digit; a name is 1 to 100 letters, digits, `.`, `_` or `-`, and not `.` or `..`. A branch in a query is URL-encoded. A pull request's head and base each have at least one character, and no control character or colon: git refuses both in a branch name, and a colon in the head would name another owner's branch. A head or base that fails is exit 2 before any call.
 
 ### GitHub's answers and the failure kinds
@@ -129,8 +129,8 @@ export type SpawnOptions = {
   cwd?: string;
   stdin?: string;
   signal?: AbortSignal;
-  /** Variables added to the environment the program gets, such as GIT_TERMINAL_PROMPT=0. */
-  env?: Readonly<Record<string, string>>;
+  /** Variables added to the environment the program gets, such as GIT_TERMINAL_PROMPT=0. A variable given as undefined is removed. */
+  env?: Readonly<Record<string, string | undefined>>;
   timeoutMs?: number;
   maxOutputBytes?: number;
 };
@@ -149,7 +149,7 @@ export type World = {
 };
 ```
 
-- **The environment:** a program gets the whole environment, as today, plus the call's `env`. No variable is removed (ADR-0015).
+- **The environment:** a program gets the whole environment, as today, plus the call's `env` (ADR-0015). A call can remove a variable: a variable that its `env` gives as `undefined` does not reach the program. git's calls run without the `GIT_` variables (ADR-0016); every other program gets the whole environment.
 - **A program runs in its own process group** (`detached: true`). At its time limit, at its output limit, or on a cancel, acmelabs sends SIGTERM to the whole group, then SIGKILL after a grace of 5 seconds, so no program that it started keeps acmelabs waiting (note 10, section 2). A group that is already gone, or whose programs have all ended, is not an error, and the SIGKILL is then dropped, so acmelabs exits at once (fix `586c53b`).
 - **The output limit** counts the bytes of stdout and of stderr, each on its own, with a stream reader. Bun's `maxBuffer` is not used: it overshoots, and it cannot tell its stop from another SIGTERM (note 10, section 2).
 - **A limit is an outside failure** (exit 3) whose message names the program and the limit, such as `gh api ... ran longer than 5 minutes and was stopped`. A cancel still rejects with the signal's reason, as today.
@@ -157,7 +157,7 @@ export type World = {
 - **`fetch` becomes a plain function type**, so the World no longer copies Bun's `preconnect`.
 - **`sleep`** joins the World, so `watchRun` waits through it and a test passes 30 minutes in no time. The context passes the run's signal to `sleep`, as it does to `spawn` and `fetch`.
 - **`fakeWorld`** scripts the two limits: a scripted spawn or fetch answer can be `limit: "time"` or `limit: "output"`, which rejects with the same outside failure as the real one. Its `sleep` moves its clock and logs `{ kind: "sleep", ms }`. Its log keeps every spawn option except `signal`, as today.
-- **Agent's call, small and reversible:** `realWorld` takes an optional grace for SIGKILL, so a test of a program that ignores SIGTERM takes 0.2 seconds, not 5.
+- **Agent's call, small and reversible:** `realWorld` takes an optional grace for SIGKILL, so a test of a program that ignores SIGTERM takes 0.2 seconds, not 5. It also takes an optional `env`: the World's env, which its spawn passes on, so a test of the `GIT_` variables sets none in the test process (ADR-0016).
 
 ## Commands
 
@@ -262,7 +262,7 @@ Cases:
 - A program that prints past its output limit is stopped, and the call fails with exit 3; a call that raises the limit keeps all of it.
 - A program that starts its own child (`bash -c "(sleep 2; echo late) & sleep 10"`) ends with its child at a time limit and on a cancel, in well under 2 seconds.
 - A program that ignores SIGTERM is killed after the grace.
-- The call's `env` reaches the program beside the whole environment.
+- The call's `env` reaches the program beside the whole environment, and a variable that the call gives as `undefined` does not.
 - A request with slow headers, and one with a slow body, fail at the time limit with exit 3; a cancel stays a cancel; a body past the limit fails, by its `Content-Length` and by counting.
 - `fakeWorld`'s `limit` answers and its `sleep` behave as above.
 
@@ -317,7 +317,7 @@ Cases:
 - Organization settings: they need the `admin:org` scope, which the login lacks.
 - Repos owned by a user, not an organization, and GitHub Enterprise Server.
 - Deleting a repo or a branch.
-- A filter of environment variables for outside programs: Peter chose none (open question 21).
+- A filter of environment variables for programs other than git: Peter chose none (open question 21; ADR-0016).
 - Proving the process groups and the limits on Linux: `shared-workflows`, in CI.
 - Webhooks instead of polling.
 

@@ -12,6 +12,11 @@ describe("realWorld", () => {
     expect(world.env).toBe(process.env);
   });
 
+  test("an env given to realWorld is the World's env", () => {
+    const env = { ACMELABS_WORLD_TEST: "the World's own" };
+    expect(realWorld({ env }).env).toBe(env);
+  });
+
   test("fetch is a plain function that takes a request and its limits", () => {
     // A type test: tsc checks it in `bun run typecheck`. Bun's own fetch type carries more, such
     // as `preconnect`, which the World does not copy.

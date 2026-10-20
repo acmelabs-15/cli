@@ -129,6 +129,30 @@ describe("realWorld", () => {
       Reflect.deleteProperty(process.env, "ACMELABS_WORLD_TEST_BOTH");
     }
   });
+
+  test("a program gets the World's own env when realWorld is given one, without a variable that the call's env gives as undefined", async () => {
+    /** A program that prints three variables of its environment as a JSON object. */
+    const printEnv = [
+      "const { ACMELABS_WORLD_TEST_KEPT, ACMELABS_WORLD_TEST_REMOVED, HOME } = process.env;",
+      "process.stdout.write(JSON.stringify({ kept: ACMELABS_WORLD_TEST_KEPT, removed: ACMELABS_WORLD_TEST_REMOVED ?? null, home: HOME }));",
+    ].join(" ");
+    // The World's own env, so the test changes no variable of the test process.
+    const world = realWorld({
+      env: {
+        ...Bun.env,
+        ACMELABS_WORLD_TEST_KEPT: "from the World",
+        ACMELABS_WORLD_TEST_REMOVED: "from the World",
+      },
+    });
+    const spawned = await world.spawn(["bun", "-e", printEnv], {
+      env: { ACMELABS_WORLD_TEST_REMOVED: undefined },
+    });
+    expect(JSON.parse(spawned.stdout)).toEqual({
+      kept: "from the World",
+      removed: null,
+      home: Bun.env.HOME,
+    });
+  });
 });
 
 describe("realWorld: a program's time limit", () => {

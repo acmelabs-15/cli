@@ -8,6 +8,7 @@ import { z } from "zod";
 import { defineCommand } from "../../command/command";
 import { fakeWorld } from "../../command/fake-world";
 import { runCommand } from "../../command/run";
+import type { World } from "../../command/world";
 import { realWorld } from "../../command/world";
 import { inLocalHistory } from "../git";
 import { frontEnd } from "./gh-answers";
@@ -26,12 +27,20 @@ const history = defineCommand({
 });
 
 /**
+ * The test process's environment without its GIT_ variables. A git hook exports them, so a test
+ * run in a hook would otherwise set up its repos in the hook's repo.
+ */
+function withoutGitVariables(): Record<string, string | undefined> {
+  return Object.fromEntries(Object.entries(Bun.env).filter(([name]) => !name.startsWith("GIT_")));
+}
+
+/**
  * Runs git in `folder` for a test's setup, and gives its stdout. The user's own git config stays
  * out, so a global setting such as commit signing cannot change the setup.
  */
 function git(folder: string, ...words: string[]): string {
   const spawned = Bun.spawnSync(["git", "-C", folder, ...words], {
-    env: { ...Bun.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" },
+    env: { ...withoutGitVariables(), GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" },
   });
   if (spawned.exitCode !== 0) {
     throw new Error(`git ${words.join(" ")} failed: ${spawned.stderr.toString()}`);
@@ -101,16 +110,130 @@ describe("inLocalHistory: a real git repo in a temp folder", () => {
   });
 });
 
+/** The GIT_ variables that the cases below point at another repo. */
+type GitVariable = "GIT_DIR" | "GIT_INDEX_FILE" | "GIT_COMMON_DIR" | "GIT_REFERENCE_BACKEND";
+
+describe("inLocalHistory: the GIT_ variables point at another repo (ADR-0016)", () => {
+  /** The repo that the check asks about, and another repo that the GIT_ variables point at. */
+  let work: string;
+  let other: string;
+  /** A home folder with no git config, so the git under test reads no global config. */
+  let home: string;
+  /** `first`: a commit on the work repo's main, behind HEAD. `other`: the other repo's HEAD. */
+  const commits = { first: "", other: "" };
+
+  beforeAll(async () => {
+    work = await mkdtemp(path.join(tmpdir(), "acmelabs-git-work-"));
+    other = await mkdtemp(path.join(tmpdir(), "acmelabs-git-other-"));
+    home = await mkdtemp(path.join(tmpdir(), "acmelabs-git-home-"));
+    for (const folder of [work, other]) {
+      git(folder, "init", "--initial-branch=main");
+      git(folder, "config", "user.name", "ACMElabs Test");
+      git(folder, "config", "user.email", "test@acmelabs.invalid");
+    }
+    git(work, "commit", "--allow-empty", "--message=first");
+    commits.first = git(work, "rev-parse", "HEAD");
+    git(work, "commit", "--allow-empty", "--message=second");
+    // A file in the other repo, so it has an index for GIT_INDEX_FILE to point at.
+    await Bun.write(path.join(other, "README.md"), "the other repo\n");
+    git(other, "add", "README.md");
+    git(other, "commit", "--message=other");
+    commits.other = git(other, "rev-parse", "HEAD");
+  });
+
+  afterAll(async () => {
+    for (const folder of [work, other, home]) {
+      await rm(folder, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * A real World whose env is the test process's, plus the GIT_ variables `names`, each an
+   * absolute path into the other repo, as a linked worktree's hook gives them. The World has its
+   * own env, so the test sets no variable in the test process, and its spawn passes on that env.
+   */
+  function worldWith(names: readonly GitVariable[]): World {
+    const gitDir = path.join(other, ".git");
+    const values: Record<GitVariable, string> = {
+      GIT_DIR: gitDir,
+      GIT_INDEX_FILE: path.join(gitDir, "index"),
+      GIT_COMMON_DIR: gitDir,
+      GIT_REFERENCE_BACKEND: `files://${gitDir}`,
+    };
+    const variables = Object.fromEntries(names.map((name) => [name, values[name]]));
+    return realWorld({ env: { ...Bun.env, HOME: home, XDG_CONFIG_HOME: home, ...variables } });
+  }
+
+  test.each<[readonly GitVariable[]]>([
+    [["GIT_DIR"]],
+    // merge-base reads no index, so this case passes with the variable kept too (note 12, section
+    // 1.3): it shows that the variable does not break the check.
+    [["GIT_INDEX_FILE"]],
+    [["GIT_COMMON_DIR"]],
+    // Not in git's own list of local variables (note 12, section 1.1): a removal of only that list
+    // keeps it, and the check then says no for the work repo's own commit.
+    [["GIT_REFERENCE_BACKEND"]],
+    [["GIT_DIR", "GIT_INDEX_FILE", "GIT_COMMON_DIR"]],
+  ])(
+    "with %p pointing at another repo, the check answers for the repo it asks about",
+    async (names) => {
+      const world = worldWith(names);
+      const otherHead = await runCommand(
+        history,
+        { sha: commits.other, localRoot: work },
+        frontEnd(world),
+      );
+      const ownCommit = await runCommand(
+        history,
+        { sha: commits.first, localRoot: work },
+        frontEnd(world),
+      );
+      // The other repo's HEAD is not in the work repo's history; the work repo's own commit is.
+      expect(otherHead).toMatchObject({ ok: true, exitCode: 0, result: false });
+      expect(ownCommit).toMatchObject({ ok: true, exitCode: 0, result: true });
+    },
+  );
+});
+
 describe("inLocalHistory: the git call", () => {
   /** A commit's sha, and git's command line that asks for it. */
   const sha = "bb0c949064ca21a2a00beff42fea6d4c2d24c27e";
   const commandLine = ["git", "merge-base", "--is-ancestor", sha, "HEAD"];
 
-  test("runs git merge-base --is-ancestor in the local root, with no variables added", async () => {
-    const world = fakeWorld({ spawn: [{ commandLine, answer: { code: 0 } }] });
+  test("runs git merge-base --is-ancestor in the local root, without the GIT_ variables, with GIT_TERMINAL_PROMPT=0", async () => {
+    const world = fakeWorld({
+      env: {
+        // A linked worktree's commit hook gives GIT_DIR and an absolute GIT_INDEX_FILE.
+        GIT_DIR: "/work/other/.git/worktrees/wt",
+        GIT_INDEX_FILE: "/work/other/.git/worktrees/wt/index",
+        // Neither is in git's own list of local variables, and each one moves a git call (note
+        // 12, section 1.3).
+        GIT_REFERENCE_BACKEND: "files:///work/other/.git",
+        GIT_CONFIG_GLOBAL: "/work/other/pushurl.gitconfig",
+        GIT_TERMINAL_PROMPT: "1",
+        GITHUB_TOKEN: "ghs_test",
+        HOME: "/Users/test",
+      },
+      spawn: [{ commandLine, answer: { code: 0 } }],
+    });
     const outcome = await runCommand(history, { sha, localRoot: "/work/cli" }, frontEnd(world));
     expect(outcome).toMatchObject({ ok: true, result: true });
-    expect(world.calls).toEqual([{ kind: "spawn", commandLine, cwd: "/work/cli" }]);
+    // toStrictEqual, so a removed variable must be there as undefined. GITHUB_TOKEN and HOME do
+    // not start with GIT_, so the call leaves them in the environment the program gets.
+    expect(world.calls).toStrictEqual([
+      {
+        kind: "spawn",
+        commandLine,
+        cwd: "/work/cli",
+        env: {
+          GIT_DIR: undefined,
+          GIT_INDEX_FILE: undefined,
+          GIT_REFERENCE_BACKEND: undefined,
+          GIT_CONFIG_GLOBAL: undefined,
+          GIT_TERMINAL_PROMPT: "0",
+        },
+      },
+    ]);
   });
 
   test("an exit other than 0, 1 and 128 ends with exit 3, naming the command line and git's message", async () => {

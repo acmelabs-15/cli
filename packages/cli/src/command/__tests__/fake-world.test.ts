@@ -184,6 +184,19 @@ describe("fakeWorld", () => {
     ]);
   });
 
+  test("the log keeps a variable that the call's env removes, as undefined", async () => {
+    const world = fakeWorld({ spawn: [{ commandLine: ["git", "status"] }] });
+    await world.spawn(["git", "status"], { env: { GIT_DIR: undefined, GIT_TERMINAL_PROMPT: "0" } });
+    // toStrictEqual, because toEqual treats a key whose value is undefined as a missing key.
+    expect(world.calls).toStrictEqual([
+      {
+        kind: "spawn",
+        commandLine: ["git", "status"],
+        env: { GIT_DIR: undefined, GIT_TERMINAL_PROMPT: "0" },
+      },
+    ]);
+  });
+
   test("an unscripted fetch call fails with an error that names the method and URL", async () => {
     const world = fakeWorld();
     await expect(

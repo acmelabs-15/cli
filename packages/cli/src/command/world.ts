@@ -7,8 +7,8 @@ import { spawnWithBun } from "./world-spawn";
 
 /**
  * How to run a spawned program: its working folder, the text it reads on stdin, the signal that
- * stops it, the variables added to its environment, and its time and output limits. `limits`, the
- * defaults of a program's and a request's limits, is in `world-limits.ts`.
+ * stops it, the variables added to or removed from its environment, and its time and output
+ * limits. `limits`, the defaults of a program's and a request's limits, is in `world-limits.ts`.
  */
 export type SpawnOptions = {
   cwd?: string;
@@ -16,10 +16,10 @@ export type SpawnOptions = {
   signal?: AbortSignal;
   /**
    * Variables added to the environment the program gets, such as GIT_TERMINAL_PROMPT=0. A variable
-   * here replaces one of the same name. runCommand removes only the World's env secrets from its
-   * messages, so no secret goes here.
+   * here replaces one of the same name. A variable given as undefined is removed. runCommand
+   * removes only the World's env secrets from its messages, so no secret goes here.
    */
-  env?: Readonly<Record<string, string>>;
+  env?: Readonly<Record<string, string | undefined>>;
   /**
    * The program's time limit in milliseconds, a positive number: `limits.programMs` when unset. A
    * limit past about 24 days, the longest a timer holds, acts as about 24 days.
@@ -53,15 +53,19 @@ export type SleepOptions = { signal?: AbortSignal };
 export type World = {
   /** The repo folder the command acts on; the working folder by default. */
   root: string;
-  /** The environment variables. */
+  /**
+   * The environment variables: the ones every program that spawn starts gets. So a call that
+   * removes variables reads their names here, and finds every one that the program would get.
+   */
   env: Readonly<Record<string, string | undefined>>;
   /**
-   * Runs a program, with no shell, and returns its exit code and output. The program gets the whole
-   * environment plus the call's `env`. At its time limit, or past its output limit on stdout or on
-   * stderr, the program and every program it started stop, and the call rejects with an outside
-   * failure that names the program and the limit. When the signal aborts, they stop too, and the
-   * call rejects with the signal's reason, as fetch does. A program that is not installed rejects
-   * with an outside failure that names it.
+   * Runs a program, with no shell, and returns its exit code and output. The program gets the
+   * World's `env` plus the call's `env`, without the variables that the call gives as undefined.
+   * At its time limit, or past its output limit on stdout or on stderr, the program and every
+   * program it started stop, and the call rejects with an outside failure that names the program
+   * and the limit. When the signal aborts, they stop too, and the call rejects with the signal's
+   * reason, as fetch does. A program that is not installed rejects with an outside failure that
+   * names it.
    */
   spawn: (commandLine: readonly string[], options?: SpawnOptions) => Promise<Spawned>;
   /**
@@ -88,10 +92,18 @@ export type World = {
   sleep: (ms: number, options?: SleepOptions) => Promise<void>;
 };
 
-/** What realWorld takes: the grace between SIGTERM and SIGKILL when it stops a program. */
+/**
+ * What realWorld takes: the grace between SIGTERM and SIGKILL when it stops a program, and the
+ * environment.
+ */
 export type RealWorldOptions = {
   /** 5 seconds when unset; a test of a program that ignores SIGTERM sets less. */
   graceMs?: number;
+  /**
+   * The World's env, which every program it starts gets: the process environment when unset. A
+   * test gives its own, so it sets no variable in the test process.
+   */
+  env?: World["env"];
 };
 
 /** The grace between SIGTERM and SIGKILL when realWorld stops a program: 5 seconds. */
@@ -116,17 +128,20 @@ async function sleepWithTimer(ms: number, signal: AbortSignal | undefined): Prom
 }
 
 /**
- * The real World: the working folder, the process environment, Bun's spawn and fetch, each under
- * its limits, the clock, and a timer. It is the one place in the CLI that touches the process for
- * these.
+ * The real World: the working folder, the process environment (or the env it is given), Bun's
+ * spawn and fetch, each under its limits, the clock, and a timer. It is the one place in the CLI
+ * that touches the process for these.
  */
 export function realWorld(options: RealWorldOptions = {}): World {
   const graceMs = options.graceMs ?? defaultGraceMs;
+  // One value for env and for spawn: the variables a caller reads in env are the ones the program
+  // gets, so git's calls remove every GIT_ variable (ADR-0016). Bun.env is process.env itself.
+  const env = options.env ?? Bun.env;
   return {
     root: process.cwd(),
-    env: Bun.env,
+    env,
     spawn(commandLine, spawnOptions = {}) {
-      return spawnWithBun(commandLine, spawnOptions, graceMs);
+      return spawnWithBun(commandLine, spawnOptions, graceMs, env);
     },
     fetch: fetchWithLimits,
     now() {

@@ -121,10 +121,14 @@ function createdRepo(name: string, visibility: "public" | "private"): Spawned {
 /** The commit of cli's main branch in `repoAnswers.cliMain`. */
 const cliMainSha = "bb0c949064ca21a2a00beff42fea6d4c2d24c27e";
 
-/** The local-history check of cli's main commit, as git's command line in the local repo. */
+/**
+ * The local-history check of cli's main commit, as git's command line in the local repo. The fake
+ * World's env holds no GIT_ variable, so the call only adds GIT_TERMINAL_PROMPT=0 (ADR-0016).
+ */
 const cliMainCheck = {
   commandLine: ["git", "merge-base", "--is-ancestor", cliMainSha, "HEAD"],
   cwd: localRoot,
+  env: { GIT_TERMINAL_PROMPT: "0" },
 } as const;
 
 /** git's answer to the local-history check: exit 0 for yes, 1 for no, 128 for an unknown commit. */
