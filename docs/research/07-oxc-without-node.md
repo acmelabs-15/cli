@@ -103,7 +103,7 @@ With the probe files removed:
 
 ## 4. A side note on oxlint's output
 
-oxlint prints a compact one-line format and no summary line when `CLAUDECODE=1` is set, as it is in a Claude Code shell. The runtime does not change the format: Node-free with `CLAUDECODE=1` gives the compact format, and real Node with an empty environment gives the summary. The exit codes are the same either way.
+oxlint prints a compact one-line format and no summary line when `CLAUDECODE=1` is set, as it is in a Claude Code shell. `AI_AGENT=1` alone does the same (found on 2026-10-20 by the `config-presets` build, with an empty environment and one variable at a time). The runtime does not change the format: Node-free with `CLAUDECODE=1` gives the compact format, and real Node with an empty environment gives the summary. The exit codes are the same either way.
 
 ## What it means for open question 4
 
