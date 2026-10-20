@@ -360,6 +360,32 @@ describe("ensureRepo: an existing repo that is not this run's repo", () => {
     },
   );
 
+  test("GitHub's default branch and the local folder show on one line in the message", async () => {
+    // Built: the default branch comes from GitHub, and the local folder from the caller as given.
+    const read = { path: "repos/acmelabs-15/cli" };
+    const ref = { path: "repos/acmelabs-15/cli/git/ref/heads/ma%1B%5B2Jin" };
+    const world = fakeWorld({
+      spawn: [
+        ghScripted(read, cliWith({ default_branch: "ma\u001B[2Jin" })),
+        ghScripted(ref, repoAnswers.cliMain),
+        gitAnswer(1),
+      ],
+    });
+    const outcome = await runCommand(
+      repoCommand,
+      { owner: "acmelabs-15", name: "cli", visibility: "public", localRoot: "/work/cli\r\n" },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 2,
+      error: {
+        kind: "input",
+        message:
+          "acmelabs-15/cli already exists on GitHub and holds other work: its ma [2Jin branch is at bb0c949064ca21a2a00beff42fea6d4c2d24c27e, a commit that is not in the local history of /work/cli; acmelabs changes nothing in acmelabs-15/cli, so pick another name",
+      },
+    });
+  });
+
   test("a public repo, asked for as private, ends with exit 2, naming both visibilities, and makes no write", async () => {
     const calls = repoCalls("acmelabs-15", "cli");
     const world = fakeWorld({ spawn: [ghScripted(calls.read, repoAnswers.cli)] });
@@ -386,6 +412,27 @@ describe("ensureRepo: an existing repo that is not this run's repo", () => {
       repoStep("acmelabs-15/cli", "failed"),
     ]);
     expect(world.calls).toEqual([ghLogged(calls.read)]);
+  });
+
+  test("GitHub's visibility shows on one line in the message", async () => {
+    // Built: GitHub's text reaches a terminal in the message, so it follows the text rule.
+    const calls = repoCalls("acmelabs-15", "cli");
+    const world = fakeWorld({
+      spawn: [ghScripted(calls.read, cliWith({ visibility: "inter\u001B[2Jnal" }))],
+    });
+    const outcome = await runCommand(
+      repoCommand,
+      { owner: "acmelabs-15", name: "cli", visibility: "public", localRoot },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 2,
+      error: {
+        kind: "input",
+        message:
+          "acmelabs-15/cli already exists on GitHub as a inter [2Jnal repo, and this run asks for a public one; acmelabs never changes a repo's visibility, and changes nothing in acmelabs-15/cli, so pick another name, or ask for a inter [2Jnal repo",
+      },
+    });
   });
 
   test("an empty private repo, asked for as public, ends with exit 2 before its branch is read", async () => {
@@ -665,6 +712,35 @@ describe("ensureRepo: answers the step cannot use", () => {
       },
     });
     expect(world.calls).toEqual([ghLogged(calls.read), ghLogged(calls.main)]);
+  });
+
+  test("GitHub's text inside a thing wrong with its answer shows on one line, in the message and in the issue", async () => {
+    // Built: the check quotes GitHub's sha as JSON, which escapes a line break but not a bidi mark.
+    const calls = repoCalls("acmelabs-15", "cli");
+    const world = fakeWorld({
+      spawn: [
+        ghScripted(calls.read, repoAnswers.cli),
+        ghScripted(calls.main, {
+          code: 0,
+          stdout: String.raw`{"ref":"refs/heads/main","object":{"sha":"bb0c‮minim","type":"commit"}}`,
+          stderr: "",
+        }),
+      ],
+    });
+    const outcome = await runCommand(
+      repoCommand,
+      { owner: "acmelabs-15", name: "cli", visibility: "public", localRoot },
+      frontEnd(world),
+    );
+    const wrong = '"bb0c minim" is not a commit sha; a sha is 40 characters, each 0 to 9 or a to f';
+    expect(outcome).toMatchObject({
+      exitCode: 3,
+      error: {
+        kind: "outside",
+        message: `gh api GET repos/acmelabs-15/cli/git/ref/heads/main gave an answer that acmelabs cannot read: object.sha: ${wrong}`,
+        issues: [{ field: "object.sha", message: wrong }],
+      },
+    });
   });
 
   test("a repo name that fails the name check ends with exit 2 before the step starts, and makes no call", async () => {

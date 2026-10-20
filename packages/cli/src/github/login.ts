@@ -53,14 +53,15 @@ const statusBody = z.object({ hosts: z.record(z.string(), z.array(accountBody)) 
  * gh's answer, read with its schema. gh's exit 4 means that it needs a login; `env`, the World's
  * env, gives the login's token variables. Any other exit, an answer that is not JSON, or an answer
  * of another shape is an outside failure that names the command line, and what gh printed on
- * stderr or the first thing wrong. With `--json`, gh exits 0 when it has no login too, so exit 0
- * is the normal answer.
+ * stderr, as `shownText` gives it, or the first thing wrong. With `--json`, gh exits 0 when it has
+ * no login too, so exit 0 is the normal answer.
  */
 function readStatus(spawned: Spawned, env: World["env"]): z.output<typeof statusBody> {
   if (spawned.code === 4) {
     throw ghLoginNeeded(tokenVariablesIn(env));
   }
-  const stderrNote = spawned.stderr.trim() === "" ? "" : `: ${spawned.stderr.trim()}`;
+  const said = shownText(spawned.stderr);
+  const stderrNote = said === "" ? "" : `: ${said}`;
   if (spawned.code !== 0) {
     throw outsideError(`${statusCall} failed with exit ${spawned.code}${stderrNote}`);
   }
@@ -74,9 +75,10 @@ function readStatus(spawned: Spawned, env: World["env"]): z.output<typeof status
   if (read.success) {
     return read.data;
   }
+  // A place can hold a key of gh's answer, such as a host name, so each text follows the rule.
   const issues = read.error.issues.map((issue) => ({
-    field: z.core.toDotPath(issue.path),
-    message: issue.message,
+    field: shownText(z.core.toDotPath(issue.path)),
+    message: shownText(issue.message),
   }));
   // zod gives at least one issue for an answer it cannot read.
   const [first = { field: "", message: "" }] = issues;
@@ -129,7 +131,7 @@ function holds(scopes: readonly string[], asked: string): boolean {
  * (`ghLoginNeeded` words it). A token that reports no scopes, a fine-grained or app token, skips
  * the scope check, as gh does. The asked scopes are the caller's own constants, such as repo and
  * workflow: they go into that command line as they are, so no text from gh or from the user goes
- * there.
+ * there. The done step's detail shows gh's login name and scopes as `shownText` gives them.
  */
 export async function checkLogin(
   context: StepContext,
@@ -167,6 +169,6 @@ export async function checkLogin(
     throw ghLoginNeeded(tokenVariables, { scopes: missing });
   }
   const shown = scopes.length === 0 ? "a token that reports no scopes" : scopes.join(", ");
-  context.progress({ ...step, status: "done", detail: `${login}, with ${shown}` });
+  context.progress({ ...step, status: "done", detail: shownText(`${login}, with ${shown}`) });
   return { login, scopes };
 }

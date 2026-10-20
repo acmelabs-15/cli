@@ -605,29 +605,46 @@ describe("answerOrThrow: GitHub's first error joins its message", () => {
       ],
     });
     const outcome = await runCommand(create, marketplacePull.input, frontEnd(world));
-    // The first 300 characters of the error: the 38 of "No commits ... add-brain ", then 262 x.
+    // The first 300 characters of the error: the 38 of "No commits ... add-brain ", then 262 x,
+    // a part of a word, which is dropped.
     expect(outcome).toMatchObject({
       exitCode: 3,
       error: {
-        message: `GitHub answered POST repos/acmelabs-15/marketplace/pulls with HTTP 422: Validation [31m Failed (No commits between main and add-brain ${"x".repeat(262)}...)`,
+        message:
+          "GitHub answered POST repos/acmelabs-15/marketplace/pulls with HTTP 422: Validation [31m Failed (No commits between main and add-brain...)",
+      },
+    });
+  });
+
+  test("a cut right after a space keeps every word before it", async () => {
+    // The 300th character is a space, so the cut splits no word, and none goes.
+    const world = fakeWorld({
+      spawn: [
+        ghScripted(marketplacePull.call, validationFailed({ errors: [`${"x".repeat(299)} next`] })),
+      ],
+    });
+    const outcome = await runCommand(create, marketplacePull.input, frontEnd(world));
+    expect(outcome).toMatchObject({
+      error: {
+        message: `GitHub answered POST repos/acmelabs-15/marketplace/pulls with HTTP 422: Validation Failed (${"x".repeat(299)}...)`,
       },
     });
   });
 
   test("the cut at 300 characters keeps a two-unit character whole", async () => {
-    // An emoji is two UTF-16 units; a cut by units would leave half of one.
+    // An emoji is two UTF-16 units; a cut by units at 300 would leave half of this one.
     const world = fakeWorld({
       spawn: [
         ghScripted(
           marketplacePull.call,
-          validationFailed({ errors: [`${"x".repeat(299)}\u{1F600}\u{1F600}`] }),
+          validationFailed({ errors: [`${"x".repeat(298)} \u{1F600} tail`] }),
         ),
       ],
     });
     const outcome = await runCommand(create, marketplacePull.input, frontEnd(world));
     expect(outcome).toMatchObject({
       error: {
-        message: `GitHub answered POST repos/acmelabs-15/marketplace/pulls with HTTP 422: Validation Failed (${"x".repeat(299)}\u{1F600}...)`,
+        message: `GitHub answered POST repos/acmelabs-15/marketplace/pulls with HTTP 422: Validation Failed (${"x".repeat(298)} \u{1F600}...)`,
       },
     });
   });
@@ -854,6 +871,54 @@ describe("an outside failure: exit 3", () => {
         kind: "outside",
         message:
           "gh api GET repos/acmelabs-15/brain/actions/permissions/workflow failed with exit 1: gh: HTTP 502",
+      },
+    });
+  });
+
+  test("gh's stderr in an unreadable answer shows on one line, with no escape, and stops at 300 characters", async () => {
+    // Built: a proxy's page after gh's line, with an escape code, as gh's stderr can hold it.
+    const world = fakeWorld({
+      spawn: [
+        ghScripted(brainSetting.call, {
+          code: 1,
+          stdout: "<!DOCTYPE html>\n<html><body><h1>502 Bad Gateway</h1></body></html>\n",
+          stderr: `gh: HTTP 502\n\u001B[31m${"bad gateway ".repeat(40)}\n`,
+        }),
+      ],
+    });
+    const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
+    // The first 300 characters: the 17 of "gh: HTTP 502 [31m", 23 times "bad gateway ", then "bad
+    // gat"; "gat" is a part of a word, which is dropped.
+    expect(outcome).toMatchObject({
+      exitCode: 3,
+      error: {
+        kind: "outside",
+        message: `gh api GET repos/acmelabs-15/brain/actions/permissions/workflow failed with exit 1: gh: HTTP 502 [31m${"bad gateway ".repeat(23)}bad...`,
+      },
+    });
+  });
+
+  test("a cut inside a word drops the word whole, so no part of a token stays for the redaction to miss", async () => {
+    // Built: a token that straddles the cut. The redaction of the World's secrets runs on the
+    // whole message later, and finds only a whole token.
+    const token = "not-a-real-token-0123456789";
+    const world = fakeWorld({
+      env: { GH_TOKEN: token },
+      spawn: [
+        ghScripted(brainSetting.call, {
+          code: 1,
+          stdout: "",
+          stderr: `gh: ${"word ".repeat(58)}${token}\n`,
+        }),
+      ],
+    });
+    const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
+    expect(JSON.stringify(outcome)).not.toContain("not-a-");
+    expect(outcome).toMatchObject({
+      exitCode: 3,
+      error: {
+        kind: "outside",
+        message: `gh api GET repos/acmelabs-15/brain/actions/permissions/workflow failed with exit 1: gh: ${"word ".repeat(57)}word...`,
       },
     });
   });

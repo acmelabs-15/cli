@@ -148,6 +148,32 @@ describe("findTag", () => {
     expect(world.calls).toEqual([ghLogged(read)]);
   });
 
+  test("a tag and GitHub's object type show on one line in the message", async () => {
+    // Built: the tag comes from the caller as given, and the type from GitHub.
+    const read = { path: "repos/acmelabs-15/brain/git/ref/tags/v1%1B%5B2J" };
+    const world = fakeWorld({
+      spawn: [
+        ghScripted(read, {
+          code: 0,
+          stdout: latestOfBrain.stdout.replace('"type":"commit"', String.raw`"type":"tree\r\n"`),
+          stderr: "",
+        }),
+      ],
+    });
+    const outcome = await runCommand(
+      tagCommand,
+      { owner: "acmelabs-15", name: "brain", tag: "v1\u001B[2J" },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 3,
+      error: {
+        kind: "outside",
+        message: "the tag v1 [2J of acmelabs-15/brain points at a tree, not a commit",
+      },
+    });
+  });
+
   test("a sha that is not 40 lowercase hex characters ends with exit 3, and goes into no path", async () => {
     const ref = { path: "repos/changesets/changesets/git/ref/tags/v1" };
     const world = fakeWorld({
@@ -415,6 +441,100 @@ describe("watchRun", () => {
       runStep("done", "success"),
     ]);
     expect(world.calls).toEqual([ghLogged(list)]);
+  });
+
+  test("GitHub's run name and conclusion show on one line in the info message and the step's detail; the result keeps the conclusion as GitHub gives it", async () => {
+    // Built: a run's name comes from its workflow file, which anyone who can push may write.
+    const { list } = runCalls(brainSha, 39_382_027_513);
+    const world = fakeWorld({
+      spawn: [
+        ghScripted(
+          list,
+          runListAnswer([
+            runWith(releaseRunOfBrain, { name: "Release\r\n\u001B[2J", conclusion: "fail‮ure" }),
+          ]),
+        ),
+      ],
+    });
+    const caller = frontEnd(world);
+    const outcome = await runCommand(watchCommand, brainRelease(brainSha), caller);
+    expect(outcome).toMatchObject({ ok: true, result: { conclusion: "fail‮ure" } });
+    expect(caller.updates).toEqual([
+      runStep("started"),
+      info("Release [2J: completed"),
+      runStep("failed", "fail ure"),
+    ]);
+  });
+
+  test("GitHub's run name and web address show on one line when the run does not complete in time", async () => {
+    // Built: a run's name comes from its workflow file, and its web address from GitHub.
+    const { list, run } = runCalls(brainSha, 39_382_027_513);
+    const inProgress = runWith(releaseRunOfBrain, {
+      name: "Release\u001B[2J",
+      status: "in_progress",
+      conclusion: null,
+      html_url: "https://github.com/acmelabs-15/brain/actions/runs/39382027513‮",
+    });
+    const world = fakeWorld({
+      spawn: [
+        ghScripted(list, runListAnswer([inProgress])),
+        ghScripted(run, runAnswer(inProgress)),
+      ],
+    });
+    const outcome = await runCommand(
+      watchCommand,
+      { ...brainRelease(brainSha), completeWithinMs: 10_000 },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 3,
+      error: {
+        kind: "outside",
+        message:
+          "the Release [2J run of acmelabs-15/brain did not complete within 10 seconds, and goes on in GitHub: https://github.com/acmelabs-15/brain/actions/runs/39382027513",
+      },
+    });
+  });
+
+  test("a workflow file with a control character shows on one line when no run appears in time", async () => {
+    // The workflow file comes from the caller as given.
+    const { list } = runCalls(brainSha, 39_382_027_513);
+    const world = fakeWorld({ spawn: [ghScripted(list, noRuns), ghScripted(list, noRuns)] });
+    const outcome = await runCommand(
+      watchCommand,
+      {
+        ...brainRelease(brainSha),
+        workflow: ".github/workflows/rel\u001B[2Jease.yml",
+        appearWithinMs: 10_000,
+      },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 3,
+      error: {
+        kind: "outside",
+        message:
+          "no push run of .github/workflows/rel [2Jease.yml for commit 7dee2ef38b7fadfa963ea14c76193457a2f19f91 appeared on acmelabs-15/brain within 10 seconds; see https://github.com/acmelabs-15/brain/actions",
+      },
+    });
+  });
+
+  test("a workflow file with a control character shows on one line in the step's title", async () => {
+    // The workflow file comes from the caller as given, and a terminal shows the step's title.
+    const workflow = ".github/workflows/rel\u001B[2Jease.yml";
+    const { list } = runCalls(brainSha, 39_382_027_513);
+    const world = fakeWorld({
+      spawn: [ghScripted(list, runListAnswer([runWith(releaseRunOfBrain, { path: workflow })]))],
+    });
+    const caller = frontEnd(world);
+    const outcome = await runCommand(watchCommand, { ...brainRelease(brainSha), workflow }, caller);
+    expect(outcome).toMatchObject({ ok: true, result: { conclusion: "success" } });
+    const title = "Wait for the .github/workflows/rel [2Jease.yml run on acmelabs-15/brain";
+    expect(caller.updates).toEqual([
+      { kind: "step", step: "github-run", title, status: "started" },
+      info("Release: completed"),
+      { kind: "step", step: "github-run", title, status: "done", detail: "success" },
+    ]);
   });
 
   test("a completed run with no conclusion gives a failed step, and null in the result", async () => {

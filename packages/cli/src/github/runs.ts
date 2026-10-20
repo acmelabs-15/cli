@@ -4,7 +4,7 @@ import type { ProgressUpdate } from "../command/command";
 import { inputError, outsideError } from "../command/outcome";
 import { durationOf } from "../command/world-limits";
 import type { StepContext } from "./gh";
-import { ghApi, readBody, repoPath } from "./gh";
+import { ghApi, readBody, repoPath, shownText } from "./gh";
 import type { GitHubRepo } from "./names";
 import { fullName } from "./names";
 
@@ -113,9 +113,16 @@ function checkedSha(headSha: string): string {
   return headSha;
 }
 
-/** The info message for a run's new status, such as `Release: in_progress`. */
+/**
+ * The info message for a run's new status, such as `Release: in_progress`. GitHub's two texts show
+ * as `shownText` gives them: a run's name comes from its workflow file.
+ */
 function statusMessage(run: Run): ProgressUpdate {
-  return { kind: "message", level: "info", text: `${run.name}: ${run.status}` };
+  return {
+    kind: "message",
+    level: "info",
+    text: `${shownText(run.name)}: ${shownText(run.status)}`,
+  };
 }
 
 /**
@@ -155,7 +162,7 @@ async function appearedRun(
     const waitMs = nextWaitMs(context, deadline, waits.pollMs);
     if (waitMs === undefined) {
       throw outsideError(
-        `no push run of ${workflow} for commit ${headSha} appeared on ${fullName(repo)} within ${durationOf(waits.appearWithinMs)}; see ${actionsPage(repo)}`,
+        `no push run of ${shownText(workflow)} for commit ${headSha} appeared on ${fullName(repo)} within ${durationOf(waits.appearWithinMs)}; see ${actionsPage(repo)}`,
       );
     }
     await context.sleep(waitMs);
@@ -180,7 +187,7 @@ async function completedRun(
     const waitMs = nextWaitMs(context, deadline, waits.pollMs);
     if (waitMs === undefined) {
       throw outsideError(
-        `the ${run.name} run of ${fullName(repo)} did not complete within ${durationOf(waits.completeWithinMs)}, and goes on in GitHub: ${run.html_url}`,
+        `the ${shownText(run.name)} run of ${fullName(repo)} did not complete within ${durationOf(waits.completeWithinMs)}, and goes on in GitHub: ${shownText(run.html_url)}`,
       );
     }
     await context.sleep(waitMs);
@@ -199,6 +206,8 @@ async function completedRun(
  * status. The step ends as done for the conclusion
  * `success` and as failed for any other, and returns the conclusion in either case: the caller
  * decides what a failed run means. Each wait goes through `context.sleep`, so a cancel stops it.
+ * The title, the messages and the detail show the workflow file and GitHub's texts as `shownText`
+ * gives them; the result keeps GitHub's conclusion as it is.
  */
 export async function watchRun(context: StepContext, watch: RunWatch): Promise<RunEnd> {
   const { repo, headSha, workflow } = watch;
@@ -212,14 +221,15 @@ export async function watchRun(context: StepContext, watch: RunWatch): Promise<R
   const step = {
     kind: "step",
     step: "github-run",
-    title: `Wait for the ${workflow} run on ${fullName(repo)}`,
+    title: `Wait for the ${shownText(workflow)} run on ${fullName(repo)}`,
   } as const;
   context.progress({ ...step, status: "started" });
   const appeared = await appearedRun(context, watch, listPath, waits);
   context.progress(statusMessage(appeared));
   const run = await completedRun(context, repo, appeared, waits);
   const status = run.conclusion === "success" ? "done" : "failed";
-  context.progress({ ...step, status, detail: run.conclusion ?? "no conclusion" });
+  const detail = run.conclusion === null ? "no conclusion" : shownText(run.conclusion);
+  context.progress({ ...step, status, detail });
   return { id: run.id, url: run.html_url, conclusion: run.conclusion };
 }
 
@@ -271,7 +281,7 @@ export async function findTag(
   }
   if (object.type !== "commit") {
     throw outsideError(
-      `the tag ${tag} of ${fullName(repo)} points at a ${object.type}, not a commit`,
+      `the tag ${shownText(tag)} of ${fullName(repo)} points at a ${shownText(object.type)}, not a commit`,
     );
   }
   return { sha: object.sha };

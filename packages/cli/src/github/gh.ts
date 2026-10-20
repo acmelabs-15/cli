@@ -231,15 +231,45 @@ function messageOf(body: Json): string {
   return isJsonObject(body) && typeof body.message === "string" ? body.message : "no message";
 }
 
+/** The most characters of one text from outside acmelabs that a message or a title shows. */
+const shownChars = 300;
+
+/**
+ * A text from outside acmelabs, as a failure message, a step's title or detail, or an info message
+ * shows it: on one line, cut at 300 characters. Each run of control, format and line-separator
+ * characters becomes one space, so no line break, escape sequence or bidi mark reaches the
+ * terminal. A cut inside a word drops that word whole: a token or a URL's login part has no space,
+ * so no part of one stays for `runCommand`'s redaction of secrets to miss. Such a text is
+ * untrusted: GitHub's can echo what a request sent, gh's can hold an answer's body, git's holds
+ * GitHub's `remote:` lines, and a folder comes from the caller as given.
+ *
+ * Each step calls it where it puts such a text into a message, not once on the whole message: the
+ * cut applies to the outside text alone, so the fix that the message names after it stays whole.
+ */
+export function shownText(text: string): string {
+  const line = text.replaceAll(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+/gu, " ").trim();
+  // Cut by code points, so the cut never splits a character in two.
+  const characters = [...line];
+  if (characters.length <= shownChars) {
+    return line;
+  }
+  const kept = characters.slice(0, shownChars).join("");
+  // When the text goes on with a word, the kept part's last run of non-space characters may be
+  // that word's start, so the run goes; a kept part that ends in a space has no such run.
+  const goesOnInWord = /\S/u.test(characters[shownChars] ?? "");
+  const whole = goesOnInWord ? kept.replace(/\S+$/u, "") : kept;
+  return `${whole.trimEnd()}...`;
+}
+
 /**
  * The outside failure for a gh call whose answer ghApi cannot read: an ok answer that is not JSON,
  * or an exit with no GitHub error body, such as a network failure. It names the call, and what gh
- * printed on stderr.
+ * printed on stderr, as `shownText` gives it.
  */
 function unreadable(call: string, spawned: Spawned): CommandError {
   const what =
     spawned.code === 0 ? "gave an answer that is not JSON" : `failed with exit ${spawned.code}`;
-  const said = spawned.stderr.trim();
+  const said = shownText(spawned.stderr);
   return outsideError(said === "" ? `gh api ${call} ${what}` : `gh api ${call} ${what}: ${said}`);
 }
 
@@ -312,8 +342,12 @@ async function callOnce(
 /** The statuses of `RetriedStatus`, which ghApi checks an answer against. */
 const retriedStatuses: ReadonlySet<number> = new Set<RetriedStatus>([404, 409]);
 
-/** How often ghApi tries a call again, and how long it waits before each try, as the spec says. */
-const retry = { times: 3, waitMs: 3000 } as const;
+/**
+ * How often a call to GitHub is tried again after an answer that a repo made a moment ago can
+ * give, and how long the step waits before each try: 3 times, 3 seconds apart, as the spec says.
+ * ghApi uses it for an unexpected 404 or 409, and git's calls for "Repository not found".
+ */
+export const retry = { times: 3, waitMs: 3000 } as const;
 
 /**
  * Whether ghApi tries a call again after this answer: a 404 or 409 that the call does not expect,
@@ -379,22 +413,6 @@ function nameTaken(body: Json): boolean {
         item.message.includes("name already exists"),
     )
   );
-}
-
-/** The most characters of one text from gh or GitHub that a failure message shows. */
-const shownChars = 300;
-
-/**
- * A text from gh or GitHub, as a failure message shows it: on one line, cut at 300 characters.
- * Each run of control, format and line-separator characters becomes one space, so no line break,
- * escape sequence or bidi mark reaches the terminal. Such a text is untrusted: GitHub's can echo
- * what a request sent, and gh's can hold an answer's body.
- */
-export function shownText(text: string): string {
-  const line = text.replaceAll(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+/gu, " ").trim();
-  // Cut by code points, so the cut never splits a character in two.
-  const characters = [...line];
-  return characters.length <= shownChars ? line : `${characters.slice(0, shownChars).join("")}...`;
 }
 
 /** An item of GitHub's `errors`, as its text: a text itself, or an object's `message`. */
@@ -513,7 +531,8 @@ function wrongThing(issue: Issue): string {
  * reads the answers it expects, such as a 404, before it gives the answer here. A body of
  * another shape is an outside failure, exit 3: GitHub answered something the step cannot read. Its
  * message names the call and the first thing wrong, with each thing wrong as an issue at its place
- * in the body, such as `[0].id`.
+ * in the body, such as `[0].id`. Each place and each issue's message show as `shownText` gives
+ * them: a place can hold a key of GitHub's body, and a check's message can quote a value from it.
  */
 export function readBody<Schema extends z.ZodType>(
   answer: GhAnswer,
@@ -525,8 +544,8 @@ export function readBody<Schema extends z.ZodType>(
     return read.data;
   }
   const issues = read.error.issues.map((issue) => ({
-    field: z.core.toDotPath(issue.path),
-    message: issue.message,
+    field: shownText(z.core.toDotPath(issue.path)),
+    message: shownText(issue.message),
   }));
   // zod gives at least one issue for a body it cannot read.
   const [first = "", ...rest] = issues.map(wrongThing);

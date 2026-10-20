@@ -306,6 +306,34 @@ describe("push: the remote origin", () => {
   );
 });
 
+describe("push: the remote origin's message", () => {
+  test("the folder and a URL from git config show on one line in the message", async () => {
+    // The folder comes from the caller as given, and the URL from the local git config, which can
+    // hold a control character.
+    const world = fakeWorld({
+      spawn: [
+        git("localCommit", { stdout: `${localSha}\n` }),
+        git("origin", {
+          stdout: configured(["url", "git@github.com:acmelabs-15/jev.git\u001B[2J"]),
+        }),
+      ],
+    });
+    const outcome = await runCommand(
+      pushCommand,
+      { ...jevMain, cwd: "/work/jev\u001B[2J" },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 2,
+      error: {
+        kind: "input",
+        message:
+          "the remote origin of /work/jev [2J is git@github.com:acmelabs-15/jev.git [2J, not https://github.com/acmelabs-15/jev.git; acmelabs pushes acmelabs-15/jev only to its HTTPS URL, so point origin at that URL, or push from another folder",
+      },
+    });
+  });
+});
+
 describe("push: GitHub's branch", () => {
   test("a branch already at the local commit gives a skipped step, and no push", async () => {
     const world = fakeWorld({
@@ -326,6 +354,25 @@ describe("push: GitHub's branch", () => {
       pushStep("skipped", `already at ${localSha}`),
     ]);
     expect(world.calls).toEqual([logged("localCommit"), logged("origin"), logged("remoteCommit")]);
+  });
+
+  test("git's commit shows on one line in the skipped step's detail", async () => {
+    // Built: git's output is a text from outside, and the detail reaches a terminal.
+    const odd = `${localSha}\u001B[2J`;
+    const world = fakeWorld({
+      spawn: [
+        git("localCommit", { stdout: `${odd}\n` }),
+        git("origin", { stdout: jevOrigin }),
+        git("remoteCommit", { stdout: `${odd}\trefs/heads/main\n` }),
+      ],
+    });
+    const caller = frontEnd(world);
+    const outcome = await runCommand(pushCommand, jevMain, caller);
+    expect(outcome).toMatchObject({ ok: true, result: { sha: odd, pushed: false } });
+    expect(caller.updates).toEqual([
+      pushStep("started"),
+      pushStep("skipped", `already at ${localSha} [2J`),
+    ]);
   });
 
   test("a branch at another commit is pushed", async () => {
@@ -385,12 +432,23 @@ describe("push: GitHub's branch", () => {
 });
 
 describe("push: GitHub rejects the push", () => {
+  // git's message shows on one line, each line break as a space, and stops at 300 characters:
+  // the rule violation's message has 332, so its cut falls inside the last URL,
+  // which is dropped.
   test.each([
-    ["is not a fast-forward", gitAnswers.notFastForward],
-    ["breaks a rule of a ruleset", gitAnswers.ruleViolation],
+    [
+      "is not a fast-forward",
+      gitAnswers.notFastForward,
+      "To https://github.com/acmelabs-15/jev.git  ! [rejected]        main -> main (fetch first) error: failed to push some refs to 'https://github.com/acmelabs-15/jev.git' hint: Updates were rejected because the remote contains work that you do not hint: have locally.",
+    ],
+    [
+      "breaks a rule of a ruleset",
+      gitAnswers.ruleViolation,
+      "remote: error: GH013: Repository rule violations found for refs/heads/main. remote: - Changes must be made through a pull request. To https://github.com/acmelabs-15/jev.git  ! [remote rejected] main -> main (push declined due to repository rule violations) error: failed to push some refs to...",
+    ],
   ])(
-    "a push that %s ends with exit 1 and git's message, and is not forced",
-    async (_case, answer) => {
+    "a push that %s ends with exit 1 and git's message on one line, and is not forced",
+    async (_case, answer, shown) => {
       const world = fakeWorld({ spawn: [...beforePush, git("push", answer)] });
       const caller = frontEnd(world);
       const outcome = await runCommand(pushCommand, jevMain, caller);
@@ -401,7 +459,7 @@ describe("push: GitHub rejects the push", () => {
         durationMs: expect.any(Number),
         error: {
           kind: "problem",
-          message: `GitHub rejected git push --set-upstream origin refs/heads/main in /work/jev, and acmelabs never forces a push: ${answer.stderr.trim()}`,
+          message: `GitHub rejected git push --set-upstream origin refs/heads/main in /work/jev, and acmelabs never forces a push: ${shown}`,
           issues: [],
         },
       });
@@ -443,14 +501,15 @@ describe("push: GitHub rejects the push", () => {
     });
   });
 
-  test("a login that may not push ends with exit 2, naming the repo and git's message", async () => {
+  test("a login that may not push ends with exit 2, naming the repo and git's message on one line", async () => {
     const world = fakeWorld({ spawn: [...beforePush, git("push", gitAnswers.noPushAccess)] });
     const outcome = await runCommand(pushCommand, jevMain, frontEnd(world));
     expect(outcome).toMatchObject({
       exitCode: 2,
       error: {
         kind: "input",
-        message: `GitHub refused git push --set-upstream origin refs/heads/main in /work/jev for the gh login, which needs more access to acmelabs-15/jev: ${gitAnswers.noPushAccess.stderr.trim()}`,
+        message:
+          "GitHub refused git push --set-upstream origin refs/heads/main in /work/jev for the gh login, which needs more access to acmelabs-15/jev: remote: Permission to acmelabs-15/jev.git denied to octocat. fatal: unable to access 'https://github.com/acmelabs-15/jev.git/': The requested URL returned error: 403",
       },
     });
   });
@@ -598,6 +657,31 @@ describe("push: git's answers on the way to GitHub", () => {
     });
     expect(world.calls).toEqual(loggedBeforePush);
   });
+
+  test("git's message in an outside failure shows on one line, with no bidi mark, and stops at 300 characters", async () => {
+    // Built: curl's message through git, then a long line, as a proxy's answer can give it.
+    const world = fakeWorld({
+      spawn: [
+        git("localCommit", { stdout: `${localSha}\n` }),
+        git("origin", { stdout: jevOrigin }),
+        git("remoteCommit", {
+          code: 128,
+          stderr: `fatal: unable to access 'https://github.com/acmelabs-15/jev.git/': Could not resolve host\r\n‮${"x".repeat(400)}\n`,
+        }),
+      ],
+    });
+    const outcome = await runCommand(pushCommand, jevMain, frontEnd(world));
+    // The first 300 characters: the 89 of curl's message, one space, then 210 x, a part of a
+    // word, which is dropped.
+    expect(outcome).toMatchObject({
+      exitCode: 3,
+      error: {
+        kind: "outside",
+        message:
+          "git ls-remote origin refs/heads/main in /work/jev failed with exit 128: fatal: unable to access 'https://github.com/acmelabs-15/jev.git/': Could not resolve host...",
+      },
+    });
+  });
 });
 
 describe("push: the names", () => {
@@ -684,6 +768,25 @@ describe("push: the local repo", () => {
     });
     expect(caller.updates).toEqual([pushStep("started"), pushStep("failed")]);
     expect(world.calls).toEqual([logged("localCommit")]);
+  });
+
+  test("a folder with control characters shows on one line in the message, and git gets the folder as given", async () => {
+    // A folder comes from the caller as given, and a terminal shows the message.
+    const oddCwd = "/work/jev\r\n\u001B[2J";
+    const world = fakeWorld({ spawn: [git("localCommit", { code: 1 })] });
+    const outcome = await runCommand(pushCommand, { ...jevMain, cwd: oddCwd }, frontEnd(world));
+    expect(outcome).toMatchObject({
+      exitCode: 2,
+      error: { kind: "input", message: "/work/jev [2J has no branch main to push" },
+    });
+    expect(world.calls).toEqual([
+      {
+        kind: "spawn",
+        commandLine: lines.localCommit,
+        cwd: oddCwd,
+        env: { GIT_TERMINAL_PROMPT: "0" },
+      },
+    ]);
   });
 
   test("a folder with no git repo ends with exit 3, naming the call and git's message", async () => {
@@ -833,6 +936,45 @@ describe("clone", () => {
     },
   );
 
+  test("an existing folder with control characters shows on one line in the message", async () => {
+    // A folder comes from the caller as given, and a terminal shows the message.
+    const into = path.join(work, "odd\u001B[2Jfile");
+    await Bun.write(into, "here\n");
+    const world = fakeWorld();
+    const outcome = await runCommand(
+      cloneCommand,
+      { owner: "acmelabs-15", name: "marketplace", into },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 2,
+      error: {
+        kind: "input",
+        message: `${work}/odd [2Jfile already exists; acmelabs clones acmelabs-15/marketplace only into a new folder, so name a folder that does not exist yet`,
+      },
+    });
+    expect(world.calls).toEqual([]);
+  });
+
+  test("a path under a file, with control characters, shows on one line in the message and in lstat's error", async () => {
+    // lstat's error text names the path again.
+    const into = path.join(work, "a-file", "odd\u001B[2J");
+    const world = fakeWorld();
+    const outcome = await runCommand(
+      cloneCommand,
+      { owner: "acmelabs-15", name: "marketplace", into },
+      frontEnd(world),
+    );
+    const shown = `${work}/a-file/odd [2J`;
+    expect(outcome).toMatchObject({
+      exitCode: 2,
+      error: {
+        kind: "input",
+        message: `acmelabs cannot clone acmelabs-15/marketplace into ${shown}: ENOTDIR: not a directory, lstat '${shown}'`,
+      },
+    });
+  });
+
   test("a path under a file ends with exit 2, naming the path and why, and makes no git call", async () => {
     const into = path.join(work, "a-file", "marketplace");
     const world = fakeWorld();
@@ -903,6 +1045,24 @@ describe("clone", () => {
           "gh needs a login; replace the token in GH_TOKEN, or clear both GH_TOKEN and GITHUB_TOKEN and run gh auth login, then run the command again",
       },
     });
+  });
+
+  test("a folder with control characters shows on one line in the step's title, and git gets the folder as given", async () => {
+    // A folder comes from the caller as given, and a terminal shows the step's title.
+    const into = "/fake-world/market\r\nplace‮";
+    const line = [...cloneLine.slice(0, -1), into];
+    const world = fakeWorld({ spawn: [{ commandLine: line }] });
+    const caller = frontEnd(world);
+    const outcome = await runCommand(
+      cloneCommand,
+      { owner: "acmelabs-15", name: "marketplace", into },
+      caller,
+    );
+    expect(outcome).toMatchObject({ ok: true, result: { into } });
+    expect(caller.updates).toEqual([
+      cloneStep("/fake-world/market place", "started"),
+      cloneStep("/fake-world/market place", "done"),
+    ]);
   });
 
   test("a folder that starts with - stays a folder: it comes after --", async () => {

@@ -2,6 +2,7 @@ import { lstat } from "node:fs/promises";
 
 import { inputError } from "../command/outcome";
 import type { StepContext } from "./gh";
+import { shownText } from "./gh";
 import type { CloneRequest, OriginUrl, RemoteBranchRequest } from "./git";
 import {
   addOrigin,
@@ -42,7 +43,8 @@ function checkBranch(branch: string): void {
  * A URL of the remote origin as a message shows it: a URL such as
  * `https://x-access-token:<token>@github.com/...` without its login part, so no token reaches the
  * output; other text as it is, such as `git@github.com:owner/name.git`, whose login GitHub always
- * reads as git. A push URL says so.
+ * reads as git. Either goes through `shownText`, as the git config's text can hold a line break. A
+ * push URL says so.
  */
 function shownUrl({ key, value }: OriginUrl): string {
   let shown = value;
@@ -54,7 +56,8 @@ function shownUrl({ key, value }: OriginUrl): string {
       shown = url.href;
     }
   }
-  return key === "pushurl" ? `${shown} (push URL)` : shown;
+  const text = shownText(shown);
+  return key === "pushurl" ? `${text} (push URL)` : text;
 }
 
 /**
@@ -74,7 +77,7 @@ async function ensureOrigin(context: StepContext, { repo, cwd }: PushRequest): P
   const urls = found.filter(({ key }) => key === "url");
   if (urls.length !== 1 || found.some(({ value }) => value !== url)) {
     throw inputError(
-      `the remote origin of ${cwd} is ${found.map(shownUrl).join(", ")}, not ${url}; acmelabs pushes ${fullName(repo)} only to its HTTPS URL, so point origin at that URL, or push from another folder`,
+      `the remote origin of ${shownText(cwd)} is ${found.map(shownUrl).join(", ")}, not ${url}; acmelabs pushes ${fullName(repo)} only to its HTTPS URL, so point origin at that URL, or push from another folder`,
     );
   }
 }
@@ -83,7 +86,8 @@ async function ensureOrigin(context: StepContext, { repo, cwd }: PushRequest): P
  * Pushes the local branch to the repo on GitHub, through the remote origin and gh's login. It adds
  * origin when the local repo has none, reads GitHub's branch with `git ls-remote`, and reports the
  * step as skipped when that branch is at the local commit already. Else it pushes, and sets
- * origin's branch as the upstream. A push is never forced.
+ * origin's branch as the upstream. A push is never forced. The messages show the folder, a URL
+ * from the git config and git's commit as `shownText` gives them.
  */
 export async function push(context: StepContext, request: PushRequest): Promise<Pushed> {
   const { repo, cwd, branch } = request;
@@ -99,11 +103,11 @@ export async function push(context: StepContext, request: PushRequest): Promise<
   context.progress({ ...step, status: "started" });
   const sha = await localCommit(context, { cwd, branch });
   if (sha === undefined) {
-    throw inputError(`${cwd} has no branch ${branch} to push`);
+    throw inputError(`${shownText(cwd)} has no branch ${branch} to push`);
   }
   await ensureOrigin(context, request);
   if ((await remoteCommit(context, request)) === sha) {
-    context.progress({ ...step, status: "skipped", detail: `already at ${sha}` });
+    context.progress({ ...step, status: "skipped", detail: `already at ${shownText(sha)}` });
     return { sha, pushed: false };
   }
   await pushBranch(context, request);
@@ -133,10 +137,12 @@ async function checkNewFolder({ repo, into }: CloneRequest): Promise<void> {
       return;
     }
     const why = error instanceof Error ? error.message : String(error);
-    throw inputError(`acmelabs cannot clone ${fullName(repo)} into ${into}: ${why}`);
+    throw inputError(
+      `acmelabs cannot clone ${fullName(repo)} into ${shownText(into)}: ${shownText(why)}`,
+    );
   }
   throw inputError(
-    `${into} already exists; acmelabs clones ${fullName(repo)} only into a new folder, so name a folder that does not exist yet`,
+    `${shownText(into)} already exists; acmelabs clones ${fullName(repo)} only into a new folder, so name a folder that does not exist yet`,
   );
 }
 
@@ -144,7 +150,8 @@ async function checkNewFolder({ repo, into }: CloneRequest): Promise<void> {
  * Clones the repo from its HTTPS URL into a new folder, through gh's login. The folder must not
  * exist yet: an existing one is an input failure, exit 2, before any git call, and so is a folder
  * with no name. A relative folder is relative to the working folder, for the check and for git
- * alike.
+ * alike. git gets the folder as given; the step's title and its messages show it as `shownText`
+ * gives it, so a control character in it cannot reach the terminal.
  */
 export async function clone(context: StepContext, request: CloneRequest): Promise<Cloned> {
   const { repo, into } = request;
@@ -157,7 +164,7 @@ export async function clone(context: StepContext, request: CloneRequest): Promis
   const step = {
     kind: "step",
     step: "github-clone",
-    title: `Clone ${fullName(repo)} into ${into}`,
+    title: `Clone ${fullName(repo)} into ${shownText(into)}`,
   } as const;
   context.progress({ ...step, status: "started" });
   await checkNewFolder(request);

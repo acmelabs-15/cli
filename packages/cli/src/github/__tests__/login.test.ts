@@ -126,6 +126,23 @@ describe("checkLogin", () => {
     expect(world.calls).toEqual([statusLogged]);
   });
 
+  test("gh's scopes show on one line in the done step's detail; the result keeps them as gh gives them", async () => {
+    // Built: gh's scopes text comes from GitHub's X-OAuth-Scopes header (note 09, section 1.4).
+    const world = fakeWorld({
+      spawn: [statusScripted(keyringLogin("gist\u001B[2J, repo, workflow"))],
+    });
+    const caller = frontEnd(world);
+    const outcome = await runCommand(loginCommand, { scopes: ["repo", "workflow"] }, caller);
+    expect(outcome).toMatchObject({
+      ok: true,
+      result: { login: "loriensleafs", scopes: ["gist\u001B[2J", "repo", "workflow"] },
+    });
+    expect(caller.updates).toEqual([
+      loginStep("started"),
+      loginStep("done", "loriensleafs, with gist [2J, repo, workflow"),
+    ]);
+  });
+
   test("a token that reports no scopes passes, as gh skips its own scope check for one", async () => {
     // A fine-grained or app token has permissions, not scopes (note 09, section 1.4).
     const world = fakeWorld({ spawn: [statusScripted(keyringLogin())] });
@@ -230,12 +247,14 @@ describe("checkLogin: a login is needed", () => {
       { scopes: ["repo", "workflow"] },
       frontEnd(world),
     );
-    // The first 300 characters: the 47 of the first line, one space, then 84 of the 200 "<p>".
+    // The first 300 characters: the 47 of the first line, one space, then 252 of the 600 of
+    // "<p>", a part of a word, which is dropped.
     expect(outcome).toMatchObject({
       exitCode: 4,
       error: {
         kind: "login",
-        message: `gh needs a login; run gh auth login, then run the command again: HTTP 502: Bad Gateway (https://api.github.com/) ${"<p>".repeat(84)}...`,
+        message:
+          "gh needs a login; run gh auth login, then run the command again: HTTP 502: Bad Gateway (https://api.github.com/)...",
       },
     });
   });
@@ -469,7 +488,7 @@ describe("checkLogin: an outside failure, exit 3", () => {
     expect(caller.updates).toEqual([loginStep("started"), loginStep("failed")]);
   });
 
-  test("a gh without --json for auth status ends with exit 3, naming the command and gh's stderr", async () => {
+  test("a gh without --json for auth status ends with exit 3, naming the command and gh's stderr on one line", async () => {
     // Built: gh's answer to a flag it does not know, as an older gh gives for --json here.
     const world = fakeWorld({
       spawn: [
@@ -490,7 +509,7 @@ describe("checkLogin: an outside failure, exit 3", () => {
       error: {
         kind: "outside",
         message:
-          "gh auth status --hostname github.com --json hosts failed with exit 1: unknown flag: --json\n\nUsage:  gh auth status [flags]",
+          "gh auth status --hostname github.com --json hosts failed with exit 1: unknown flag: --json Usage:  gh auth status [flags]",
         issues: [],
       },
     });
@@ -539,6 +558,32 @@ describe("checkLogin: an outside failure, exit 3", () => {
           {
             field: 'hosts["github.com"]',
             message: "Invalid input: expected array, received object",
+          },
+        ],
+      },
+    });
+  });
+
+  test("gh's host name inside a thing wrong with its answer shows on one line, in the message and in the issue", async () => {
+    // Built: a host name is a key of gh's answer, so the place of a thing wrong holds gh's text.
+    const world = fakeWorld({
+      spawn: [statusScripted(statusAnswer({ "git‮hub.com": "no list" }))],
+    });
+    const outcome = await runCommand(
+      loginCommand,
+      { scopes: ["repo", "workflow"] },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 3,
+      error: {
+        kind: "outside",
+        message:
+          'gh auth status --hostname github.com --json hosts gave an answer that acmelabs cannot read: hosts["git hub.com"]: Invalid input: expected array, received string',
+        issues: [
+          {
+            field: 'hosts["git hub.com"]',
+            message: "Invalid input: expected array, received string",
           },
         ],
       },

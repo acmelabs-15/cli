@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { CommandError } from "../command/outcome";
 import { inputError } from "../command/outcome";
 import type { GhAnswer, StepContext } from "./gh";
-import { ghApi, readBody, repoPath } from "./gh";
+import { ghApi, readBody, repoPath, shownText } from "./gh";
 import { commitShaSchema, inLocalHistory } from "./git";
 import type { GitHubRepo } from "./names";
 import { fullName } from "./names";
@@ -68,11 +68,13 @@ function otherWork(repo: GitHubRepo, why: string): CommandError {
 /**
  * The input failure for an existing repo with another visibility than the run asks for. It names
  * both, and says that acmelabs never changes a repo's visibility: private to public makes the
- * Actions logs public, and either way erases the stars (note 09, section 2.4).
+ * Actions logs public, and either way erases the stars (note 09, section 2.4). GitHub's
+ * visibility shows as `shownText` gives it.
  */
 function otherVisibility(repo: GitHubRepo, found: string, asked: Visibility): CommandError {
+  const shown = shownText(found);
   return inputError(
-    `${fullName(repo)} already exists on GitHub as a ${found} repo, and this run asks for a ${asked} one; acmelabs never changes a repo's visibility, and changes nothing in ${fullName(repo)}, so pick another name, or ask for a ${found} repo`,
+    `${fullName(repo)} already exists on GitHub as a ${shown} repo, and this run asks for a ${asked} one; acmelabs never changes a repo's visibility, and changes nothing in ${fullName(repo)}, so pick another name, or ask for a ${shown} repo`,
   );
 }
 
@@ -117,7 +119,8 @@ async function createRepo(
  * The reason to reuse an existing repo, for the skipped step, when it is this run's repo. It
  * checks, in order: the visibility the run asks for; then the default branch, which is either
  * missing from an empty repo (GitHub's 409) or at a commit in the local history. Anything else is
- * an input failure, exit 2, before any write.
+ * an input failure, exit 2, before any write. Its message shows GitHub's branch and the local
+ * folder as `shownText` gives them.
  */
 async function reuseReason(
   context: StepContext,
@@ -128,6 +131,7 @@ async function reuseReason(
     throw otherVisibility(repo, found.visibility, visibility);
   }
   const branch = found.default_branch;
+  const shownBranch = shownText(branch);
   // A 409 is the step's own answer, an empty repo, so it comes back at once. A 404 is tried again
   // first: right after a create, GitHub can give it for a few seconds (note 09, section 3.1).
   const ref = await ghApi(context, {
@@ -139,7 +143,7 @@ async function reuseReason(
   }
   // GitHub answers 409 for every ref of an empty repo, so this repo has commits.
   if (notFound(ref)) {
-    throw otherWork(repo, `it is not empty, and GitHub finds no ${branch} branch in it`);
+    throw otherWork(repo, `it is not empty, and GitHub finds no ${shownBranch} branch in it`);
   }
   const { sha } = readBody(ref, repo, refBody).object;
   if (await inLocalHistory(context, { sha, localRoot })) {
@@ -147,7 +151,7 @@ async function reuseReason(
   }
   throw otherWork(
     repo,
-    `its ${branch} branch is at ${sha}, a commit that is not in the local history of ${localRoot}`,
+    `its ${shownBranch} branch is at ${sha}, a commit that is not in the local history of ${shownText(localRoot)}`,
   );
 }
 

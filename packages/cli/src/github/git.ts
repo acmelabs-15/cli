@@ -4,7 +4,7 @@ import type { CommandError } from "../command/outcome";
 import { inputError, outsideError, problem } from "../command/outcome";
 import type { Spawned, World } from "../command/world";
 import type { StepContext } from "./gh";
-import { ghLoginNeeded, repoPath, tokenVariablesIn } from "./gh";
+import { ghLoginNeeded, repoPath, retry, shownText, tokenVariablesIn } from "./gh";
 import type { GitHubRepo } from "./names";
 import { fullName } from "./names";
 
@@ -44,10 +44,14 @@ const ghLoginWords = [
 /** One git call: its words after `git`, and the folder it runs in, when it needs one. */
 type GitCall = { words: readonly string[]; cwd?: string };
 
-/** A git call as a failure's message names it: `git <words>`, then ` in <cwd>` when it has one. */
+/**
+ * A git call as a failure's message names it: `git <words>`, then ` in <cwd>` when it has one, as
+ * `shownText` gives it. The folder, and a clone's folder among the words, come from the caller as
+ * given.
+ */
 function described({ words, cwd }: GitCall): string {
   const line = `git ${words.join(" ")}`;
-  return cwd === undefined ? line : `${line} in ${cwd}`;
+  return shownText(cwd === undefined ? line : `${line} in ${cwd}`);
 }
 
 /**
@@ -61,10 +65,10 @@ function runGit(context: StepContext, { words, cwd }: GitCall): Promise<Spawned>
 
 /**
  * The outside failure for a git call that ended in a way its caller does not read: it names the
- * call, the exit code and git's message.
+ * call, the exit code and git's message, as `shownText` gives it.
  */
 function gitFailed(call: GitCall, spawned: Spawned): CommandError {
-  const said = spawned.stderr.trim();
+  const said = shownText(spawned.stderr);
   const failed = `${described(call)} failed with exit ${spawned.code}`;
   return outsideError(said === "" ? failed : `${failed}: ${said}`);
 }
@@ -226,12 +230,6 @@ export async function addOrigin(context: StepContext, { repo, cwd }: OriginReque
 const repoNotFound = /^remote: Repository not found\.$/mu;
 
 /**
- * How often a git call to GitHub is tried again after "Repository not found", and the wait before
- * each try: as ghApi does for an unexpected 404, by the spec.
- */
-const retry = { times: 3, waitMs: 3000 } as const;
-
-/**
  * GitHub's reason when it refuses the push of a workflow file from a login without the `workflow`
  * scope, as an OAuth app's token or a classic token (note 09, section 4).
  */
@@ -258,7 +256,7 @@ const pushRejected = /! \[(?:remote )?rejected\]/u;
  * ref. A login failure names a fix that works for the login's token variables in `env`, the
  * World's env, as gh's helper reads them (`ghLoginNeeded`). A rejected push is a problem, exit 1,
  * with git's message, and is never forced. Any other end, such as a network failure, is an outside
- * failure that names the call and git's message.
+ * failure that names the call and git's message. git's message shows as `shownText` gives it.
  */
 function gitHubFailure(
   env: World["env"],
@@ -266,24 +264,26 @@ function gitHubFailure(
   call: GitCall,
   spawned: Spawned,
 ): CommandError {
-  const said = spawned.stderr.trim();
-  if (workflowScopeMissing.test(said)) {
+  const { stderr } = spawned;
+  if (workflowScopeMissing.test(stderr)) {
     return ghLoginNeeded(tokenVariablesIn(env), { scopes: ["workflow"] });
   }
-  if (noLogin.test(said)) {
+  if (noLogin.test(stderr)) {
     return ghLoginNeeded(tokenVariablesIn(env));
   }
-  if (repoNotFound.test(said)) {
+  if (repoNotFound.test(stderr)) {
     return inputError(
       `GitHub found no repo ${fullName(repo)} for the gh login (Repository not found, on ${described(call)}); check the owner and the name, and the login's access to the repo`,
     );
   }
-  if (accessRefused.test(said)) {
+  // The checks read git's own lines; the message shows them as one line.
+  const said = shownText(stderr);
+  if (accessRefused.test(stderr)) {
     return inputError(
       `GitHub refused ${described(call)} for the gh login, which needs more access to ${fullName(repo)}: ${said}`,
     );
   }
-  if (pushRejected.test(said)) {
+  if (pushRejected.test(stderr)) {
     return problem(`GitHub rejected ${described(call)}, and acmelabs never forces a push: ${said}`);
   }
   return gitFailed(call, spawned);

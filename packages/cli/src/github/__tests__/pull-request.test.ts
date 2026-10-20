@@ -224,6 +224,47 @@ describe("openPullRequest", () => {
     expect(world.calls).toEqual([ghLogged(listAddBrain), ghLogged(createAddBrain)]);
   });
 
+  test("GitHub's web address shows on one line in the skipped step's detail; the result keeps it as GitHub gives it", async () => {
+    // Built: GitHub's text reaches a terminal in the detail, so it follows the text rule.
+    const url = "https://github.com/acmelabs-15/marketplace/pull/12\u001B[2J";
+    const listed = { ...listedPullRequest({ number: 12, head: "add-brain" }), html_url: url };
+    const world = fakeWorld({
+      spawn: [ghScripted(listAddBrain, { code: 0, stdout: JSON.stringify([listed]), stderr: "" })],
+    });
+    const caller = frontEnd(world);
+    const outcome = await runCommand(pullRequestCommand, addBrain, caller);
+    expect(outcome).toMatchObject({ ok: true, result: { number: 12, url, made: "reused" } });
+    expect(caller.updates).toEqual([
+      pullStep("add-brain", "started"),
+      pullStep(
+        "add-brain",
+        "skipped",
+        "already open: https://github.com/acmelabs-15/marketplace/pull/12 [2J",
+      ),
+    ]);
+  });
+
+  test("GitHub's web address shows on one line in the done step's detail", async () => {
+    // Built: GitHub's answer to the POST, with a control character in its web address.
+    const opened = {
+      ...listedPullRequest({ number: 13, head: "add-brain" }),
+      html_url: "https://github.com/acmelabs-15/marketplace/pull/13\u001B[2J",
+    };
+    const world = fakeWorld({
+      spawn: [
+        ghScripted(listAddBrain, noOpenPullRequests),
+        ghScripted(createAddBrain, { code: 0, stdout: JSON.stringify(opened), stderr: "" }),
+      ],
+    });
+    const caller = frontEnd(world);
+    const outcome = await runCommand(pullRequestCommand, addBrain, caller);
+    expect(outcome).toMatchObject({ ok: true, result: { number: 13, made: "created" } });
+    expect(caller.updates).toEqual([
+      pullStep("add-brain", "started"),
+      pullStep("add-brain", "done", "https://github.com/acmelabs-15/marketplace/pull/13 [2J"),
+    ]);
+  });
+
   test("a head repo named in other letter case is the same repo: its open PR is reused", async () => {
     // GitHub's owner and repo names do not tell upper case from lower case.
     const world = fakeWorld({
@@ -354,6 +395,37 @@ describe("openPullRequest: a PR that opens between the read and the POST", () =>
       ghLogged(createAddBrain),
       ghLogged(listAddBrain),
     ]);
+  });
+
+  test("GitHub's 'already exists' text shows on one line, with no bidi mark, and stops at 300 characters", async () => {
+    // Built: GitHub's text can echo what a request sent, so it reaches a terminal as untrusted text.
+    const longText = `A pull request already exists for acmelabs-15:add-brain.\r\n‮${"x".repeat(400)}`;
+    const world = fakeWorld({
+      spawn: [
+        ghScripted(listAddBrain, noOpenPullRequests),
+        ghScripted(createAddBrain, {
+          code: 1,
+          stdout: JSON.stringify({
+            message: "Validation Failed",
+            errors: [{ resource: "PullRequest", code: "custom", message: longText }],
+            status: "422",
+          }),
+          stderr: "gh: Validation Failed (HTTP 422)\n",
+        }),
+        ghScripted(listAddBrain, noOpenPullRequests),
+      ],
+    });
+    const outcome = await runCommand(pullRequestCommand, addBrain, frontEnd(world));
+    // The first 300 characters: the 56 of GitHub's sentence, one space, then 243 x, a part of a
+    // word, which is dropped.
+    expect(outcome).toMatchObject({
+      exitCode: 3,
+      error: {
+        kind: "outside",
+        message:
+          "GitHub answered POST repos/acmelabs-15/marketplace/pulls with HTTP 422: A pull request already exists for acmelabs-15:add-brain.... But GitHub lists no open pull request from add-brain into main on acmelabs-15/marketplace; wait, then run the command again",
+      },
+    });
   });
 
   test("another 422 on the POST ends by the table, exit 3, and reads the list no more", async () => {
