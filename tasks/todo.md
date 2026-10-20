@@ -21,7 +21,7 @@ Phase 2 The three presets
 
 Phase 3 The presets in use
 
-- [ ] 6. This repo's gate uses its own presets
+- [x] 6. This repo's gate uses its own presets
 - [ ] 7. formatRepoConfig writes oxfmt's layout
 - [ ] 8. The @acmelabs/config README and changeset
 - [ ] Checkpoint: config-presets complete
@@ -137,13 +137,13 @@ Phase 3 The presets in use
 **Description:** The root `oxlint.config.ts` and `oxfmt.config.ts` import the presets' source by relative path, and the root `tsconfig.json` extends `./packages/config/tsconfig.json`. The root drops `ultracite` from its devDependencies. This repo's isolated install answers spec open question 3 for a workspace repo.
 
 **Acceptance criteria:**
-- [ ] The three root files are thin callers by relative path, each with a comment that says why; the root `package.json` lists no `ultracite`.
-- [ ] `bun run check` passes with the failing `node`.
-- [ ] Two probes, removed after: an `interface` under `packages/` fails `bun run lint` with `consistent-type-definitions`, and two imports in reverse order fail `bun run format:check`. This proves both configs load.
+- [x] The three root files are thin callers by relative path, each with a comment that says why; the root `package.json` lists no `ultracite`.
+- [x] `bun run check` passes with the failing `node`.
+- [x] Two probes, removed after: an `interface` under `packages/` fails `bun run lint` with `consistent-type-definitions`, and two imports in reverse order fail `bun run format:check`. This proves both configs load.
 
 **Verification:**
-- [ ] `bun run check` is green, read from its own exit code.
-- [ ] The probe runs, with their output kept in the task's report.
+- [x] `bun run check` is green, read from its own exit code.
+- [x] The probe runs, with their output kept in the task's report.
 
 **Dependencies:** 1, 3, 4, 5
 

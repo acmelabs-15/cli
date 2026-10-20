@@ -1,15 +1,8 @@
+// TypeScript: the ACMElabs preset. Each option's reason: packages/config/tsconfig.json.
+// This repo extends the preset's own file by relative path, as its oxlint and oxfmt configs import
+// the preset's source: the root does not depend on @acmelabs/config. The preset sets no include,
+// so this repo names its own.
 {
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "lib": ["ESNext"],
-    "types": ["bun"],
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "noEmit": true,
-    "skipLibCheck": true,
-    "verbatimModuleSyntax": true
-  },
+  "extends": "./packages/config/tsconfig.json",
   "include": ["packages/**/*.ts"]
 }
