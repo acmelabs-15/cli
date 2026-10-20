@@ -15,7 +15,7 @@ Phase 2 repo-model
 
 - [x] 4. Read and check `acmelabs.json`
 - [x] 5. Manifests and validators per host
-- [ ] 6. Canonical file text, and this repo's own `acmelabs.json`
+- [x] 6. Canonical file text, and this repo's own `acmelabs.json`
 - [ ] 7. The JSON schema for editors
 - [ ] Checkpoint: repo-model complete
 
@@ -127,13 +127,16 @@ Phase 2 repo-model
 **Description:** `formatRepoConfig` writes the one canonical text of an `acmelabs.json`, so `scaffold` and `jev-gate-migration` never churn the file. This repo gets its own `acmelabs.json`, both kinds, written with it.
 
 **Acceptance criteria:**
-- [ ] `formatRepoConfig` output reads back equal, and a second format is byte-identical: two-space JSON, `$schema` first, a final newline.
-- [ ] The root `acmelabs.json` declares the plugin (all four hosts) and the library (`packages/cli`, `packages/config`) and equals `formatRepoConfig`'s text.
-- [ ] A test reads this repo's own `acmelabs.json` back with `readRepoConfig`.
+- [x] `formatRepoConfig` output reads back equal, and a second format is byte-identical: two-space JSON, `$schema` first, a final newline.
+- [x] The root `acmelabs.json` declares the plugin (all four hosts) and the library (`packages/cli`, `packages/config`) and equals `formatRepoConfig`'s text.
+- [x] A test reads this repo's own `acmelabs.json` back with `readRepoConfig`.
+- [x] A package path that is absolute, leaves the repo (`..`) or is empty fails with an issue that names the field, for example `library.packages[0]: "/abs/x" is not a relative path inside the repo`. (from task 4's report)
+- [x] Package paths compare in normal form, so `./packages/cli` and `packages/cli` count as a repeat, and `readRepoConfig` returns the normal form: no leading `./`, no trailing `/`. (from task 4's report)
+- [x] A missing `hosts` or `packages` field fails in the house wording, for example `plugin.hosts: the field is missing; name at least one host`. (from task 4's report)
 
 **Verification:**
-- [ ] The new tests fail first, then pass: `bun test packages/cli/src/repo`
-- [ ] `bun run check` is green.
+- [x] The new tests fail first, then pass: `bun test packages/cli/src/repo`
+- [x] `bun run check` is green.
 
 **Dependencies:** 4
 

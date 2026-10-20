@@ -19,10 +19,35 @@ const host = z.enum(hostIds, {
     `${JSON.stringify(issue.input)} is not a host; the hosts are ${hostIds.join(", ")}`,
 });
 
-/** A non-empty list in which each item appears once; `noun` names an item in the messages. */
+/** A path in normal form: `.` and `..` segments resolved, no `/` at the end. */
+function normalForm(value: string): string {
+  const normal = path.posix.normalize(value);
+  return normal.length > 1 && normal.endsWith("/") ? normal.slice(0, -1) : normal;
+}
+
+/** Whether a path is relative and stays inside the repo. The empty string is no path. */
+function isInsideRepo(value: string): boolean {
+  const normal = normalForm(value);
+  return (
+    value !== "" && !path.posix.isAbsolute(normal) && normal !== ".." && !normal.startsWith("../")
+  );
+}
+
+/** A package folder's path from the repo root, checked as written, then put in normal form. */
+const packagePath = z
+  .string()
+  .refine(isInsideRepo, {
+    error: (issue) => `${JSON.stringify(issue.input)} is not a relative path inside the repo`,
+  })
+  .overwrite(normalForm);
+
+/** A required, non-empty list in which each item appears once; `noun` names an item in messages. */
 function distinctList<Item extends z.ZodType>(item: Item, noun: string) {
   return z
-    .array(item)
+    .array(item, {
+      error: (issue) =>
+        issue.input === undefined ? `the field is missing; name at least one ${noun}` : undefined,
+    })
     .min(1, `the list is empty; name at least one ${noun}`)
     .superRefine((items, context) => {
       for (const [index, value] of items.entries()) {
@@ -50,7 +75,7 @@ function fields<Shape extends z.ZodRawShape>(shape: Shape) {
 export const repoConfigSchema = fields({
   $schema: z.string().optional(),
   plugin: fields({ hosts: distinctList(host, "host") }).optional(),
-  library: fields({ packages: distinctList(z.string(), "package") }).optional(),
+  library: fields({ packages: distinctList(packagePath, "package") }).optional(),
 }).refine((config) => config.plugin !== undefined || config.library !== undefined, {
   message: 'neither "plugin" nor "library" is present; declare at least one repo kind',
 }) satisfies z.ZodType<RepoConfig>;
@@ -112,4 +137,21 @@ export async function readRepoConfig(root: string): Promise<RepoConfig> {
   }
   const { $schema: _schema, ...config } = result.data;
   return config;
+}
+
+/** A list of strings as one line of JSON, spaced as the formatter writes it: `["a", "b"]`. */
+function jsonList(items: readonly string[]): string {
+  return `[${items.map((item) => JSON.stringify(item)).join(", ")}]`;
+}
+
+/** The canonical file text: two-space JSON, the $schema line first, a final newline. */
+export function formatRepoConfig(config: RepoConfig, schemaPath: string): string {
+  const lines = [`"$schema": ${JSON.stringify(schemaPath)}`];
+  if (config.plugin !== undefined) {
+    lines.push(`"plugin": { "hosts": ${jsonList(config.plugin.hosts)} }`);
+  }
+  if (config.library !== undefined) {
+    lines.push(`"library": { "packages": ${jsonList(config.library.packages)} }`);
+  }
+  return `{\n${lines.map((line) => `  ${line}`).join(",\n")}\n}\n`;
 }

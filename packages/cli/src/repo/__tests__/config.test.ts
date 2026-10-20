@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import type { RepoConfig } from "../config";
-import { RepoConfigError, readRepoConfig } from "../config";
+import { RepoConfigError, formatRepoConfig, readRepoConfig } from "../config";
 
 let work: string;
 
@@ -73,6 +73,21 @@ describe("readRepoConfig", () => {
     );
     expect(await readRepoConfig(root)).toEqual(both);
   });
+
+  test("returns each package path in normal form: no leading ./, no trailing /", async () => {
+    const root = await fixture(
+      "package-normal-form",
+      json({ library: { packages: ["./packages/cli", "packages/config/"] } }),
+    );
+    expect(await readRepoConfig(root)).toEqual({
+      library: { packages: ["packages/cli", "packages/config"] },
+    });
+  });
+
+  test('returns a single-package library repo\'s "./" as "."', async () => {
+    const root = await fixture("package-dot-slash", json({ library: { packages: ["./"] } }));
+    expect(await readRepoConfig(root)).toEqual({ library: { packages: ["."] } });
+  });
 });
 
 describe("readRepoConfig errors", () => {
@@ -122,6 +137,17 @@ describe("readRepoConfig errors", () => {
     );
   });
 
+  test("a plugin with no hosts field: the error names plugin.hosts", async () => {
+    const root = await fixture("missing-hosts", json({ plugin: {} }));
+    const error = await rejection(root);
+    expect(error.issues).toEqual([
+      { path: "plugin.hosts", message: "the field is missing; name at least one host" },
+    ]);
+    expect(error.message).toBe(
+      `${root}/acmelabs.json: plugin.hosts: the field is missing; name at least one host`,
+    );
+  });
+
   test("an unknown host: the error names the field and lists the hosts", async () => {
     const root = await fixture(
       "unknown-host",
@@ -168,6 +194,17 @@ describe("readRepoConfig errors", () => {
     );
   });
 
+  test("a library with no packages field: the error names library.packages", async () => {
+    const root = await fixture("missing-packages", json({ library: {} }));
+    const error = await rejection(root);
+    expect(error.issues).toEqual([
+      { path: "library.packages", message: "the field is missing; name at least one package" },
+    ]);
+    expect(error.message).toBe(
+      `${root}/acmelabs.json: library.packages: the field is missing; name at least one package`,
+    );
+  });
+
   test("a repeated package: the error names the repeat", async () => {
     const root = await fixture(
       "repeated-package",
@@ -183,6 +220,57 @@ describe("readRepoConfig errors", () => {
     expect(error.message).toBe(
       `${root}/acmelabs.json: library.packages[1]: "packages/cli" is already in the list; name each package once`,
     );
+  });
+
+  test("a repeated package in another spelling: the error names the repeat", async () => {
+    const root = await fixture(
+      "repeated-package-spelling",
+      json({ library: { packages: ["packages/cli", "./packages/cli/"] } }),
+    );
+    const error = await rejection(root);
+    expect(error.issues).toEqual([
+      {
+        path: "library.packages[1]",
+        message: '"packages/cli" is already in the list; name each package once',
+      },
+    ]);
+  });
+
+  test("an absolute package path: the error names the field", async () => {
+    const root = await fixture("absolute-package", json({ library: { packages: ["/abs/x"] } }));
+    const error = await rejection(root);
+    expect(error.issues).toEqual([
+      { path: "library.packages[0]", message: '"/abs/x" is not a relative path inside the repo' },
+    ]);
+    expect(error.message).toBe(
+      `${root}/acmelabs.json: library.packages[0]: "/abs/x" is not a relative path inside the repo`,
+    );
+  });
+
+  test("a package path that leaves the repo: the error names each such field", async () => {
+    const root = await fixture(
+      "package-outside-repo",
+      json({ library: { packages: ["../sibling", "packages/../..", "..cache"] } }),
+    );
+    const error = await rejection(root);
+    expect(error.issues).toEqual([
+      {
+        path: "library.packages[0]",
+        message: '"../sibling" is not a relative path inside the repo',
+      },
+      {
+        path: "library.packages[1]",
+        message: '"packages/../.." is not a relative path inside the repo',
+      },
+    ]);
+  });
+
+  test("an empty package path: the error names the field", async () => {
+    const root = await fixture("empty-package-path", json({ library: { packages: [""] } }));
+    const error = await rejection(root);
+    expect(error.issues).toEqual([
+      { path: "library.packages[0]", message: '"" is not a relative path inside the repo' },
+    ]);
   });
 
   test("an unknown field: the error names the field and lists the fields", async () => {
@@ -211,5 +299,74 @@ describe("readRepoConfig errors", () => {
     expect(error.message).toBe(
       `${root}/acmelabs.json: plugin.host: unknown field; the fields are hosts`,
     );
+  });
+});
+
+describe("formatRepoConfig", () => {
+  test("a plugin-only repo config: the spec's jev-gate example, two lines of content", () => {
+    const text = formatRepoConfig(
+      { plugin: { hosts: ["claude-code"] } },
+      "./node_modules/@acmelabs/cli/schema/acmelabs.schema.json",
+    );
+    expect(text).toBe(`{
+  "$schema": "./node_modules/@acmelabs/cli/schema/acmelabs.schema.json",
+  "plugin": { "hosts": ["claude-code"] }
+}
+`);
+  });
+
+  test("both repo kinds: $schema, then plugin, then library, whatever the config's key order", () => {
+    const text = formatRepoConfig(
+      {
+        library: { packages: ["packages/cli", "packages/config"] },
+        plugin: { hosts: ["claude-code", "codex", "gemini-cli", "antigravity-cli"] },
+      },
+      "./packages/cli/schema/acmelabs.schema.json",
+    );
+    expect(text).toBe(`{
+  "$schema": "./packages/cli/schema/acmelabs.schema.json",
+  "plugin": { "hosts": ["claude-code", "codex", "gemini-cli", "antigravity-cli"] },
+  "library": { "packages": ["packages/cli", "packages/config"] }
+}
+`);
+  });
+
+  test("a library-only repo config: no plugin line", () => {
+    const text = formatRepoConfig({ library: { packages: ["."] } }, "./schema.json");
+    expect(text).toBe(`{
+  "$schema": "./schema.json",
+  "library": { "packages": ["."] }
+}
+`);
+  });
+
+  test("reads back equal, and a second format is byte-identical", async () => {
+    const config: RepoConfig = {
+      plugin: { hosts: ["codex", "claude-code"] },
+      library: { packages: ["."] },
+    };
+    const schemaPath = "./node_modules/@acmelabs/cli/schema/acmelabs.schema.json";
+    const text = formatRepoConfig(config, schemaPath);
+    const root = await fixture("format-round-trip", text);
+    const readBack = await readRepoConfig(root);
+    expect(readBack).toEqual(config);
+    expect(formatRepoConfig(readBack, schemaPath)).toBe(text);
+  });
+});
+
+describe("this repo's acmelabs.json", () => {
+  const repoRoot = path.resolve(import.meta.dir, "../../../../..");
+
+  test("declares the plugin with all four hosts and the library with both packages", async () => {
+    expect(await readRepoConfig(repoRoot)).toEqual({
+      plugin: { hosts: ["claude-code", "codex", "gemini-cli", "antigravity-cli"] },
+      library: { packages: ["packages/cli", "packages/config"] },
+    });
+  });
+
+  test("holds formatRepoConfig's text for its own config", async () => {
+    const config = await readRepoConfig(repoRoot);
+    const text = await Bun.file(path.join(repoRoot, "acmelabs.json")).text();
+    expect(text).toBe(formatRepoConfig(config, "./packages/cli/schema/acmelabs.schema.json"));
   });
 });
