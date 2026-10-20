@@ -9,7 +9,7 @@ The task list for `tasks/plan.md`. Tick a task in the checklist, and each box in
 Phase 1 The World's limits
 
 - [x] 1. A program runs in its own process group, under a time limit
-- [ ] 2. A program's output stops at its output limit
+- [x] 2. A program's output stops at its output limit
 - [ ] 3. A request stops at its time limit and its body limit
 - [ ] 4. The World can wait, and a fake World waits in no time
 - [ ] Checkpoint: the World's limits
@@ -55,13 +55,13 @@ Phase 3 The other steps
 **Description:** spawn reads stdout and stderr with a reader that counts bytes, each stream on its own. Past the limit (`limits.outputBytes`, 10 MB, unless the call sets `maxOutputBytes`), it stops the group as task 1 does and rejects with an outside failure that names the program, the stream and the limit. `fakeWorld` scripts `limit: "output"` with the same failure.
 
 **Acceptance criteria:**
-- [ ] A program that prints past a 1 MiB limit on stdout, and one that does so on stderr, is stopped in under 2 s, and the call rejects with kind `outside` naming the stream and the limit.
-- [ ] With the limit raised, the call keeps all the output; the existing output tests still pass.
-- [ ] `fakeWorld`'s `limit: "output"` rejects with the same failure as the real one.
+- [x] A program that prints past a 1 MiB limit on stdout, and one that does so on stderr, is stopped in under 2 s, and the call rejects with kind `outside` naming the stream and the limit.
+- [x] With the limit raised, the call keeps all the output; the existing output tests still pass.
+- [x] `fakeWorld`'s `limit: "output"` rejects with the same failure as the real one.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/command`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/command`
+- [x] `bun run check` is green.
 
 **Dependencies:** 1
 

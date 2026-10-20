@@ -6,11 +6,13 @@ import { sameWords } from "./words";
 export const limits = {
   /** A program's time limit: 5 minutes. */
   programMs: 5 * 60 * 1000,
+  /** The most bytes kept from stdout, and from stderr: 10 MB. */
+  outputBytes: 10 * 1024 * 1024,
 } as const;
 
 /**
  * How to run a spawned program: its working folder, the text it reads on stdin, the signal that
- * stops it, the variables added to its environment, and its time limit.
+ * stops it, the variables added to its environment, and its time and output limits.
  */
 export type SpawnOptions = {
   cwd?: string;
@@ -27,6 +29,11 @@ export type SpawnOptions = {
    * limit past about 24 days, the longest a timer holds, acts as about 24 days.
    */
   timeoutMs?: number;
+  /**
+   * The program's output limit in bytes, a positive number, for stdout and for stderr each on its
+   * own: `limits.outputBytes` when unset.
+   */
+  maxOutputBytes?: number;
 };
 
 /** How a spawned program ended: its exit code, and its output as text. */
@@ -40,10 +47,11 @@ export type World = {
   env: Readonly<Record<string, string | undefined>>;
   /**
    * Runs a program, with no shell, and returns its exit code and output. The program gets the whole
-   * environment plus the call's `env`. At its time limit, the program and every program it started
-   * stop, and the call rejects with an outside failure that names the program and the limit. When
-   * the signal aborts, they stop too, and the call rejects with the signal's reason, as fetch does.
-   * A program that is not installed rejects with an outside failure that names it.
+   * environment plus the call's `env`. At its time limit, or past its output limit on stdout or on
+   * stderr, the program and every program it started stop, and the call rejects with an outside
+   * failure that names the program and the limit. When the signal aborts, they stop too, and the
+   * call rejects with the signal's reason, as fetch does. A program that is not installed rejects
+   * with an outside failure that names it.
    */
   spawn: (commandLine: readonly string[], options?: SpawnOptions) => Promise<Spawned>;
   /** Sends an HTTP request. */
@@ -82,18 +90,42 @@ function durationOf(ms: number): string {
   return countOf(ms, "millisecond");
 }
 
-/**
- * A spawn call's time limit: its own, or `limits.programMs`. A limit that is not a positive number
- * is a bug in the caller, not an outside failure, so it throws a plain Error.
- */
-function programTimeLimit(options: SpawnOptions): number {
-  const timeoutMs = options.timeoutMs ?? limits.programMs;
-  if (Number.isNaN(timeoutMs) || timeoutMs <= 0) {
-    throw new Error(
-      `a program's time limit is a positive number of milliseconds, not ${timeoutMs}`,
-    );
+/** The bytes in a KB, and in a MB: 1024, and 1024 KB. */
+const kb = 1024;
+const mb = 1024 * kb;
+
+/** A size in words, in its largest whole unit: 10 MB, 64 KB, 1500 bytes. */
+function sizeOf(bytes: number): string {
+  if (bytes >= mb && bytes % mb === 0) {
+    return `${bytes / mb} MB`;
   }
-  return timeoutMs;
+  if (bytes >= kb && bytes % kb === 0) {
+    return `${bytes / kb} KB`;
+  }
+  return countOf(bytes, "byte");
+}
+
+/**
+ * A limit that a spawn call gives, such as its time limit in milliseconds. A limit that is not a
+ * positive number is a bug in the caller, not an outside failure, so it throws a plain Error.
+ */
+function positiveLimit(limit: number, name: string, unit: string): number {
+  if (Number.isNaN(limit) || limit <= 0) {
+    throw new Error(`a program's ${name} is a positive number of ${unit}, not ${limit}`);
+  }
+  return limit;
+}
+
+/** A spawn call's limits: its own, or the ones in `limits`. */
+function programLimits(options: SpawnOptions): { timeoutMs: number; maxOutputBytes: number } {
+  return {
+    timeoutMs: positiveLimit(options.timeoutMs ?? limits.programMs, "time limit", "milliseconds"),
+    maxOutputBytes: positiveLimit(
+      options.maxOutputBytes ?? limits.outputBytes,
+      "output limit",
+      "bytes",
+    ),
+  };
 }
 
 /**
@@ -104,6 +136,23 @@ function programTimeLimit(options: SpawnOptions): number {
 function timeLimitReached(commandLine: readonly string[], timeoutMs: number): CommandError {
   return outsideError(
     `${shortCommandLine(commandLine)} ran longer than ${durationOf(timeoutMs)} and was stopped`,
+  );
+}
+
+/** A program's output stream: stdout or stderr. */
+type OutputStream = "stdout" | "stderr";
+
+/**
+ * The outside failure for a program stopped past its output limit, kind `outside`, exit 3: it
+ * names the program, the stream and the limit. realWorld and fakeWorld both give it.
+ */
+function outputLimitReached(
+  commandLine: readonly string[],
+  stream: OutputStream,
+  maxOutputBytes: number,
+): CommandError {
+  return outsideError(
+    `${shortCommandLine(commandLine)} printed more than ${sizeOf(maxOutputBytes)} on ${stream} and was stopped`,
   );
 }
 
@@ -153,6 +202,28 @@ function isGone(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ESRCH";
 }
 
+/**
+ * Whether `error`, from a signal to the process group that `pid` leads, means that nothing in the
+ * group is left to stop. ESRCH: the group is gone. EPERM while the leader still answers: macOS
+ * refuses a signal to a group whose programs have all ended but are not yet reaped, and a leader
+ * that still ran as this user would take the signal. Any other EPERM is a real refusal.
+ */
+function nothingLeftToStop(error: unknown, pid: number): boolean {
+  if (isGone(error)) {
+    return true;
+  }
+  if (!(error instanceof Error && "code" in error && error.code === "EPERM")) {
+    return false;
+  }
+  try {
+    // Signal 0 to the leader itself: an ended leader that is not yet reaped still answers.
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Whether the process group that `pid` leads still has a process in it. */
 function groupExists(pid: number): boolean {
   try {
@@ -166,9 +237,10 @@ function groupExists(pid: number): boolean {
 
 /**
  * The stop of the process group that `pid` leads, sent once however often `stop` is called:
- * SIGTERM to every process in it, then SIGKILL after the grace. A group that is already gone is not
- * an error; any other failure to send a signal rejects `failed`, because the group may still run.
- * `dropKillIfGone` cancels the SIGKILL once the group is gone, so nothing waits for the grace.
+ * SIGTERM to every process in it, then SIGKILL after the grace. A group that is already gone, or
+ * whose programs have all ended, is not an error; any other failure to send a signal rejects
+ * `failed`, because the group may still run. `dropKillIfGone` cancels the SIGKILL once the group is
+ * gone, so nothing waits for the grace.
  */
 function groupStop(pid: number, graceMs: number) {
   const failed = Promise.withResolvers<never>();
@@ -177,7 +249,7 @@ function groupStop(pid: number, graceMs: number) {
     try {
       process.kill(-pid, signal);
     } catch (error) {
-      if (!isGone(error)) {
+      if (!nothingLeftToStop(error, pid)) {
         failed.reject(error);
       }
     }
@@ -204,11 +276,37 @@ function groupStop(pid: number, graceMs: number) {
 const longestTimerMs = 2 ** 31 - 1;
 
 /**
+ * Reads one output stream as text and counts its bytes. Past `maxBytes` it calls `onOverLimit` and
+ * stops reading; the text it returns is then cut short, and the call that reads it rejects. A
+ * character split across two reads stays whole, as with Bun's own `text()`. Bun's `maxBuffer` is
+ * not used: it overshoots, and its stop looks like any other SIGTERM (note 10, section 2).
+ */
+async function readOutput(
+  stream: ReadableStream<Uint8Array>,
+  maxBytes: number,
+  onOverLimit: () => void,
+): Promise<string> {
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let text = "";
+  for await (const chunk of stream) {
+    bytes += chunk.byteLength;
+    if (bytes > maxBytes) {
+      onOverLimit();
+      // Leaving the loop cancels the stream, so nothing more is read or kept.
+      return text;
+    }
+    text += decoder.decode(chunk, { stream: true });
+  }
+  return text + decoder.decode();
+}
+
+/**
  * Runs a program with Bun, with no shell, in its own process group, and collects its exit code and
  * output as text. With no stdin text, the program gets no stdin, so it can never wait on the user's
- * terminal. At the time limit, or when the signal aborts, it stops the whole group. Bun's own
- * `timeout` and `signal` reach only the program, and a program it started keeps the pipes open, so
- * the call would wait for it (note 10, section 2).
+ * terminal. At the time limit, past the output limit, or when the signal aborts, it stops the whole
+ * group. Bun's own `timeout` and `signal` reach only the program, and a program it started keeps
+ * the pipes open, so the call would wait for it (note 10, section 2).
  */
 async function spawnWithBun(
   commandLine: readonly string[],
@@ -218,14 +316,23 @@ async function spawnWithBun(
   const { signal } = options;
   // An aborted signal starts no program, and the call keeps the signal's reason.
   signal?.throwIfAborted();
-  const timeoutMs = programTimeLimit(options);
+  const { timeoutMs, maxOutputBytes } = programLimits(options);
   const child = startWithBun(commandLine, options);
   const group = groupStop(child.pid, graceMs);
-  let timedOut = false;
+  // The first limit the program reaches: the call rejects with it once the group has stopped.
+  let reached: CommandError | undefined;
+  function stopAt(limit: CommandError): void {
+    reached ??= limit;
+    group.stop();
+  }
+  function read(stream: OutputStream): Promise<string> {
+    return readOutput(child[stream], maxOutputBytes, () => {
+      stopAt(outputLimitReached(commandLine, stream, maxOutputBytes));
+    });
+  }
   const timer = setTimeout(
     () => {
-      timedOut = true;
-      group.stop();
+      stopAt(timeLimitReached(commandLine, timeoutMs));
     },
     Math.min(timeoutMs, longestTimerMs),
   );
@@ -233,13 +340,13 @@ async function spawnWithBun(
   try {
     // The pipes close when the last program in the group that holds them ends.
     const [stdout, stderr, code] = await Promise.race([
-      Promise.all([child.stdout.text(), child.stderr.text(), child.exited]),
+      Promise.all([read("stdout"), read("stderr"), child.exited]),
       group.failed,
     ]);
-    // A program stopped by the signal or at its time limit has no result to give.
+    // A program stopped by the signal or at a limit has no result to give.
     signal?.throwIfAborted();
-    if (timedOut) {
-      throw timeLimitReached(commandLine, timeoutMs);
+    if (reached !== undefined) {
+      throw reached;
     }
     return { code, stdout, stderr };
   } finally {
@@ -286,8 +393,11 @@ export type ScriptedSpawn = {
   commandLine: readonly string[];
   answer?: Partial<Spawned>;
   missing?: boolean;
-  /** "time": the program ran past the call's time limit, or past `limits.programMs`. */
-  limit?: "time";
+  /**
+   * "time": the program ran past the call's time limit, or past `limits.programMs`. "output": it
+   * printed past the call's output limit, or past `limits.outputBytes`, on stdout.
+   */
+  limit?: "time" | "output";
 };
 
 /**
@@ -361,8 +471,8 @@ export function fakeWorld(options: FakeWorldOptions = {}): FakeWorld {
     calls.push({ kind: "spawn", commandLine: [...commandLine], ...logged });
     // A cancelled call rejects, as the real one does, and uses up no scripted answer.
     signal?.throwIfAborted();
-    // So does a call with a time limit that is not a positive number.
-    const timeoutMs = programTimeLimit(spawnOptions);
+    // So does a call with a limit that is not a positive number.
+    const { timeoutMs, maxOutputBytes } = programLimits(spawnOptions);
     const scripted = take(spawnScript, (entry) => sameWords(entry.commandLine, commandLine));
     if (scripted === undefined) {
       throw new Error(
@@ -375,6 +485,9 @@ export function fakeWorld(options: FakeWorldOptions = {}): FakeWorld {
     }
     if (scripted.limit === "time") {
       throw timeLimitReached(commandLine, timeoutMs);
+    }
+    if (scripted.limit === "output") {
+      throw outputLimitReached(commandLine, "stdout", maxOutputBytes);
     }
     const answer = scripted.answer ?? {};
     return { code: answer.code ?? 0, stdout: answer.stdout ?? "", stderr: answer.stderr ?? "" };

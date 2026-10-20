@@ -252,6 +252,135 @@ describe("realWorld: a program's time limit", () => {
   });
 });
 
+describe("realWorld: a program's output limit", () => {
+  /** 1 MB, 1024 × 1024 bytes: the limit most of these tests set. */
+  const oneMB = 1024 * 1024;
+  /** A program that prints 10 MB and 1 byte on stdout, then ends. */
+  const tenMBAndOne = "process.stdout.write(Buffer.alloc(10 * 1024 * 1024 + 1, 'x'))";
+
+  test("a program gets 10 MB on each stream unless the call sets its own output limit", () => {
+    expect(limits.outputBytes).toBe(10_485_760);
+  });
+
+  test("a program that prints past its output limit on stdout is stopped, with an outside failure that names the stream and the limit", async () => {
+    const started = performance.now();
+    // yes prints until something stops it, so the call ends only through the stop.
+    const spawned = realWorld().spawn(["yes"], { maxOutputBytes: oneMB });
+    await expect(spawned).rejects.toBeInstanceOf(CommandError);
+    await expect(spawned).rejects.toMatchObject({
+      kind: "outside",
+      message: "yes printed more than 1 MB on stdout and was stopped",
+      issues: [],
+    });
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  test("a program that prints past its output limit on stderr is stopped, with an outside failure that names the stream and the limit", async () => {
+    const started = performance.now();
+    const spawned = realWorld().spawn(["bash", "-c", "yes >&2"], { maxOutputBytes: oneMB });
+    await expect(spawned).rejects.toBeInstanceOf(CommandError);
+    await expect(spawned).rejects.toMatchObject({
+      kind: "outside",
+      message: "bash -c ... printed more than 1 MB on stderr and was stopped",
+      issues: [],
+    });
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  test("a program's own child stops with it at the output limit, in under 2 seconds", async () => {
+    const started = performance.now();
+    // The child (sleep 3; echo late) holds the pipes: only a stop of the whole process group lets
+    // the call end before it.
+    const spawned = realWorld().spawn(["bash", "-c", "(sleep 3; echo late) & yes"], {
+      maxOutputBytes: oneMB,
+    });
+    await expect(spawned).rejects.toMatchObject({
+      kind: "outside",
+      message: "bash -c ... printed more than 1 MB on stdout and was stopped",
+    });
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  test("a program that ends right after it prints past its output limit gets the same failure", async () => {
+    const spawned = realWorld().spawn(["bash", "-c", "printf 'past the limit'"], {
+      maxOutputBytes: 4,
+    });
+    // The World reads nothing until the program has ended. Its process group then holds only an
+    // ended program that is not yet reaped, and macOS answers a signal to that group with EPERM.
+    Bun.sleepSync(200);
+    // A plain await, as a command waits: expect(...).rejects waits in its own way, and then Bun
+    // mostly reaps the program before the World reads its output.
+    const failure: unknown = await spawned.catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(CommandError);
+    expect(failure).toMatchObject({
+      kind: "outside",
+      message: "bash -c ... printed more than 4 bytes on stdout and was stopped",
+    });
+  });
+
+  test("a program that prints past 10 MB is stopped when the call sets no output limit", async () => {
+    const spawned = realWorld().spawn(["bun", "-e", tenMBAndOne]);
+    await expect(spawned).rejects.toMatchObject({
+      kind: "outside",
+      message: "bun -e ... printed more than 10 MB on stdout and was stopped",
+    });
+  });
+
+  test("with the output limit raised, the same program keeps all its output", async () => {
+    const spawned = await realWorld().spawn(["bun", "-e", tenMBAndOne], {
+      maxOutputBytes: 11 * oneMB,
+    });
+    expect(spawned.code).toBe(0);
+    expect(spawned.stdout.length).toBe(10_485_761);
+    expect(spawned.stdout).toMatch(/^x+$/u);
+    expect(spawned.stderr).toBe("");
+  });
+
+  test("output of exactly the limit is kept, on each stream on its own", async () => {
+    // 1 MB on stdout and 1 MB on stderr: together past the limit, each one at it.
+    const spawned = await realWorld().spawn(
+      [
+        "bun",
+        "-e",
+        "process.stdout.write(Buffer.alloc(1024 * 1024, 'o')); process.stderr.write(Buffer.alloc(1024 * 1024, 'e'))",
+      ],
+      { maxOutputBytes: oneMB },
+    );
+    expect(spawned.code).toBe(0);
+    expect(spawned.stdout.length).toBe(1_048_576);
+    expect(spawned.stdout).toMatch(/^o+$/u);
+    expect(spawned.stderr.length).toBe(1_048_576);
+    expect(spawned.stderr).toMatch(/^e+$/u);
+  });
+
+  test("a character split across two reads of the pipe stays whole", async () => {
+    // The euro sign is 3 bytes; the program sends its first byte, waits, then sends the rest.
+    const spawned = await realWorld().spawn([
+      "bun",
+      "-e",
+      "process.stdout.write(Buffer.from([0xe2])); await Bun.sleep(50); process.stdout.write(Buffer.from([0x82, 0xac, 0x0a]))",
+    ]);
+    expect(spawned).toEqual({ code: 0, stdout: "€\n", stderr: "" });
+  });
+
+  test("an output limit that is not a positive number is a bug in the caller, and starts nothing", async () => {
+    const marker = path.join(work, "started-with-a-bad-output-limit");
+    const commandLine = ["bun", "-e", `await Bun.write(${JSON.stringify(marker)}, "started")`];
+    for (const maxOutputBytes of [Number.NaN, 0, -1]) {
+      const spawned = realWorld().spawn(commandLine, { maxOutputBytes });
+      await expect(spawned).rejects.toThrow(
+        `a program's output limit is a positive number of bytes, not ${maxOutputBytes}`,
+      );
+      await expect(spawned).rejects.not.toBeInstanceOf(CommandError);
+    }
+    const fake = fakeWorld({ spawn: [{ commandLine }] });
+    await expect(fake.spawn(commandLine, { maxOutputBytes: 0 })).rejects.toThrow(
+      "a program's output limit is a positive number of bytes, not 0",
+    );
+    expect(await Bun.file(marker).exists()).toBe(false);
+  });
+});
+
 describe("fakeWorld", () => {
   test("root, env and now come from the options", () => {
     const world = fakeWorld({
@@ -368,12 +497,54 @@ describe("fakeWorld", () => {
     );
   });
 
-  test("the log keeps a spawn call's env and time limit, and leaves out its signal", async () => {
+  test("a scripted output limit rejects with the same outside failure as realWorld's, and is logged", async () => {
+    const world = fakeWorld({ spawn: [{ commandLine: ["yes"], limit: "output" }] });
+    const spawned = world.spawn(["yes"], { maxOutputBytes: 1024 * 1024 });
+    await expect(spawned).rejects.toBeInstanceOf(CommandError);
+    await expect(spawned).rejects.toMatchObject({
+      kind: "outside",
+      message: "yes printed more than 1 MB on stdout and was stopped",
+      issues: [],
+    });
+    expect(world.calls).toEqual([
+      { kind: "spawn", commandLine: ["yes"], maxOutputBytes: 1_048_576 },
+    ]);
+  });
+
+  test("a scripted output limit names the call's limit in words, or 10 MB when it sets none", async () => {
+    const world = fakeWorld({
+      spawn: [
+        { commandLine: ["gh", "api", "user"], limit: "output" },
+        { commandLine: ["git", "log"], limit: "output" },
+        { commandLine: ["bun", "install"], limit: "output" },
+        { commandLine: ["git", "ls-remote"], limit: "output" },
+        { commandLine: ["gh"], limit: "output" },
+      ],
+    });
+    await expect(world.spawn(["gh", "api", "user"])).rejects.toThrow(
+      "gh api ... printed more than 10 MB on stdout and was stopped",
+    );
+    await expect(world.spawn(["git", "log"], { maxOutputBytes: 64 * 1024 })).rejects.toThrow(
+      "git log printed more than 64 KB on stdout and was stopped",
+    );
+    await expect(world.spawn(["bun", "install"], { maxOutputBytes: 1_572_864 })).rejects.toThrow(
+      "bun install printed more than 1536 KB on stdout and was stopped",
+    );
+    await expect(world.spawn(["git", "ls-remote"], { maxOutputBytes: 1500 })).rejects.toThrow(
+      "git ls-remote printed more than 1500 bytes on stdout and was stopped",
+    );
+    await expect(world.spawn(["gh"], { maxOutputBytes: 1 })).rejects.toThrow(
+      "gh printed more than 1 byte on stdout and was stopped",
+    );
+  });
+
+  test("the log keeps a spawn call's env and limits, and leaves out its signal", async () => {
     const world = fakeWorld({ spawn: [{ commandLine: ["git", "push"] }] });
     await world.spawn(["git", "push"], {
       cwd: work,
       env: { GIT_TERMINAL_PROMPT: "0" },
       timeoutMs: 60_000,
+      maxOutputBytes: 1024,
       signal: new AbortController().signal,
     });
     expect(world.calls).toEqual([
@@ -383,6 +554,7 @@ describe("fakeWorld", () => {
         cwd: work,
         env: { GIT_TERMINAL_PROMPT: "0" },
         timeoutMs: 60_000,
+        maxOutputBytes: 1024,
       },
     ]);
   });
