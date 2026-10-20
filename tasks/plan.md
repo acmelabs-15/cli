@@ -1,6 +1,6 @@
 # Implementation plan — config-presets
 
-Status: **draft**, waiting for Peter's answers to the three plan questions. Written from `spec/SPEC-config-presets.md`, approved on 2026-10-20. Words follow `CONTEXT.md`. The task details, with acceptance criteria and checks, are in `tasks/todo.md`.
+Status: **approved by Peter on 2026-10-20** through the three plan questions (size right, edges right, no merge or split). Written from `spec/SPEC-config-presets.md`, approved on 2026-10-20. Words follow `CONTEXT.md`. The task details, with acceptance criteria and checks, are in `tasks/todo.md`.
 
 ## Overview
 
