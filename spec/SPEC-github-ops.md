@@ -50,7 +50,7 @@ Each step is a function that a command calls inside `run`. Each one reports one 
 
 ### What each step does
 
-- **`checkLogin`** reads gh's active account for github.com, the one that every gh call uses, also when its token comes from `GH_TOKEN`. No account, or a state other than `success` and `timeout`, is a login failure that names `gh auth login`. A state of `timeout` means that gh's request to GitHub timed out (gh's `status.go`): an outside failure, exit 3, with gh's error. When the token reports scopes (a `gho_` or `ghp_` token) and asked scopes are missing, it is a login failure that names `gh auth refresh -h github.com -s <scope>`, with every missing scope in one comma list. A scope that another includes counts as held: `repo` includes `public_repo`, not the other way. A token that reports no scopes (a fine-grained or app token) skips the scope check, as gh does. `scaffold` asks for `repo` and `workflow`: pushing a file under `.github/workflows/` needs `workflow` (note 09, section 4).
+- **`checkLogin`** reads gh's active account for github.com, the one that every gh call uses, also when its token comes from `GH_TOKEN`. No account, or a state other than `success` and `timeout`, is a login failure that names `gh auth login`; a state of `error` adds gh's own error text, because it covers a rejected token and a network failure alike (gh's `buildEntry`). A state of `timeout` means that gh's request to GitHub timed out (gh's `status.go`): an outside failure, exit 3, with gh's error. When the token reports scopes (a `gho_` or `ghp_` token) and asked scopes are missing, it is a login failure that names `gh auth refresh -h github.com -s <scope>`, with every missing scope in one comma list. For a token from `GH_TOKEN` or `GITHUB_TOKEN` (gh's `tokenSource`), the message names the variable, because `gh auth login` and `gh auth refresh` refuse to run while it is set (note 09, section 1.4): replace that token or give it the missing scopes, or clear the variable and then run the gh command. A scope that another includes counts as held: `repo` includes `public_repo`, not the other way. A token that reports no scopes (a fine-grained or app token) skips the scope check, as gh does. `scaffold` asks for `repo` and `workflow`: pushing a file under `.github/workflows/` needs `workflow` (note 09, section 4).
 - **`ensureRepo`** creates the repo in the organization with `name`, `description` and `visibility`, and GitHub's defaults for everything else, as brain, jev-gate, the marketplace and this repo have (read on 2026-10-20). When the repo exists, the step checks it, in order: the same visibility, else exit 2; then `GET .../git/ref/heads/{default branch}`: 409 "Git Repository is empty" means it is this run's repo; a commit for which `git merge-base --is-ancestor <sha> HEAD` succeeds in `localRoot` means it is this run's repo; any other commit, a commit that git does not know (exit 128), or no ref for the default branch after the retries, is exit 2 that names the repo, and any other answer goes by the table below. A 404 on the create names the owner: GitHub finds no organization of that name in which the login may create a repo. acmelabs never changes a repo's visibility: private to public makes the Actions logs public and erases stars (GitHub's docs).
 - **`ensureActionsSetting`** reads the setting and writes it only when it differs. A 409 means the organization forbids it: a problem (exit 1) whose message names the organization's Actions settings page.
 - **`ensureProtectMain`** finds the ruleset named "Protect main". It compares the name, target, enforcement, the included and excluded refs, the rule types and the bypass list with the body below. Equal: skipped. Different: `PUT` with the body. Missing: `POST`.
@@ -108,7 +108,9 @@ The body is the one that made acmelabs-15/cli's ruleset (note 09, section 5). br
 | A rate-limit answer (403 or 429 with "rate limit" in the message), any 5xx, a network failure, a time or output limit, a run that does not appear or complete in time | `outside` | 3 | GitHub's message, the limit, or the run's URL |
 | Any other answer | `outside` | 3 | the method, the path and GitHub's message |
 
-`loginNeeded(service)` gains an optional second argument, the command line that fixes the login, so the message can name `gh auth refresh ...`.
+`loginNeeded(service)` gains an optional second argument: the command line that fixes the login, so the message can name `gh auth refresh ...`; or a `LoginFix`, with several ways to fix the login and a reason, so the message can name a token's variable and gh's own error text.
+
+A message that names GitHub's message adds the error body's first error in brackets, such as `Validation Failed (No commits between main and add-brain)`. Each text from gh or GitHub shows on one line, with control, format and line-separator characters as spaces, and stops at 300 characters.
 
 ## The World's limits
 
@@ -188,7 +190,7 @@ packages/cli/src/command/world-spawn.ts     a program's environment, process gro
 packages/cli/src/command/world-fetch.ts     a request's limits (split from world.ts)
 packages/cli/src/command/fake-world.ts      fakeWorld: the limit answers and sleep (split from world.ts)
 packages/cli/src/command/run.ts             the context's sleep takes the run's signal (changed)
-packages/cli/src/command/outcome.ts         loginNeeded takes the fixing command line (changed)
+packages/cli/src/command/outcome.ts         loginNeeded takes the fixing command line, or a LoginFix (changed)
 packages/cli/src/command/list-rules.ts      a command file may load ../github/names at its top (changed)
 packages/cli/src/command/__tests__/world.test.ts         realWorld's root, env, clock and sleep (changed)
 packages/cli/src/command/__tests__/world-spawn.test.ts   a program's limits (split from world.test.ts)
@@ -245,7 +247,7 @@ Two seams, both existing (Peter, 2026-10-20). No test calls GitHub.
 
 Cases:
 
-- **`checkLogin`:** logged in with `repo` and `workflow`; no account (exit 4, `gh auth login`); a state of `error`; `workflow` missing (exit 4, `gh auth refresh -h github.com -s workflow`); a token with no scopes passes.
+- **`checkLogin`:** logged in with `repo` and `workflow`; no account (exit 4, `gh auth login`); a state of `error` (exit 4, with gh's error text); `workflow` missing (exit 4, `gh auth refresh -h github.com -s workflow`); a token from `GH_TOKEN` or `GITHUB_TOKEN` (the message names the variable); a token with no scopes passes.
 - **`ensureRepo`:** a new repo is created with the asked visibility and description; an empty existing repo is reused; an existing repo whose main commit is in the local history is reused; an existing repo with other work is exit 2 and no write is made; an existing repo with the other visibility is exit 2; an unknown owner is exit 2; a 422 "name already exists" is exit 2; an owner or name that fails the name check is exit 2 before any call.
 - **`ensureActionsSetting`:** set already (skipped, no `PUT`); different (`PUT` with the body); 409 (exit 1, names the settings page).
 - **`ensureProtectMain`:** brain's ruleset (skipped); none (`POST` with the body); one with a missing rule (`PUT`); other rulesets beside it are left as they are.
