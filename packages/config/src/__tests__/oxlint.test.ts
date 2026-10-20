@@ -9,6 +9,7 @@ import core from "ultracite/oxlint/core";
 import preset, { lintDeviations } from "../oxlint";
 import {
   builtPackage,
+  configOnlyTsconfig,
   lintExtendingCaller,
   lintThinCaller,
   realNodeLine,
@@ -26,25 +27,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await rm(work, { recursive: true, force: true });
 });
-
-/** A tsconfig.json that type-checks only the sample repo's oxlint.config.ts. */
-const configOnlyTsconfig = `${JSON.stringify(
-  {
-    compilerOptions: {
-      target: "ESNext",
-      module: "ESNext",
-      moduleResolution: "bundler",
-      lib: ["ESNext"],
-      types: [],
-      strict: true,
-      noEmit: true,
-      skipLibCheck: true,
-    },
-    include: ["oxlint.config.ts"],
-  },
-  null,
-  2,
-)}\n`;
 
 /** A config's own rules, each setting under its rule's name. */
 function rulesOf(config: OxlintConfig): Record<string, unknown> {
@@ -86,7 +68,10 @@ describe("the built lint preset", () => {
 
   test("dist/oxlint.d.ts types ignorePatterns as present: a thin caller extends it, no fallback", async () => {
     const repo = await sampleRepo(work, {
-      files: { "oxlint.config.ts": lintExtendingCaller, "tsconfig.json": configOnlyTsconfig },
+      files: {
+        "oxlint.config.ts": lintExtendingCaller,
+        "tsconfig.json": configOnlyTsconfig("oxlint.config.ts"),
+      },
     });
     expect(await repo.run("typecheck")).toEqual({
       exitCode: 0,

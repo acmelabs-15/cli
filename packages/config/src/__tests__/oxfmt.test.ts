@@ -9,6 +9,7 @@ import ultracite from "ultracite/oxfmt";
 import preset, { formatDeviations } from "../oxfmt";
 import {
   builtPackage,
+  configOnlyTsconfig,
   formatSpreadCaller,
   formatThinCaller,
   lintExtendingCaller,
@@ -29,25 +30,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await rm(work, { recursive: true, force: true });
 });
-
-/** A tsconfig.json that type-checks only the sample repo's oxfmt.config.ts. */
-const configOnlyTsconfig = `${JSON.stringify(
-  {
-    compilerOptions: {
-      target: "ESNext",
-      module: "ESNext",
-      moduleResolution: "bundler",
-      lib: ["ESNext"],
-      types: [],
-      strict: true,
-      noEmit: true,
-      skipLibCheck: true,
-    },
-    include: ["oxfmt.config.ts"],
-  },
-  null,
-  2,
-)}\n`;
 
 /** A config's options, each value under its option's name. */
 function optionsOf(config: OxfmtConfig): Record<string, unknown> {
@@ -110,7 +92,10 @@ describe("the built format preset", () => {
 
   test("dist/oxfmt.d.ts types ignorePatterns as present: the spread thin caller needs no fallback", async () => {
     const repo = await sampleRepo(work, {
-      files: { "oxfmt.config.ts": formatSpreadCaller, "tsconfig.json": configOnlyTsconfig },
+      files: {
+        "oxfmt.config.ts": formatSpreadCaller,
+        "tsconfig.json": configOnlyTsconfig("oxfmt.config.ts"),
+      },
     });
     expect(await repo.run("typecheck")).toEqual({
       exitCode: 0,

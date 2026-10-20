@@ -30,7 +30,7 @@ Phase 4 Review fixes (Peter chose them on 2026-10-20; `docs/reviews/2026-10-20-c
 - [x] 9. The width-drift test fails for a wider or a narrower width
 - [x] 10. The presets bundle Ultracite's presets
 - [x] 11. The build uses the TypeScript preset, and each option has its own reason
-- [ ] 12. The tool pins, the root typecheck and the test tsconfig stay true to the preset
+- [x] 12. The tool pins, the root typecheck and the test tsconfig stay true to the preset
 - [x] 13. Record fixes
 - [ ] Checkpoint: config-presets complete
 
@@ -259,13 +259,13 @@ Phase 4 Review fixes (Peter chose them on 2026-10-20; `docs/reviews/2026-10-20-c
 **Description:** Review findings 4, 6 and 7. A test proves that the root's four tool versions equal the preset's peer dependencies. The root `tsconfig.json` skips `packages/*/dist`. The two test files share one helper for the tsconfig that type-checks only a sample repo's config file.
 
 **Acceptance criteria:**
-- [ ] The pins test fails when the root's `oxlint` version differs from the peer (one mutation run, undone).
-- [ ] With a local build in `packages/config/dist`, `bun run tsc --showConfig` lists no file under `dist`.
-- [ ] `oxlint.test.ts` and `oxfmt.test.ts` use one helper from `sample-repo.ts`, and no copy remains.
+- [x] The pins test fails when the root's `oxlint` version differs from the peer (one mutation run, undone).
+- [x] With a local build in `packages/config/dist`, `bun run tsc --showConfig` lists no file under `dist`.
+- [x] `oxlint.test.ts` and `oxfmt.test.ts` use one helper from `sample-repo.ts`, and no copy remains.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/config`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/config`
+- [x] `bun run check` is green.
 
 **Dependencies:** 10
 

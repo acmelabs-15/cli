@@ -4,5 +4,8 @@
 // so this repo names its own.
 {
   "extends": "./packages/config/tsconfig.json",
-  "include": ["packages/**/*.ts"]
+  "include": ["packages/**/*.ts"],
+  // A local build writes type files into packages/*/dist. They are build output, not source, so a
+  // stale build cannot change the typecheck.
+  "exclude": ["packages/*/dist"]
 }

@@ -24,7 +24,8 @@ const buildTsconfig = path.join(packageDir, "tsconfig.build.json");
  */
 const banner = [
   "// This file bundles code from Ultracite (https://github.com/haydenbleasel/ultracite), which is",
-  "// under the MIT license. Ultracite's copyright and permission notice: ../THIRD-PARTY-NOTICES.md",
+  "// under the MIT license. Ultracite's copyright and permission notice:",
+  "// ../THIRD-PARTY-NOTICES.md",
 ].join("\n");
 
 /** Writes the type files with tsc, which runs on Bun; throws with tsc's output when it fails. */

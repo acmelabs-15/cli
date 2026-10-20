@@ -79,6 +79,27 @@ export const typescriptThinCaller = [
   "",
 ].join("\n");
 
+/**
+ * A tsconfig.json that type-checks one file of a sample repo, such as its `oxlint.config.ts`, and
+ * no other file. A test uses it to check a thin caller against the built preset's types.
+ */
+export function configOnlyTsconfig(file: string): string {
+  const tsconfig = {
+    compilerOptions: {
+      target: "ESNext",
+      module: "ESNext",
+      moduleResolution: "bundler",
+      lib: ["ESNext"],
+      types: [],
+      strict: true,
+      noEmit: true,
+      skipLibCheck: true,
+    },
+    include: [file],
+  };
+  return `${JSON.stringify(tsconfig, null, 2)}\n`;
+}
+
 /** The scripts in a sample repo's package.json, as an ACMElabs repo names them. */
 const scripts = {
   lint: "oxlint",

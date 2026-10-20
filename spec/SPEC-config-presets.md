@@ -206,7 +206,7 @@ The module adds no `acmelabs` command.
 
 ```
 bun run check                                  # the gate; unchanged
-bun run --filter @acmelabs/config build        # packages/config/dist: oxlint.js, oxfmt.js and their .d.ts
+bun run --filter @acmelabs/config build        # packages/config/dist: oxlint.js, oxfmt.js, their .d.ts and deviation.d.ts
 bun test packages/config                       # the sample-repo tests alone
 ```
 
