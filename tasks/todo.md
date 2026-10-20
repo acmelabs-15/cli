@@ -13,7 +13,7 @@ Phase 1 Foundation
 
 Phase 2 repo-model
 
-- [ ] 4. Read and check `acmelabs.json`
+- [x] 4. Read and check `acmelabs.json`
 - [ ] 5. Manifests and validators per host
 - [ ] 6. Canonical file text, and this repo's own `acmelabs.json`
 - [ ] 7. The JSON schema for editors
@@ -89,13 +89,13 @@ Phase 2 repo-model
 **Description:** A command can read a repo's config and get either a typed `RepoConfig` or a `RepoConfigError` that names the file and each bad field. The zod schema enforces the spec's rules: at least one kind, known and distinct hosts, distinct packages, no unknown field.
 
 **Acceptance criteria:**
-- [ ] `readRepoConfig(root)` returns a typed config for a plugin-only, a library-only and a both-kinds `acmelabs.json`.
-- [ ] It throws `RepoConfigError`, naming the file and the field, for: no file; invalid JSON; neither kind; an empty host list; an unknown host (the message lists the known hosts); a repeated host; an empty package list; a repeated package; an unknown field.
-- [ ] A changeset records the new `acmelabs.json` repo config.
+- [x] `readRepoConfig(root)` returns a typed config for a plugin-only, a library-only and a both-kinds `acmelabs.json`.
+- [x] It throws `RepoConfigError`, naming the file and the field, for: no file; invalid JSON; neither kind; an empty host list; an unknown host (the message lists the known hosts); a repeated host; an empty package list; a repeated package; an unknown field.
+- [x] A changeset records the new `acmelabs.json` repo config.
 
 **Verification:**
-- [ ] The tests fail before `config.ts` exists, then pass: `bun test packages/cli/src/repo`
-- [ ] `bun run check` is green.
+- [x] The tests fail before `config.ts` exists, then pass: `bun test packages/cli/src/repo`
+- [x] `bun run check` is green.
 
 **Dependencies:** 1, 2
 

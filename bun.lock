@@ -17,6 +17,9 @@
     "packages/cli": {
       "name": "@acmelabs/cli",
       "version": "0.0.0",
+      "dependencies": {
+        "zod": "4.6.7",
+      },
     },
   },
   "packages": {
