@@ -13,7 +13,7 @@ Phase 1 A command runs
 
 Phase 2 The rest of the frame
 
-- [ ] 4. Progress updates, and open steps closed on a throw
+- [x] 4. Progress updates, and open steps closed on a throw
 - [ ] 5. Questions mid-run, and cancel
 - [ ] 6. JSON mode's lines
 - [ ] 7. The command list and its rules
@@ -85,12 +85,12 @@ Phase 2 The rest of the frame
 **Description:** A command reports progress with `context.progress`, and `runCommand` forwards each update to the front-end in order. A step that started and did not end is closed as failed when the command throws, so no front-end shows a half-done step as running.
 
 **Acceptance criteria:**
-- [ ] `ProgressUpdate` exists as the spec gives it, and updates reach the front-end's `progress` in order.
-- [ ] A throw closes each open step as `failed` before the outcome; a normal end with an open step is a bug (kind `bug`, exit 70), because every started step must end.
+- [x] `ProgressUpdate` exists as the spec gives it, and updates reach the front-end's `progress` in order.
+- [x] A throw closes each open step as `failed` before the outcome; a normal end with an open step is a bug (kind `bug`, exit 70), because every started step must end.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/command`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/command`
+- [x] `bun run check` is green.
 
 **Dependencies:** 2
 

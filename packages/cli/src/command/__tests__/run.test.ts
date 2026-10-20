@@ -512,40 +512,6 @@ describe("runCommand: the context a command runs in", () => {
     ]);
   });
 
-  test("progress forwards each update to the front-end", async () => {
-    const tag = defineCommand({
-      path: ["sample", "tag"],
-      summary: "Move the latest tag.",
-      input: z.object({}),
-      async run(_input, context) {
-        context.progress({
-          kind: "step",
-          step: "move-tag",
-          title: "Move the latest tag",
-          status: "started",
-        });
-        await context.spawn(["git", "tag", "--force", "latest"]);
-        context.progress({
-          kind: "step",
-          step: "move-tag",
-          title: "Move the latest tag",
-          status: "done",
-        });
-        context.progress({ kind: "message", level: "warning", text: "the tag is not pushed" });
-        return "moved";
-      },
-    });
-    const caller = frontEnd(
-      fakeWorld({ spawn: [{ commandLine: ["git", "tag", "--force", "latest"] }] }),
-    );
-    await runCommand(tag, {}, caller);
-    expect(caller.updates).toEqual([
-      { kind: "step", step: "move-tag", title: "Move the latest tag", status: "started" },
-      { kind: "step", step: "move-tag", title: "Move the latest tag", status: "done" },
-      { kind: "message", level: "warning", text: "the tag is not pushed" },
-    ]);
-  });
-
   /** A sample command that asks, once its tag exists, whether to add it to the marketplace. */
   const release = defineCommand({
     path: ["sample", "release"],
@@ -591,6 +557,331 @@ describe("runCommand: the context a command runs in", () => {
         ],
       },
     });
+  });
+});
+
+describe("runCommand: progress updates", () => {
+  test("each update reaches the front-end in the order the command sends it", async () => {
+    const tag = defineCommand({
+      path: ["sample", "tag"],
+      summary: "Move the latest tag and push it.",
+      input: z.object({}),
+      async run(_input, context) {
+        const move = { kind: "step", step: "move-tag", title: "Move the latest tag" } as const;
+        const push = { kind: "step", step: "push-tag", title: "Push the latest tag" } as const;
+        context.progress({ ...move, status: "started" });
+        await context.spawn(["git", "tag", "--force", "latest"]);
+        context.progress({ ...move, status: "done" });
+        context.progress({ ...push, status: "started" });
+        context.progress({ kind: "message", level: "info", text: "pushing to origin" });
+        await context.spawn(["git", "push", "--force", "origin", "latest"]);
+        context.progress({ ...push, status: "done", detail: "origin/latest" });
+        context.progress({
+          kind: "message",
+          level: "warning",
+          text: "the marketplace is not told",
+        });
+        return "moved";
+      },
+    });
+    const caller = frontEnd(
+      fakeWorld({
+        spawn: [
+          { commandLine: ["git", "tag", "--force", "latest"] },
+          { commandLine: ["git", "push", "--force", "origin", "latest"] },
+        ],
+      }),
+    );
+    const outcome = await runCommand(tag, {}, caller);
+    expect(outcome).toMatchObject({ ok: true, exitCode: 0, result: "moved" });
+    expect(caller.updates).toEqual([
+      { kind: "step", step: "move-tag", title: "Move the latest tag", status: "started" },
+      { kind: "step", step: "move-tag", title: "Move the latest tag", status: "done" },
+      { kind: "step", step: "push-tag", title: "Push the latest tag", status: "started" },
+      { kind: "message", level: "info", text: "pushing to origin" },
+      {
+        kind: "step",
+        step: "push-tag",
+        title: "Push the latest tag",
+        status: "done",
+        detail: "origin/latest",
+      },
+      { kind: "message", level: "warning", text: "the marketplace is not told" },
+    ]);
+  });
+
+  test("a throw closes each open step as failed, in the order the steps started", async () => {
+    const setUp = defineCommand({
+      path: ["sample", "set-up"],
+      summary: "Set up a repo: check the gh login, then push the first commit.",
+      input: z.object({}),
+      async run(_input, context) {
+        const repo = { kind: "step", step: "set-up-repo", title: "Set up the repo" } as const;
+        const login = { kind: "step", step: "check-login", title: "Check the gh login" } as const;
+        const push = { kind: "step", step: "push-commit", title: "Push the first commit" } as const;
+        context.progress({ ...repo, status: "started" });
+        context.progress({ ...login, status: "started" });
+        context.progress({ ...login, status: "done" });
+        context.progress({ ...push, status: "started" });
+        const spawned = await context.spawn(["git", "push", "origin", "main"]);
+        if (spawned.code !== 0) {
+          throw outsideError(`git push failed: ${spawned.stderr.trim()}`);
+        }
+        context.progress({ ...push, status: "done" });
+        context.progress({ ...repo, status: "done" });
+        return "set up";
+      },
+    });
+    const caller = frontEnd(
+      fakeWorld({
+        spawn: [
+          {
+            commandLine: ["git", "push", "origin", "main"],
+            answer: { code: 1, stderr: "rejected\n" },
+          },
+        ],
+      }),
+    );
+    const outcome = await runCommand(setUp, {}, caller);
+    expect(caller.updates).toEqual([
+      { kind: "step", step: "set-up-repo", title: "Set up the repo", status: "started" },
+      { kind: "step", step: "check-login", title: "Check the gh login", status: "started" },
+      { kind: "step", step: "check-login", title: "Check the gh login", status: "done" },
+      { kind: "step", step: "push-commit", title: "Push the first commit", status: "started" },
+      { kind: "step", step: "set-up-repo", title: "Set up the repo", status: "failed" },
+      { kind: "step", step: "push-commit", title: "Push the first commit", status: "failed" },
+    ]);
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample set-up",
+      exitCode: 3,
+      durationMs: expect.any(Number),
+      error: { kind: "outside", message: "git push failed: rejected", issues: [] },
+    });
+  });
+
+  test("a normal end with steps still open is a bug that names them, and closes them", async () => {
+    const sync = defineCommand({
+      path: ["sample", "sync"],
+      summary: "Write package.json's version into each manifest.",
+      input: z.object({}),
+      run(_input, context) {
+        const read = { kind: "step", step: "read-version", title: "Read the version" } as const;
+        const claude = {
+          kind: "step",
+          step: "write-claude",
+          title: "Write Claude's manifest",
+        } as const;
+        const codex = {
+          kind: "step",
+          step: "write-codex",
+          title: "Write Codex's manifest",
+        } as const;
+        context.progress({ ...read, status: "started" });
+        context.progress({ ...claude, status: "started" });
+        context.progress({ ...codex, status: "started" });
+        context.progress({ ...claude, status: "done" });
+        return Promise.resolve("synced");
+      },
+    });
+    const caller = frontEnd(fakeWorld());
+    const outcome = await runCommand(sync, {}, caller);
+    expect(caller.updates).toEqual([
+      { kind: "step", step: "read-version", title: "Read the version", status: "started" },
+      { kind: "step", step: "write-claude", title: "Write Claude's manifest", status: "started" },
+      { kind: "step", step: "write-codex", title: "Write Codex's manifest", status: "started" },
+      { kind: "step", step: "write-claude", title: "Write Claude's manifest", status: "done" },
+      { kind: "step", step: "read-version", title: "Read the version", status: "failed" },
+      { kind: "step", step: "write-codex", title: "Write Codex's manifest", status: "failed" },
+    ]);
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample sync",
+      exitCode: 70,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "bug",
+        message:
+          "acmelabs hit a bug: the command ended with steps read-version, write-codex still open. Please report it at https://github.com/acmelabs-15/cli/issues",
+        issues: [],
+      },
+    });
+  });
+
+  test("a normal end with one step still open names that step", async () => {
+    const lint = defineCommand({
+      path: ["sample", "lint"],
+      summary: "Run oxlint on the repo.",
+      input: z.object({}),
+      async run(_input, context) {
+        context.progress({ kind: "step", step: "lint", title: "Run oxlint", status: "started" });
+        const spawned = await context.spawn(["bunx", "oxlint"]);
+        return spawned.code;
+      },
+    });
+    const outcome = await runCommand(
+      lint,
+      {},
+      frontEnd(fakeWorld({ spawn: [{ commandLine: ["bunx", "oxlint"] }] })),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 70,
+      error: {
+        kind: "bug",
+        message:
+          "acmelabs hit a bug: the command ended with step lint still open. Please report it at https://github.com/acmelabs-15/cli/issues",
+      },
+    });
+  });
+
+  test("a step may end with no started update first: done at once, or skipped", async () => {
+    const check = defineCommand({
+      path: ["sample", "check"],
+      summary: "Run each host's validator.",
+      input: z.object({}),
+      run(_input, context) {
+        context.progress({
+          kind: "step",
+          step: "validate-claude",
+          title: "Run Claude Code's validator",
+          status: "done",
+        });
+        context.progress({
+          kind: "step",
+          step: "validate-agy",
+          title: "Run Antigravity CLI's validator",
+          status: "skipped",
+          detail: "agy is not on PATH",
+        });
+        return Promise.resolve("checked");
+      },
+    });
+    const caller = frontEnd(fakeWorld());
+    const outcome = await runCommand(check, {}, caller);
+    expect(outcome).toMatchObject({ ok: true, exitCode: 0, result: "checked" });
+    expect(caller.updates).toHaveLength(2);
+  });
+
+  test("a second started update for an open step is a bug that names the step", async () => {
+    const tag = defineCommand({
+      path: ["sample", "tag"],
+      summary: "Push the release tag, and force it when the push fails.",
+      input: z.object({}),
+      async run(_input, context) {
+        const push = { kind: "step", step: "push-tag", title: "Push the release tag" } as const;
+        context.progress({ ...push, status: "started" });
+        const pushed = await context.spawn(["git", "push", "origin", "v1.0.0"]);
+        if (pushed.code !== 0) {
+          // The defect: the retry starts the step again before the step ended.
+          context.progress({ ...push, title: "Force the release tag", status: "started" });
+          await context.spawn(["git", "push", "--force", "origin", "v1.0.0"]);
+        }
+        context.progress({ ...push, status: "done" });
+        return "pushed";
+      },
+    });
+    const world = fakeWorld({
+      spawn: [
+        { commandLine: ["git", "push", "origin", "v1.0.0"], answer: { code: 1 } },
+        { commandLine: ["git", "push", "--force", "origin", "v1.0.0"] },
+      ],
+    });
+    const caller = frontEnd(world);
+    const outcome = await runCommand(tag, {}, caller);
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample tag",
+      exitCode: 70,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "bug",
+        message:
+          "acmelabs hit a bug: the command started step push-tag again while it was still open. Please report it at https://github.com/acmelabs-15/cli/issues",
+        issues: [],
+      },
+    });
+    // The front-end shows the step once, and the command stops at the defect.
+    expect(caller.updates).toEqual([
+      { kind: "step", step: "push-tag", title: "Push the release tag", status: "started" },
+      { kind: "step", step: "push-tag", title: "Push the release tag", status: "failed" },
+    ]);
+    expect(world.calls).toEqual([
+      { kind: "spawn", commandLine: ["git", "push", "origin", "v1.0.0"] },
+    ]);
+  });
+
+  test("a command that catches that defect still ends as a bug", async () => {
+    const build = { kind: "step", step: "build", title: "Build the package" } as const;
+    const ignores = defineCommand({
+      path: ["sample", "ignore"],
+      summary: "Build the package, and ignore every error.",
+      input: z.object({}),
+      run(_input, context) {
+        context.progress({ ...build, status: "started" });
+        try {
+          context.progress({ ...build, status: "started" });
+        } catch {
+          // This sample ignores every error, the defect too.
+        }
+        context.progress({ ...build, status: "done" });
+        return Promise.resolve("built");
+      },
+    });
+    const wraps = defineCommand({
+      path: ["sample", "wrap"],
+      summary: "Build the package, and report every error as an outside failure.",
+      input: z.object({}),
+      run(_input, context) {
+        try {
+          context.progress({ ...build, status: "started" });
+          context.progress({ ...build, status: "started" });
+          context.progress({ ...build, status: "done" });
+          return Promise.resolve("built");
+        } catch (error) {
+          throw outsideError(`the build failed: ${String(error)}`);
+        }
+      },
+    });
+    const message =
+      "acmelabs hit a bug: the command started step build again while it was still open. Please report it at https://github.com/acmelabs-15/cli/issues";
+    expect(await runCommand(ignores, {}, frontEnd(fakeWorld()))).toMatchObject({
+      exitCode: 70,
+      error: { kind: "bug", message },
+    });
+    expect(await runCommand(wraps, {}, frontEnd(fakeWorld()))).toMatchObject({
+      exitCode: 70,
+      error: { kind: "bug", message },
+    });
+  });
+
+  test("a step may start again once it has ended", async () => {
+    const retry = defineCommand({
+      path: ["sample", "retry"],
+      summary: "Fetch the npm registry, and try once more when it fails.",
+      input: z.object({}),
+      async run(_input, context) {
+        const fetch = {
+          kind: "step",
+          step: "fetch-registry",
+          title: "Fetch the registry",
+        } as const;
+        context.progress({ ...fetch, status: "started" });
+        const first = await context.fetch("https://registry.npmjs.org/@acmelabs%2fcli");
+        context.progress({ ...fetch, status: first.ok ? "done" : "failed" });
+        context.progress({ ...fetch, status: "started" });
+        const second = await context.fetch("https://registry.npmjs.org/@acmelabs%2fcli");
+        context.progress({ ...fetch, status: second.ok ? "done" : "failed" });
+        return second.status;
+      },
+    });
+    const world = fakeWorld({
+      fetch: [
+        { url: "https://registry.npmjs.org/@acmelabs%2fcli", answer: { status: 503 } },
+        { url: "https://registry.npmjs.org/@acmelabs%2fcli" },
+      ],
+    });
+    const outcome = await runCommand(retry, {}, frontEnd(world));
+    expect(outcome).toMatchObject({ ok: true, exitCode: 0, result: 200 });
   });
 });
 

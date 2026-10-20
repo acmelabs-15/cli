@@ -71,8 +71,74 @@ async function checkInput<Input extends z.ZodObject>(
   return checked.data;
 }
 
-/** The context a command runs in: the front-end's world, progress and signal. */
-function contextFor<Input>(input: Input, frontEnd: FrontEnd): Context<Input> {
+/** The open steps of one run, and the progress that opens and ends them. */
+type Steps = {
+  /**
+   * Sends one update on to the front-end, and keeps track of which steps are open. A second
+   * `started` update for an open step is not sent: it throws the run's defect.
+   */
+  progress: (update: ProgressUpdate) => void;
+  /** The run's defect, if any: a step started again while it was open. */
+  defect: () => Error | undefined;
+  /** At the command's normal end, throws the run's defect, or one that names each open step. */
+  checkEnded: () => void;
+  /** Sends a `failed` update for each open step, in the order the steps started. */
+  closeAsFailed: () => void;
+};
+
+/**
+ * The steps of one run. A step is open from its `started` update until a `done`, `failed` or
+ * `skipped` update for the same step id. A step may also end with no `started` update first, as a
+ * step that finishes at once or is skipped does. A step started again while it is open is a defect
+ * in the command, because a front-end would show the step twice.
+ */
+function trackSteps(send: (update: ProgressUpdate) => void): Steps {
+  /** Each open step's title by its step id, in the order the steps started. */
+  const open = new Map<string, string>();
+  // Kept, and not only thrown, so a command that catches it still ends as a bug.
+  let restarted: Error | undefined;
+  return {
+    progress(update) {
+      if (update.kind === "step") {
+        if (update.status !== "started") {
+          open.delete(update.step);
+        } else if (open.has(update.step)) {
+          restarted ??= new Error(
+            `the command started step ${update.step} again while it was still open`,
+          );
+          throw restarted;
+        } else {
+          open.set(update.step, update.title);
+        }
+      }
+      send(update);
+    },
+    defect: () => restarted,
+    checkEnded() {
+      if (restarted !== undefined) {
+        throw restarted;
+      }
+      if (open.size > 0) {
+        const ids = [...open.keys()];
+        const noun = ids.length === 1 ? "step" : "steps";
+        throw new Error(`the command ended with ${noun} ${ids.join(", ")} still open`);
+      }
+    },
+    closeAsFailed() {
+      for (const [step, title] of open) {
+        send({ kind: "step", step, title, status: "failed" });
+      }
+      open.clear();
+    },
+  };
+}
+
+/** The context a command runs in: the front-end's world and signal, and the run's progress. */
+function contextFor<Input>(
+  input: Input,
+  frontEnd: FrontEnd,
+  progress: (update: ProgressUpdate) => void,
+): Context<Input> {
   const { world } = frontEnd;
   return {
     root: world.root,
@@ -80,9 +146,7 @@ function contextFor<Input>(input: Input, frontEnd: FrontEnd): Context<Input> {
     spawn: world.spawn,
     fetch: world.fetch,
     now: world.now,
-    progress(update) {
-      frontEnd.progress(update);
-    },
+    progress,
     // ask rejects, and never throws, because its type promises a Promise.
     ask(field) {
       const value = input[field];
@@ -140,12 +204,18 @@ export async function runCommand<Input extends z.ZodObject, Result>(
 ): Promise<Outcome<Result>> {
   const started = performance.now();
   const name = command.path.join(" ");
+  // Called through the front-end, so a front-end whose progress is a method keeps its `this`.
+  const steps = trackSteps((update) => frontEnd.progress(update));
   try {
     const input = await checkInput(command.input, command.positionals ?? [], rawInput);
-    const result = await command.run(input, contextFor(input, frontEnd));
+    const result = await command.run(input, contextFor(input, frontEnd, steps.progress));
+    steps.checkEnded();
     return { ok: true, command: name, exitCode: 0, durationMs: millisecondsSince(started), result };
   } catch (error) {
-    const failure = failureOf(error);
+    // No front-end shows a step as running after the command stopped.
+    steps.closeAsFailed();
+    // A defect in the command's progress wins over what the command threw after it.
+    const failure = failureOf(steps.defect() ?? error);
     return {
       ok: false,
       command: name,

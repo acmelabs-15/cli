@@ -23,5 +23,5 @@ Nothing blocks. Peter chose to merge PR #1 before his own review; a look at it o
 
 ## Next steps
 
-1. Build `command-core` on branch `command-core`, in `/brain:build auto` mode (Peter's choice, 2026-10-20). Plan approved (`tasks/plan.md`). Done: tasks 1–3 and the checkpoint 'a command runs' (green on a clean clone). Next: task 4, progress updates. Then the other layer 1 specs: `config-presets`, `github-ops`, `npm-ops`. `tui-kit` waits for its prototype (open question 3: the vendored `@clack/ui` on tty 0.9).
+1. Build `command-core` on branch `command-core`, in `/brain:build auto` mode (Peter's choice, 2026-10-20). Plan approved (`tasks/plan.md`). Done: tasks 1–3 and the checkpoint 'a command runs' (green on a clean clone). Done: task 4. Next: task 5, questions mid-run, and cancel. Then the other layer 1 specs: `config-presets`, `github-ops`, `npm-ops`. `tui-kit` waits for its prototype (open question 3: the vendored `@clack/ui` on tty 0.9).
 2. Each module: `/brain:spec` for its `spec/SPEC-<module-id>.md`, Peter's approval, `/brain:plan`, then the build on a branch named after the module.

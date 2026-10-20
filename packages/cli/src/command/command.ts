@@ -4,7 +4,8 @@ import type { World } from "./world";
 
 /**
  * One progress update: a step with a stable id and a title for people, or a message. Every started
- * step ends as done, failed or skipped before the command ends.
+ * step ends as done, failed or skipped before the command ends; runCommand closes any open step as
+ * failed when the command throws. A step may end with no `started` update first.
  */
 export type ProgressUpdate =
   | {
@@ -18,7 +19,10 @@ export type ProgressUpdate =
 
 /** What a command runs in: the outside world, progress, questions mid-run, and cancel. */
 export type Context<Input> = World & {
-  /** Reports one progress update to the front-end. */
+  /**
+   * Reports one progress update to the front-end. A second `started` update for an open step is a
+   * defect: it throws, and the command ends as a bug.
+   */
   progress: (update: ProgressUpdate) => void;
   /** The value of an optional input: given up front, asked in a terminal, or an input error. */
   ask: <Field extends keyof Input & string>(field: Field) => Promise<NonNullable<Input[Field]>>;
