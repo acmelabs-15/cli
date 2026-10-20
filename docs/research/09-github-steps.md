@@ -412,6 +412,13 @@ https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api
 - **HTTPS fits gh's login:** gh's credential helper serves HTTPS only (patterns start `https://`, 1.5), and this machine's gh `git_protocol` is `https`. So with HTTPS, one gh login covers the API calls and the push.
 - **This machine also has SSH working:** `ssh -T git@github.com` answered "Hi loriensleafs! You've successfully authenticated". Another maintainer's machine may not.
 - **Checking a push without credentials:** `git ls-remote https://github.com/acmelabs-15/cli.git refs/heads/main` returned `fccb32af385e718a558b4cc5738c393fab216059` (a public repo). A private repo needs credentials.
+- **Probes** (github-ops task 11, 2026-10-20, git 2.54.0, read-only `git ls-remote` and one `git clone` of a repo that does not exist, each with no `GIT_` variables, `GIT_TERMINAL_PROMPT=0` and the words `-c credential.https://github.com.helper= -c credential.https://github.com.helper=!gh auth git-credential -c core.askPass=`):
+  - gh's login, a repo that does not exist: stderr `remote: Repository not found.` and `fatal: repository 'https://github.com/acmelabs-15/<name>.git/' not found`, exit 128. A clone gets the same, and removes the folder it made.
+  - No credential helper at all, for a private repo and for one that does not exist: `fatal: could not read Username for 'https://github.com': terminal prompts disabled`, exit 128. GitHub asks for a login before it says whether the repo exists.
+  - `GH_TOKEN=not-a-real-token`: `remote: Invalid username or token. Password authentication is not supported for Git operations.` and `fatal: Authentication failed for '<url>'`, exit 128.
+  - An empty `GH_CONFIG_DIR` did not take gh's login away: gh's helper still served a token, and `ls-remote` of the private acmelabs-15/pinky exited 0.
+  - Without `-c core.askPass=`, `SSH_ASKPASS=/usr/bin/false` ran: `error: unable to read askpass response from '/usr/bin/false'`, before "terminal prompts disabled".
+  - With a local bare repo: a push that is not a fast-forward prints ` ! [rejected]        main -> main (fetch first)`, exit 1; `git push --set-upstream origin refs/heads/main` sets `branch.main.merge` to `refs/heads/main`; `git remote get-url origin` applies a `url.<base>.insteadOf` rewrite, and `git config --get-all remote.origin.url` does not.
 
 ## 5. Prior art: how acmelabs-15/cli was created on 2026-10-20
 

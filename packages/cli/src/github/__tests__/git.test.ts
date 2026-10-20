@@ -10,7 +10,7 @@ import { fakeWorld } from "../../command/fake-world";
 import { runCommand } from "../../command/run";
 import type { World } from "../../command/world";
 import { realWorld } from "../../command/world";
-import { inLocalHistory } from "../git";
+import { inLocalHistory, localCommit } from "../git";
 import { frontEnd } from "./gh-answers";
 
 /** A sample command that asks whether a commit is in the local history of a git repo. */
@@ -285,6 +285,32 @@ describe("inLocalHistory: the git call", () => {
       { sha: given, localRoot: "/work/cli" },
       frontEnd(world),
     );
+    expect(outcome).toMatchObject({ ok: false, exitCode: 70, error: { kind: "bug" } });
+    expect(world.calls).toEqual([]);
+  });
+});
+
+/** A sample command that reads the commit of a local branch, with no check of its own. */
+const branchCommit = defineCommand({
+  path: ["sample", "local-commit"],
+  summary: "Read the commit of a branch of a local git repo.",
+  input: z.object({
+    cwd: z.string().describe("The folder of the local git repo."),
+    branch: z.string().describe("The branch."),
+  }),
+  run(input, context) {
+    return localCommit(context, input).then((sha) => sha ?? null);
+  },
+});
+
+describe("the git calls about a branch", () => {
+  test.each([
+    ["a refspec that deletes", ":main"],
+    ["revision syntax", "main~1"],
+    ["a control character", "main\n"],
+  ])("a branch with %s starts no git, and ends as a bug in the caller", async (_case, branch) => {
+    const world = fakeWorld();
+    const outcome = await runCommand(branchCommit, { cwd: "/work/cli", branch }, frontEnd(world));
     expect(outcome).toMatchObject({ ok: false, exitCode: 70, error: { kind: "bug" } });
     expect(world.calls).toEqual([]);
   });

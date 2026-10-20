@@ -26,7 +26,7 @@ Phase 2 The tracer and the settings
 Phase 3 The other steps
 
 - [x] 10. ensureRepo creates a repo, or reuses only this run's repo
-- [ ] 11. push and clone through gh's login
+- [x] 11. push and clone through gh's login
 - [x] 12. openPullRequest reuses an open PR or opens one
 - [x] 13. watchRun waits for a run, and findTag reads a tag
 - [ ] Checkpoint: github-ops complete
@@ -235,12 +235,12 @@ Phase 3 The other steps
 **Description:** `git.ts` gains the command lines that reach GitHub: each starts with the host-scoped credential helper arguments and `-c core.askPass=`, and runs with `gitEnv` (no `GIT_` variables, then `GIT_TERMINAL_PROMPT=0`; ADR-0016, `fb4cda4`). `push` checks or adds `origin`, compares `git ls-remote` with the local commit, then pushes with `--set-upstream`. `clone` clones the HTTPS URL into a new folder.
 
 **Acceptance criteria:**
-- [ ] Through a sample command: no `origin` gets the HTTPS URL added; another `origin` ends with exit 2; a branch already at the local commit gives a skipped step; a new push uses gh's helper and `GIT_TERMINAL_PROMPT=0`; a rejected push ends with exit 1 and git's message.
-- [ ] `clone` uses gh's helper and the HTTPS URL; an existing folder ends with exit 2 and no git call.
+- [x] Through a sample command: no `origin` gets the HTTPS URL added; another `origin` ends with exit 2; a branch already at the local commit gives a skipped step; a new push uses gh's helper and `GIT_TERMINAL_PROMPT=0`; a rejected push ends with exit 1 and git's message.
+- [x] `clone` uses gh's helper and the HTTPS URL; an existing folder ends with exit 2 and no git call.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/github`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/github`
+- [x] `bun run check` is green.
 
 **Dependencies:** 10
 
