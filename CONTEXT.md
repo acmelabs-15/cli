@@ -53,6 +53,14 @@ npm's link between a package and one CI workflow, which lets that workflow publi
 Moving an existing ACMElabs repo onto the shared pieces with no change in what the repo does.
 _Avoid_: port, upgrade (for a repo)
 
+**Protect main**:
+The repository ruleset on an ACMElabs repo's default branch that blocks force-pushes and deletion, with no one allowed to bypass it.
+_Avoid_: branch protection (GitHub's older, separate feature)
+
+**Actions setting**:
+The two GitHub Actions settings of a repo that the release flow needs: workflows get a read-only token by default, and workflows may create and approve pull requests.
+_Avoid_: workflow permissions (for the pair)
+
 ### Shared pieces
 
 **Shared pieces**:

@@ -310,3 +310,26 @@ Peter asked that everything from the interview be saved to Markdown in the layou
 - **Recommended:** the cleanups and the record fixes now, and the bundling in `cli-release`, which owns the published shape.
 - **Answer:** all three groups now, the bundling included. Recorded in ADR-0013.
 - **Agent's note, same day:** the spec's `env` sentence was made exact in `a0a733d` ("The preset sets no `env`, as today's configs do"), after task 2 found it could be read two ways. The new wording matches the sentence's own reason and today's configs; no behaviour changed.
+
+### How acmelabs talks to GitHub — settled 2026-10-20 (module `github-ops`)
+
+- **Facts given** (`docs/research/09-github-steps.md`): gh 2.98.0 is installed, logged in with the `repo` and `workflow` scopes. `gh api` sends any REST call with gh's login (the keyring locally, `GH_TOKEN` in CI); an error gives exit 1 and GitHub's JSON error body, and no login gives exit 4. git pushes and clones with the same login through gh's credential helper, as gh itself does. gh's high-level commands print text, and `gh run watch` polls every 3 seconds. A direct call with fetch needs the token inside acmelabs.
+- **Recommended and answered:** `gh api` for every REST call, and git with gh's credential helper for push and clone. One login covers the API and the push, and no token passes through acmelabs.
+
+### What a GitHub step does on a re-run — settled 2026-10-20 (module `github-ops`)
+
+- **Facts given:** a step can read before it writes. An existing repo can be this run's repo or another repo with the same name. It is this run's repo when it is empty, or when its main branch's newest commit is in the local history. Changing visibility from private to public makes the Actions logs public and erases stars. The gh login has no `delete_repo` scope.
+- **Recommended and answered:** pick up where it stopped. Each step reads first and reports itself as skipped when its result is already there. An existing repo is reused only when it is empty or its main commit is in the local history; any other existing repo, or one with the other visibility, stops the command with exit 2 and names it.
+
+### Environment variables for outside programs — settled 2026-10-20 (module `github-ops`, open question 21)
+
+- **First version** offered a deny list by name, a wide allowlist, or no change, with prior art from Bazel, Turborepo and Codex. Peter answered `/wait-what`. Defects: no plain statement of the problem, unexplained terms ("deny list", "allowlist", "the redaction's name rule"), and facts that did not bear on the choice.
+- **Second version** opened with the problem and explained both filters. Peter asked back: "aren't these variable values kept private - isn't that the whole point of using an env variable?" Defect: a missing premise. The question did not say that a variable is private from other users but not from the programs a process starts. It also overstated the risk: GitHub passes no secrets to a workflow that a pull request from a fork starts (docs.github.com, "Using secrets in GitHub Actions").
+- **Third version** answered that first: a child program gets a copy of every variable (a probe saw all 76), and GitHub's secure-use guide says one compromised action "would have access to all secrets". The real risk is a program that acmelabs starts reading a token it does not need. A filter covers only programs that acmelabs starts.
+- **Recommended:** remove by name, with the redaction's rule (TOKEN, SECRET, KEY, PASSWORD), and a per-call pass-through.
+- **Answer:** no filter. Every program that acmelabs starts gets the whole environment, as today.
+
+### Limits for outside programs and requests — settled 2026-10-20 (module `github-ops`, open question 22)
+
+- **Facts given** (`docs/research/10-outside-program-limits.md`): nothing limits a program's time or output, or a request's time; a 200 MB flood used 599 MB; on a cancel, a program's own child kept running 10 s; every call measured ended in under 3 s, the largest output was 44 KB; gh, git and Bun's fetch have no time limit of their own; other tools' limits (Claude Code 2 min, npm 5 min, Renovate 15 min and 10 MB, Node 1 MB).
+- **Recommended and answered:** both limits. Every program and request gets a time limit and an output limit that a call can raise or lower: 5 minutes per program, 1 minute per request, 10 MB per output. At a limit, acmelabs stops the program and every program it started, and the command ends with exit 3 and a message that names the limit.

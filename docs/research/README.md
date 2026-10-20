@@ -12,5 +12,7 @@ This folder holds the research behind the ACMElabs CLI spec. The spec interview 
 | [06-tui-foundations.md](06-tui-foundations.md) | Which foundation fits a Bubbles-style TUI, and what is the state of `@clack/ui`? | 2026-10-20 | The TUI base, the use of the `@clack/ui` preview |
 | [07-oxc-without-node.md](07-oxc-without-node.md) | Do oxlint and oxfmt load a TypeScript config under Bun with no Node on PATH? | 2026-10-20 | Open question 4 (`config-presets`); task 2 of the repo-model plan |
 | [08-presets-in-a-consumer-repo.md](08-presets-in-a-consumer-repo.md) | How does a repo run the gate on Bun, get the tool binaries, and build on a shared preset? | 2026-10-20 | Open questions 4 and 18; the `config-presets` spec |
+| [09-github-steps.md](09-github-steps.md) | How do gh, the GitHub REST API, rulesets, the Actions setting, pull requests and workflow runs behave, and how did acmelabs-15/cli get made? | 2026-10-20 | The `github-ops` spec; ADR-0014 |
+| [10-outside-program-limits.md](10-outside-program-limits.md) | Which environment variables do outside programs need, and how can acmelabs limit a program's or a request's time and output on Bun? | 2026-10-20 | Open questions 21 and 22; the `github-ops` spec; ADR-0015 |
 
 The probe folders in the session scratchpad (`router-probe`, `tui-probe`, `clack-ui-preview`, `npm12`, `apidocs`, `verify`) are temporary. They are not kept. The notes here keep their results.
