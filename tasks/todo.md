@@ -8,7 +8,7 @@ Phase 1 Foundation
 
 - [x] 1. Workspace, TypeScript, and the first test: the four host ids
 - [x] 2. Lint and format gate
-- [ ] 3. Changesets, as brain does
+- [x] 3. Changesets, as brain does
 - [ ] Checkpoint: foundation
 
 Phase 2 repo-model
@@ -65,13 +65,13 @@ Phase 2 repo-model
 **Description:** Set up changesets the way brain does, adapted to a workspace with two release flows: `.changeset/config.json` with `@changesets/changelog-github` for acmelabs-15/cli, and `.changeset/README.md` explaining when a change gets a changeset and what each release flow does.
 
 **Acceptance criteria:**
-- [ ] `.changeset/config.json` matches brain's, with the repo set to `acmelabs-15/cli`.
-- [ ] `.changeset/README.md` explains the library flow (npm publish) and the plugin flow (the latest tag), in the glossary's words.
-- [ ] The root scripts `changeset` and `version` exist; `version` runs `changeset version`. The version sync step joins it when `repo-checks` lands.
+- [x] `.changeset/config.json` matches brain's, with the repo set to `acmelabs-15/cli`.
+- [x] `.changeset/README.md` explains the library flow (npm publish) and the plugin flow (the latest tag), in the glossary's words.
+- [x] The root scripts `changeset` and `version` exist; `version` runs `changeset version`. The version sync step joins it when `repo-checks` lands.
 
 **Verification:**
-- [ ] `bun run changeset status` exits 0.
-- [ ] `bun run check` is green.
+- [x] `bun run changeset status` exits 0.
+- [x] `bun run check` is green.
 
 **Dependencies:** 1
 
