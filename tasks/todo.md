@@ -16,7 +16,7 @@ Phase 2 The rest of the frame
 - [x] 4. Progress updates, and open steps closed on a throw
 - [x] 5. Questions mid-run, and cancel
 - [x] 6. JSON mode's lines
-- [ ] 7. The command list and its rules
+- [x] 7. The command list and its rules
 - [ ] Checkpoint: command-core complete
 
 ## Task 1: World: realWorld and fakeWorld
@@ -141,13 +141,13 @@ Phase 2 The rest of the frame
 **Description:** `packages/cli/src/commands/index.ts` holds the command list, empty until `repo-checks`. A test checks the list's rules on the real list and on sample lists that break each rule. A changeset says what the frame promises: the exit codes and JSON mode's lines.
 
 **Acceptance criteria:**
-- [ ] The rules are tested: unique paths; no path is the start of another; a one-line summary; a description on every input field; every positional names a required field.
-- [ ] A test reads each command file's import lines and fails on any import beyond zod, `command-core` and `repo-model`.
-- [ ] One changeset for `@acmelabs/cli`, type `minor`, describes the exit codes and JSON mode's lines.
+- [x] The rules are tested: unique paths; no path is the start of another; a one-line summary; a description on every input field; every positional names a required field.
+- [x] A test reads each command file's import lines and fails on any import beyond zod, `command-core` and `repo-model`.
+- [x] One changeset for `@acmelabs/cli`, type `minor`, describes the exit codes and JSON mode's lines.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/commands`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/commands`
+- [x] `bun run check` is green.
 
 **Dependencies:** 2
 
