@@ -176,7 +176,7 @@ export function builtPackage(): Promise<Map<string, string>> {
   return built;
 }
 
-/** The real folder of the package `name`, found as Node finds it: `node_modules`, from `from` up. */
+/** The real folder of the package `name`: the first `node_modules/<name>` from `from` up. */
 async function installedFolder(name: string, from: string): Promise<string> {
   let folder = from;
   while (!(await Bun.file(path.join(folder, "node_modules", name, "package.json")).exists())) {
