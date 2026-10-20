@@ -1,4 +1,5 @@
 import type { CommandError } from "./outcome";
+import { outsideError } from "./outcome";
 import type { FetchInit } from "./world";
 import {
   bodyLimitReached,
@@ -27,6 +28,48 @@ function methodOf(input: string | URL | Request, options: RequestInit): string {
 export function methodAndUrl(input: string | URL | Request, options: RequestInit = {}): string {
   const url = input instanceof Request ? input.url : new URL(input).href;
   return `${methodOf(input, options)} ${url}`;
+}
+
+/**
+ * Plain words for the network failures whose code Bun's fetch explains poorly, as probed on Bun
+ * 1.4.0. Most of Bun's messages for these end with advice to pass `verbose: true` to fetch, which
+ * a user of acmelabs cannot act on. Any other code keeps Bun's own message, such as "self signed
+ * certificate".
+ */
+const networkWords = new Map([
+  ["ConnectionRefused", "the connection was refused"],
+  ["ECONNRESET", "the connection closed before the whole answer came"],
+  ["ENOTFOUND", "the host name was not found"],
+  ["FailedToOpenSocket", "no connection could be opened to the address"],
+  ["TooManyRedirects", "the answer redirected too many times"],
+  ["UnexpectedRedirect", "the answer redirected, and the request allows no redirect"],
+  ["UnsupportedProxyProtocol", "the proxy's protocol is not supported"],
+  ["ZlibError", "the compressed body could not be read"],
+]);
+
+/**
+ * The outside failure for a network failure of a request, kind `outside`, exit 3: it names the
+ * request, what failed, and Bun's code for it. Any other error gives undefined. On Bun 1.4.0,
+ * fetch rejects a refused connection, a reset, a DNS or TLS failure, a redirect without end and a
+ * body it cannot decompress with a TypeError that has a string `code` and the URL as `path`. A
+ * caller's bug, such as an invalid URL or header, or a body read already, lacks one of the two.
+ * Bun gives three codes with both for a cause outside acmelabs and for the call's own choice
+ * alike, so they stay outside failures: FailedToOpenSocket (a broadcast address, or port 0),
+ * UnsupportedProxyProtocol (a proxy from the environment, or the call's) and UnexpectedRedirect (a
+ * redirect that the call forbids).
+ */
+function networkFailure(request: string, error: unknown): CommandError | undefined {
+  if (
+    error instanceof TypeError &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    "path" in error &&
+    typeof error.path === "string"
+  ) {
+    const what = networkWords.get(error.code) ?? error.message;
+    return outsideError(`${request} failed: ${what} (${error.code})`);
+  }
+  return undefined;
 }
 
 /**
@@ -64,7 +107,8 @@ function withBody(response: Response, body: ReadableStream<Uint8Array>): Respons
 
 /**
  * The body limit of one request: the request in words, for the failure; the most bytes of its
- * body; and the call's failure behind any other error of a read, such as the time-out.
+ * body; and the call's failure behind any other error of a read, such as the time-out or a network
+ * failure.
  */
 type BodyLimit = {
   request: string;
@@ -147,7 +191,8 @@ async function limitedResponse(
  * Sends a request with Bun's fetch, under its time limit and its body limit. The time limit is an
  * `AbortSignal.timeout` beside the call's own signal. Bun stops the body too when the signal on
  * the request aborts, so the limit covers the whole answer (note 10, section 3). The call's own
- * signal wins over the time limit: a cancel stays a cancel.
+ * signal wins over the time limit: a cancel stays a cancel. A network failure, of the request or
+ * of its body, is an outside failure; a caller's bug stays as fetch gives it.
  */
 export async function fetchWithLimits(
   input: string | URL | Request,
@@ -163,7 +208,7 @@ export async function fetchWithLimits(
   // AbortSignal.timeout throws for a delay past the largest safe integer, such as Infinity.
   const timeout = AbortSignal.timeout(Math.min(timeoutMs, longestTimerMs));
   // The call's failure behind an error of the request or of its body: the cancel's reason, the
-  // time limit's failure, or else the error as it is.
+  // time limit's failure, a network failure, or else the error as it is, a caller's bug.
   function failureOf(error: unknown): unknown {
     if (own?.aborted === true) {
       return own.reason;
@@ -171,7 +216,7 @@ export async function fetchWithLimits(
     if (timeout.aborted) {
       return requestTimeLimitReached(request, timeoutMs);
     }
-    return error;
+    return networkFailure(request, error) ?? error;
   }
   let response: Response;
   try {

@@ -1547,6 +1547,35 @@ describe("runCommand: a program that is not installed", () => {
   });
 });
 
+describe("runCommand: a request that fails in the network", () => {
+  test("a real refused connection ends as an outside failure, exit 3, not as a bug", async () => {
+    // A port that had a server a moment ago, and has none now.
+    const gone = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
+    const url = `http://127.0.0.1:${gone.port}/-/ping`;
+    gone.stop(true);
+    const ping = defineCommand({
+      path: ["sample", "ping"],
+      summary: "Ping a registry.",
+      input: z.object({}),
+      async run(_input, context) {
+        const response = await context.fetch(url);
+        return response.status;
+      },
+    });
+    expect(await runCommand(ping, {}, frontEnd(realWorld()))).toEqual({
+      ok: false,
+      command: "sample ping",
+      exitCode: 3,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "outside",
+        message: `GET ${url} failed: the connection was refused (ConnectionRefused)`,
+        issues: [],
+      },
+    });
+  });
+});
+
 describe("runCommand: a front-end whose progress throws on every update", () => {
   /** A sample command that pushes the release tag, in one step. */
   const push = defineCommand({

@@ -63,7 +63,11 @@ export type World = {
    * outside failure that names the method, the URL and the limit; a read of the body rejects so
    * when the time-out comes during the body. A body past its body limit stops, and its read
    * rejects with an outside failure too: at once when its Content-Length tells it, so it is never
-   * read. When the signal aborts, the call or the read rejects with the signal's reason.
+   * read. A request that fails in the network, such as a refused connection, a reset, or a DNS or
+   * TLS failure, rejects with an outside failure that names the method, the URL and what failed,
+   * and so does a read of a body that fails so. A caller's bug, such as an invalid URL or header,
+   * rejects as fetch rejects it. When the signal aborts, the call or the read rejects with the
+   * signal's reason.
    */
   fetch: (input: string | URL | Request, init?: FetchInit) => Promise<Response>;
   /** The current time. */

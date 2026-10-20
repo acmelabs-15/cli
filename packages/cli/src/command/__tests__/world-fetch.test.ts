@@ -10,9 +10,12 @@ let server: ReturnType<typeof Bun.serve>;
 
 /**
  * A local TCP server that answers in raw HTTP, for the answers Bun.serve does not send: a body
- * that announces 1 GB and sends 10 bytes, and a 304 with a Content-Length.
+ * that announces 1 GB and sends 10 bytes, a 304 with a Content-Length, and a body cut short.
  */
 let raw: Bun.TCPSocketListener;
+
+/** A local TCP server that closes each connection at once, before it reads the request. */
+let closing: Bun.TCPSocketListener;
 
 /** Resolved with the request when the server gets one at /hold; a test sets a new one first. */
 let held = Promise.withResolvers<Request>();
@@ -81,6 +84,7 @@ beforeAll(() => {
           headers: { "Content-Encoding": "gzip" },
         }),
       "/moved": () => Response.redirect("/made", 302),
+      "/loop": () => Response.redirect("/loop", 302),
       // Bun.serve sends the standard reason phrase, Created.
       "/made": () => new Response("made", { status: 201, headers: { "x-acmelabs": "made" } }),
       "/count"() {
@@ -98,11 +102,28 @@ beforeAll(() => {
     socket: {
       data(socket, data) {
         // The request's first line names its path, such as `GET /not-modified HTTP/1.1`.
-        socket.write(
-          data.toString().startsWith("GET /not-modified ")
-            ? "HTTP/1.1 304 Not Modified\r\nContent-Length: 2097152\r\n\r\n"
-            : "HTTP/1.1 200 OK\r\nContent-Length: 1073741824\r\n\r\n0123456789",
-        );
+        const request = data.toString();
+        if (request.startsWith("GET /not-modified ")) {
+          socket.write("HTTP/1.1 304 Not Modified\r\nContent-Length: 2097152\r\n\r\n");
+        } else if (request.startsWith("GET /cut-short ")) {
+          // 10 bytes of the 100 it announces, then the server closes, after fetch has the headers.
+          socket.write("HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n0123456789");
+          setTimeout(() => socket.end(), 50);
+        } else {
+          socket.write("HTTP/1.1 200 OK\r\nContent-Length: 1073741824\r\n\r\n0123456789");
+        }
+      },
+    },
+  });
+  closing = Bun.listen({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: {
+      open(socket) {
+        socket.end();
+      },
+      data() {
+        // The connection is closed already; nothing is read.
       },
     },
   });
@@ -113,6 +134,7 @@ afterAll(() => {
   // never sees those clients go, and its stop never resolves. Bun's own fetch does the same.
   server.stop(true);
   raw.stop(true);
+  closing.stop(true);
 });
 
 describe("realWorld: a request's time limit", () => {
@@ -364,5 +386,108 @@ describe("realWorld: a request's body limit", () => {
     expect(response.url).toBe(at("/made"));
     expect(response.redirected).toBe(true);
     expect(await response.text()).toBe("made");
+  });
+});
+
+describe("realWorld: a request that fails in the network", () => {
+  test("a refused connection rejects with an outside failure that names the request and what failed", async () => {
+    // A port that had a server a moment ago, and has none now.
+    const gone = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
+    const url = `http://127.0.0.1:${gone.port}/`;
+    gone.stop(true);
+    const fetched = realWorld().fetch(url);
+    await expect(fetched).rejects.toBeInstanceOf(CommandError);
+    await expect(fetched).rejects.toMatchObject({
+      kind: "outside",
+      message: `GET ${url} failed: the connection was refused (ConnectionRefused)`,
+      issues: [],
+    });
+  });
+
+  test("a server that closes the connection at once gives an outside failure", async () => {
+    const url = `http://127.0.0.1:${closing.port}/`;
+    const fetched = realWorld().fetch(url, { method: "POST", body: "{}" });
+    await expect(fetched).rejects.toBeInstanceOf(CommandError);
+    // macOS gives ECONNRESET. A write to a socket that is closed already may give another code on
+    // another system, so the test checks the failure's shape, not the code.
+    await expect(fetched).rejects.toMatchObject({
+      kind: "outside",
+      message: expect.stringMatching(/^POST http:\/\/127\.0\.0\.1:\d+\/ failed: .+ \(\w+\)$/u),
+      issues: [],
+    });
+  });
+
+  test("a body that the server cuts short fails at the read of the body, with an outside failure", async () => {
+    // The headers come whole, so fetch gives the response; the body ends before its Content-Length.
+    const response = await realWorld().fetch(atRaw("/cut-short"));
+    expect(response.status).toBe(200);
+    const read = response.text();
+    await expect(read).rejects.toBeInstanceOf(CommandError);
+    await expect(read).rejects.toMatchObject({
+      kind: "outside",
+      message: `GET ${atRaw("/cut-short")} failed: the connection closed before the whole answer came (ECONNRESET)`,
+      issues: [],
+    });
+  });
+
+  test("a TLS handshake that fails gives an outside failure", async () => {
+    // HTTPS to a server that speaks plain HTTP. Bun's code for it may differ by system, so the
+    // test checks the failure's shape, not the code.
+    const url = at("/made").replace(/^http:/u, "https:");
+    const fetched = realWorld().fetch(url);
+    await expect(fetched).rejects.toBeInstanceOf(CommandError);
+    await expect(fetched).rejects.toMatchObject({
+      kind: "outside",
+      message: expect.stringMatching(/^GET https:\/\/localhost:\d+\/made failed: .+ \(\w+\)$/u),
+      issues: [],
+    });
+  });
+
+  test("a redirect without end gives an outside failure", async () => {
+    const fetched = realWorld().fetch(at("/loop"));
+    await expect(fetched).rejects.toBeInstanceOf(CommandError);
+    await expect(fetched).rejects.toMatchObject({
+      kind: "outside",
+      message: `GET ${at("/loop")} failed: the answer redirected too many times (TooManyRedirects)`,
+      issues: [],
+    });
+  });
+
+  test("a failure that a call's option or URL can cause, but that has a network failure's shape, is an outside failure too", async () => {
+    // Bun gives each of these one code for both causes: a redirect that the call forbids, and an
+    // address that no socket opens to, such as port 0 or a broadcast address.
+    const world = realWorld();
+    const forbidden = world.fetch(at("/moved"), { redirect: "error" });
+    await expect(forbidden).rejects.toMatchObject({
+      kind: "outside",
+      message: `GET ${at("/moved")} failed: the answer redirected, and the request allows no redirect (UnexpectedRedirect)`,
+    });
+    const noSocket = world.fetch("http://127.0.0.1:0/");
+    await expect(noSocket).rejects.toMatchObject({
+      kind: "outside",
+      message:
+        "GET http://127.0.0.1:0/ failed: no connection could be opened to the address (FailedToOpenSocket)",
+    });
+  });
+
+  test("a caller's bug stays as fetch gives it, not an outside failure, and sends nothing", async () => {
+    counted = 0;
+    const world = realWorld();
+    // A Request whose body was read already: fetch's error has a code, but no URL as its path.
+    const used = new Request(at("/count"), { method: "POST", body: "{}" });
+    await used.text();
+    // Each call starts only when the loop comes to it, so no rejection waits unhandled.
+    const bugs = [
+      () => world.fetch("ftp://localhost/"),
+      () => world.fetch(at("/count"), { headers: { "a bad name": "x" } }),
+      () => world.fetch(at("/count"), { method: "GET", body: "{}" }),
+      () => world.fetch(used),
+    ];
+    for (const send of bugs) {
+      const fetched = send();
+      await expect(fetched).rejects.toBeInstanceOf(TypeError);
+      await expect(fetched).rejects.not.toBeInstanceOf(CommandError);
+    }
+    expect(counted).toBe(0);
   });
 });
