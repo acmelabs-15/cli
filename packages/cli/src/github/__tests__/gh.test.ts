@@ -7,7 +7,7 @@ import { defineCommand } from "../../command/command";
 import { fakeWorld } from "../../command/fake-world";
 import { runCommand } from "../../command/run";
 import type { StepContext } from "../gh";
-import { answerOrThrow, ghApi, repoPath } from "../gh";
+import { answerOrThrow, ghApi, readBody, repoPath } from "../gh";
 import { frontEnd, ghAnswers, ghCommandLine, ghLogged, ghScripted } from "./gh-answers";
 
 /** A sample command that reads one of a repo's resources through ghApi, and gives its body. */
@@ -151,6 +151,113 @@ describe("answerOrThrow: an answer that the step does not expect", () => {
         kind: "input",
         message:
           "GitHub refused GET repos/acmelabs-15/brain/actions/permissions/workflow for the gh login, which needs more access to acmelabs-15/brain (HTTP 403): You must be an org admin or have the actions policies fine-grained permission.",
+      },
+    });
+  });
+});
+
+describe("readBody: an ok answer's body, read with a schema", () => {
+  /** A sample command that reads the ids and names of a repo's own rulesets through readBody. */
+  const rulesetNames = defineCommand({
+    path: ["sample", "ruleset-names"],
+    summary: "Read the ids and names of a GitHub repo's own rulesets.",
+    input: z.object({
+      owner: z.string().describe("The repo's owner, such as acmelabs-15."),
+      name: z.string().describe("The repo's name."),
+    }),
+    async run(input, context) {
+      const path = repoPath(input, "rulesets?includes_parents=false&per_page=100");
+      const answer = await ghApi(context, { path });
+      return readBody(answer, input, z.array(z.object({ id: z.number(), name: z.string() })));
+    },
+  });
+
+  /** The list call of acmelabs-15/brain's rulesets. */
+  const brainRulesets = {
+    path: "repos/acmelabs-15/brain/rulesets?includes_parents=false&per_page=100",
+  };
+
+  test("a body of the schema's shape comes back as the schema reads it, without GitHub's other fields", async () => {
+    const world = fakeWorld({ spawn: [ghScripted(brainRulesets, ghAnswers.rulesetsOfBrain)] });
+    const outcome = await runCommand(
+      rulesetNames,
+      { owner: "acmelabs-15", name: "brain" },
+      frontEnd(world),
+    );
+    expect(outcome).toEqual({
+      ok: true,
+      command: "sample ruleset-names",
+      exitCode: 0,
+      durationMs: expect.any(Number),
+      result: [{ id: 25_457_893, name: "Protect main" }],
+    });
+    expect(world.calls).toEqual([ghLogged(brainRulesets)]);
+  });
+
+  test("a body of another shape ends with exit 3, naming the call and what was wrong", async () => {
+    // A ruleset where the list should be: GitHub answered something the step cannot read.
+    const world = fakeWorld({ spawn: [ghScripted(brainRulesets, ghAnswers.protectMainOfBrain)] });
+    const outcome = await runCommand(
+      rulesetNames,
+      { owner: "acmelabs-15", name: "brain" },
+      frontEnd(world),
+    );
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample ruleset-names",
+      exitCode: 3,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "outside",
+        message:
+          "gh api GET repos/acmelabs-15/brain/rulesets?includes_parents=false&per_page=100 gave an answer that acmelabs cannot read: Invalid input: expected array, received object",
+        issues: [{ field: "", message: "Invalid input: expected array, received object" }],
+      },
+    });
+  });
+
+  test("an item of another shape is named by its place in the body; the message names the first and counts the rest", async () => {
+    const world = fakeWorld({
+      spawn: [
+        ghScripted(brainRulesets, {
+          code: 0,
+          stdout: '[{"id":"25457893","name":"Protect main"},{"id":25457894}]',
+          stderr: "",
+        }),
+      ],
+    });
+    const outcome = await runCommand(
+      rulesetNames,
+      { owner: "acmelabs-15", name: "brain" },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 3,
+      error: {
+        kind: "outside",
+        message:
+          "gh api GET repos/acmelabs-15/brain/rulesets?includes_parents=false&per_page=100 gave an answer that acmelabs cannot read: [0].id: Invalid input: expected number, received string (and 1 more)",
+        issues: [
+          { field: "[0].id", message: "Invalid input: expected number, received string" },
+          { field: "[1].name", message: "Invalid input: expected string, received undefined" },
+        ],
+      },
+    });
+  });
+
+  test("an answer that is not ok ends with the table's failure, as answerOrThrow gives it", async () => {
+    const world = fakeWorld({ spawn: [ghScripted(brainRulesets, ghAnswers.notFound)] });
+    const outcome = await runCommand(
+      rulesetNames,
+      { owner: "acmelabs-15", name: "brain" },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 2,
+      error: {
+        kind: "input",
+        message:
+          "GitHub found no repo acmelabs-15/brain for the gh login (HTTP 404 on GET repos/acmelabs-15/brain/rulesets?includes_parents=false&per_page=100); check the owner and the name, and the login's access to the repo",
       },
     });
   });

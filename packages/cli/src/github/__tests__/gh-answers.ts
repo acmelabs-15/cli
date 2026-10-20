@@ -91,6 +91,35 @@ export const ghAnswers = {
   },
   /** A 204, as the Actions setting's PUT answers: gh prints nothing and exits 0 (note 09, 2.2). */
   noContent: { code: 0, stdout: "", stderr: "" },
+  /**
+   * acmelabs-15/brain's rulesets, one item, "Protect main": the list leaves out its conditions, its
+   * rules and its bypass list. Read under API version 2026-03-10 (note 09, section 2.6).
+   */
+  rulesetsOfBrain: {
+    code: 0,
+    stdout:
+      '[{"id":25457893,"name":"Protect main","target":"branch","source_type":"Repository","source":"acmelabs-15/brain","enforcement":"active","node_id":"RRS_lACqUmVwb3NpdG9yec5GCidjzgGEdOU","_links":{"self":{"href":"https://api.github.com/repos/acmelabs-15/brain/rulesets/25457893"},"html":{"href":"https://github.com/acmelabs-15/brain/rules/25457893"}},"created_at":"2026-10-19T23:50:57.764-07:00","updated_at":"2026-10-19T23:50:57.801-07:00"}]',
+    stderr: "",
+  },
+  /** No rulesets: acmelabs-15/jev-gate's list, read under 2026-03-10 (note 09, section 2.6). */
+  noRulesets: { code: 0, stdout: "[]", stderr: "" },
+  /** acmelabs-15/brain's "Protect main", whole, read under 2026-03-10 (note 09, section 2.6). */
+  protectMainOfBrain: {
+    code: 0,
+    stdout:
+      '{"id":25457893,"name":"Protect main","target":"branch","source_type":"Repository","source":"acmelabs-15/brain","enforcement":"active","conditions":{"ref_name":{"exclude":[],"include":["~DEFAULT_BRANCH"]}},"rules":[{"type":"non_fast_forward"},{"type":"deletion"}],"node_id":"RRS_lACqUmVwb3NpdG9yec5GCidjzgGEdOU","created_at":"2026-10-19T23:50:57.764-07:00","updated_at":"2026-10-19T23:50:57.801-07:00","bypass_actors":[],"current_user_can_bypass":"never","_links":{"self":{"href":"https://api.github.com/repos/acmelabs-15/brain/rulesets/25457893"},"html":{"href":"https://github.com/acmelabs-15/brain/rules/25457893"}}}',
+    stderr: "",
+  },
+  /**
+   * acmelabs-15/cli's "Protect main", whole, which the POST of note 09's section 5 made (note 09,
+   * section 2.6). A POST answers with the new ruleset; the step does not read it.
+   */
+  protectMainOfCli: {
+    code: 0,
+    stdout:
+      '{"id":25461155,"name":"Protect main","target":"branch","source_type":"Repository","source":"acmelabs-15/cli","enforcement":"active","conditions":{"ref_name":{"exclude":[],"include":["~DEFAULT_BRANCH"]}},"rules":[{"type":"non_fast_forward"},{"type":"deletion"}],"node_id":"RRS_lACqUmVwb3NpdG9yec5VCbe2zgGEgaM","created_at":"2026-10-20T01:09:23.890-07:00","updated_at":"2026-10-20T01:09:23.917-07:00","bypass_actors":[],"current_user_can_bypass":"never","_links":{"self":{"href":"https://api.github.com/repos/acmelabs-15/cli/rulesets/25461155"},"html":{"href":"https://github.com/acmelabs-15/cli/rules/25461155"}}}',
+    stderr: "",
+  },
   /** No such ref: acmelabs-15/cli's `git/ref/tags/latest` (note 09, section 2.9). */
   notFound: httpError(
     '{"message":"Not Found","documentation_url":"https://docs.github.com/rest/git/refs#get-a-reference","status":"404"}',

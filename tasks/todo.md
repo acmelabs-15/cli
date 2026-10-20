@@ -19,7 +19,7 @@ Phase 2 The tracer and the settings
 - [x] 5. Tracer: a sample command gives a repo the Actions setting
 - [ ] 6. checkLogin names the gh command that fixes the login
 - [ ] 7. A command file may check a repo name at its top
-- [ ] 8. Every repo can get Protect main
+- [x] 8. Every repo can get Protect main
 - [ ] 9. A step retries an unexpected 404 or 409
 - [ ] Checkpoint: the tracer and the settings
 
@@ -174,12 +174,12 @@ Phase 3 The other steps
 **Description:** `protectMain`, the spec's body, and `ensureProtectMain`: list the rulesets, get the one named "Protect main", compare it with the body, then `POST` or `PUT` only when needed.
 
 **Acceptance criteria:**
-- [ ] Through a sample command: brain's real ruleset (note 09) gives a skipped step and no write; no ruleset gives a `POST` with the body; a "Protect main" with a missing rule gives a `PUT` on its id.
-- [ ] Other rulesets of the repo get no call beyond the list.
+- [x] Through a sample command: brain's real ruleset (note 09) gives a skipped step and no write; no ruleset gives a `POST` with the body; a "Protect main" with a missing rule gives a `PUT` on its id.
+- [x] Other rulesets of the repo get no call beyond the list.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/github`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/github`
+- [x] `bun run check` is green.
 
 **Dependencies:** 5
 

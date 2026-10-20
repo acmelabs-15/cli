@@ -288,6 +288,11 @@ https://docs.github.com/en/rest/repos/rules
 
 - The two are the same apart from `id`, `node_id`, `source`, the dates and `_links`. (`diff` of both with those keys removed.)
 - `GET repos/acmelabs-15/cli/rulesets` lists exactly one ruleset, 25461155.
+- **Probes under `2026-03-10`** (github-ops task 8, 2026-10-20, with the spec's two headers):
+  - `repos/acmelabs-15/brain/rulesets?includes_parents=false&per_page=100` returned `[{"id":25457893,"name":"Protect main","target":"branch","source_type":"Repository","source":"acmelabs-15/brain","enforcement":"active","node_id":"RRS_lACqUmVwb3NpdG9yec5GCidjzgGEdOU","_links":{"self":{"href":"https://api.github.com/repos/acmelabs-15/brain/rulesets/25457893"},"html":{"href":"https://github.com/acmelabs-15/brain/rules/25457893"}},"created_at":"2026-10-19T23:50:57.764-07:00","updated_at":"2026-10-19T23:50:57.801-07:00"}]`. Without `includes_parents=false`, the list was the same: acmelabs-15 has no organization rulesets.
+  - `repos/acmelabs-15/brain/rulesets/25457893` returned the same fields and values as the read above under `2022-11-28`.
+  - `repos/acmelabs-15/jev-gate/rulesets?includes_parents=false&per_page=100` returned `[]`.
+- **Names:** a second ruleset with the same name in one repo gets `422 Validation Failed`, "Name must be unique". Reported, not probed: https://github.com/integrations/terraform-provider-github/issues/3214 (2026-02-20).
 
 ### 2.7 Create a pull request
 

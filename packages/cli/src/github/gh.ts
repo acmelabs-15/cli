@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { Context } from "../command/command";
-import type { CommandError, Json } from "../command/outcome";
+import type { CommandError, Issue, Json } from "../command/outcome";
 import { inputError, loginNeeded, outsideError } from "../command/outcome";
 import type { SpawnOptions, Spawned } from "../command/world";
 import type { GitHubRepo } from "./names";
@@ -43,11 +43,14 @@ const headers = [
 /** The variables every gh call adds: gh asks nothing, and prints no notice of a new release. */
 const ghEnv = { GH_PROMPT_DISABLED: "1", GH_NO_UPDATE_NOTIFIER: "1" } as const;
 
-/** A JSON object, such as GitHub's repo or its error body: its fields by name. */
-export type JsonObject = Readonly<Record<string, Json | undefined>>;
+/**
+ * A JSON object, such as GitHub's error body: its fields by name. A step reads an ok answer's body
+ * with `readBody` instead.
+ */
+type JsonObject = Readonly<Record<string, Json | undefined>>;
 
 /** Whether a JSON value is an object: not a list, text, a number, a boolean or null. */
-export function isJsonObject(value: Json | undefined): value is JsonObject {
+function isJsonObject(value: Json | undefined): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -192,6 +195,44 @@ export function answerOrThrow(answer: GhAnswer, repo: GitHubRepo): Json {
     throw failureFor(answer, repo);
   }
   return answer.body;
+}
+
+/**
+ * One thing wrong in a body, as a failure's message names it: its place in the body, then what is
+ * wrong. A thing wrong with the whole body has no place.
+ */
+function wrongThing(issue: Issue): string {
+  return issue.field === "" ? issue.message : `${issue.field}: ${issue.message}`;
+}
+
+/**
+ * The body of an ok answer, read with a schema, which drops the fields it does not name. Any other
+ * answer throws the failure that the spec's table gives it, as `answerOrThrow` does, so a step
+ * reads the answers it expects, such as a 404, before it gives the answer here. A body of
+ * another shape is an outside failure, exit 3: GitHub answered something the step cannot read. Its
+ * message names the call and the first thing wrong, with each thing wrong as an issue at its place
+ * in the body, such as `[0].id`.
+ */
+export function readBody<Schema extends z.ZodType>(
+  answer: GhAnswer,
+  repo: GitHubRepo,
+  schema: Schema,
+): z.output<Schema> {
+  const read = schema.safeParse(answerOrThrow(answer, repo));
+  if (read.success) {
+    return read.data;
+  }
+  const issues = read.error.issues.map((issue) => ({
+    field: z.core.toDotPath(issue.path),
+    message: issue.message,
+  }));
+  // zod gives at least one issue for a body it cannot read.
+  const [first = "", ...rest] = issues.map(wrongThing);
+  const more = rest.length === 0 ? "" : ` (and ${rest.length} more)`;
+  throw outsideError(
+    `gh api ${answer.method} ${answer.path} gave an answer that acmelabs cannot read: ${first}${more}`,
+    issues,
+  );
 }
 
 /** The two names of a repo, each with its check. */
