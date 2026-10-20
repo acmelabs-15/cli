@@ -1,6 +1,6 @@
 # Spec: repo-model
 
-Module `repo-model`, layer 1 of the capability map (`spec/README.md`). It depends on no other module. Words follow `CONTEXT.md`. Status: draft, waiting on Peter's approval.
+Module `repo-model`, layer 1 of the capability map (`spec/README.md`). It depends on no other module. Words follow `CONTEXT.md`. Status: approved by Peter on 2026-10-20.
 
 ## Objective
 

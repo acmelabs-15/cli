@@ -8,7 +8,7 @@ The one place for where the project stands. Every session reads it first and rew
 
 - **Phase: Spec** (`/brain:spec`), for the whole initiative.
 - **Done:** `setup-brain` (local markdown tracker); the spec interview's decisions (`docs/design/spec-interview.md`); the capability map, approved by Peter on 2026-10-20 (`spec/README.md`); eleven decision records; the research notes; the glossary; `AGENTS.md`, the root `CLAUDE.md` and `.claude/settings.json`. Every interview question is settled, the test seams included.
-- **No module spec is written yet.** No code exists. The records are in the first commit, `96370cc`, on this machine only; the repo has no remote.
+- **Module specs:** `repo-model` approved by Peter on 2026-10-20 (`spec/SPEC-repo-model.md`). No other module spec is written. No code exists. All commits are on this machine only; the repo has no remote.
 
 ## Red and notes
 
@@ -21,5 +21,6 @@ Nothing now. Peter approved the first commit, and the two global rules (research
 
 ## Next steps
 
-1. Write the layer 1 module specs in build order (`spec/README.md`), starting with `repo-model` and `command-core`. `tui-kit` waits for its prototype (open question 3 in `spec/README.md`).
-2. Each module spec goes to Peter for approval, then `/brain:plan` for that module.
+1. `/brain:plan` for `repo-model`: `tasks/plan.md` and `tasks/todo.md`. Its first task sets up the repo's own tooling (workspace, tsconfig, oxlint, oxfmt, changesets).
+2. Then the other layer 1 specs in build order (`spec/README.md`): `command-core`, `config-presets`, `github-ops`, `npm-ops`. `tui-kit` waits for its prototype (open question 3).
+3. Each module spec goes to Peter for approval, then `/brain:plan` for that module.
