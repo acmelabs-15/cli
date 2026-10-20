@@ -46,7 +46,7 @@ The spec settles the steps, the limits and the seams. These are the plan's own c
 └── 13 watchRun waits for a run, and findTag reads a tag       (also needs 4)
 ```
 
-Tasks 1, 3 and 4 need nothing, but they change the same file (`world.ts`), so they run one after another in that order. Tasks 6, 7, 8, 10, 12 and 13 need only task 5 (and task 13 also task 4), so they can run in parallel on separate files, apart from 8, which shares `settings.ts` with 5 and 9.
+Tasks 1, 3 and 4 need nothing, but they change the same file (`world.ts`; since `e055fdf`, the World's five files), so they run one after another in that order. Tasks 6, 7, 8, 10, 12 and 13 need only task 5 (and task 13 also task 4), so they can run in parallel on separate files, apart from 8, which shares `settings.ts` with 5 and 9.
 
 **The build order, Peter's choice on 2026-10-20:** tasks 1 to 5, 8 and 9 run one at a time. Then tasks 6, 7, 10, 12 and 13 run at once, each agent in its own git worktree, after task 9, because task 9 changes how every step calls `ghApi`. The orchestrator merges each finished task into `github-ops`, ticks its boxes in `tasks/todo.md`, and runs the gate after each merge. Task 11 runs once task 10 is merged.
 

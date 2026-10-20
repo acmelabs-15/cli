@@ -162,6 +162,29 @@ Probe results against a local `Bun.serve` server and a raw `Bun.listen` socket:
 - `Content-Length` can reject a large body early. It is no cap: a chunked body has none, and a gzip body grew about 1,000 times past it here. Only a reader that counts bytes caps the body.
 - Bun supports `NODE_EXTRA_CA_CERTS` since v1.1.22 (2024-08-07), for the runtime and `bun install`. https://bun.com/blog/bun-v1.1.22 · On 1.4.0 a user reports that `bun install` still fails with it (2026-08-21); a fix on `main` is claimed (2026-07-24). https://github.com/oven-sh/bun/issues/17325 · `NODE_USE_SYSTEM_CA=1` and `--use-system-ca` use the OS store. (same issue; the `--use-system-ca` flag in the `bun run` docs, `bun-types` 1.4.0 `docs/snippets/cli/run.mdx`)
 
+### Network failures (added 2026-10-20, during the `github-ops` build)
+
+Probed by a build agent of the `github-ops` module on Bun 1.4.0, macOS arm64, against local servers and one DNS lookup of a `.invalid` name. The World's fetch maps these to outside failures since `c52a4df`. Every network failure is a `TypeError` with a string `code` and the URL as `path`; `errno` is 0, except 4 for `ENOTFOUND`.
+
+| Failure | `code` | Rejects |
+|---|---|---|
+| A refused connection (127.0.0.1, localhost, `[::1]`, a refused proxy) | `ConnectionRefused` | the call |
+| A server that closes or resets at once or after the request; an answer that is not HTTP | `ECONNRESET` | the call |
+| A body cut short (by `Content-Length`, chunked, or a reset in the body) | `ECONNRESET` | the read of the body |
+| A gzip body that is bad or cut short | `ZlibError` | the read of the body |
+| A redirect loop | `TooManyRedirects` | the call |
+| A redirect when the call sets `redirect: "error"` | `UnexpectedRedirect` | the call |
+| HTTPS to a plain HTTP server | `UNKNOWN_CERTIFICATE_VERIFICATION_ERROR` | the call |
+| A self-signed certificate | `DEPTH_ZERO_SELF_SIGNED_CERT` | the call |
+| DNS: a `.invalid` name (also `syscall` "getaddrinfo" and `hostname`) | `ENOTFOUND` | the call |
+| Port 0; a broadcast, multicast or link-local address; a missing unix socket | `FailedToOpenSocket` | the call |
+| A proxy with `ftp:`, from the call or from `HTTP_PROXY` | `UnsupportedProxyProtocol` | the call |
+| A host that does not answer (240.0.0.1, 192.0.2.1) | none: nothing until the time limit, then a `TimeoutError` | the call |
+
+- A caller's bug lacks a `code`, a `path`, or both: a string that is not a URL, an `ftp:` or `ws:` URL, a bad header, GET with a body (`ERR_INVALID_ARG_VALUE`), a body read already (`ERR_BODY_ALREADY_USED`), a URL that Bun calls invalid (`ERR_INVALID_URL`), `s3:` with no credentials.
+- `FailedToOpenSocket`, `UnsupportedProxyProtocol` and `UnexpectedRedirect` come both from an outside cause and from the call's own choice, so no evidence tells the two apart. The World counts all three as outside failures.
+- Linux is UNVERIFIED: every probe ran on macOS.
+
 ## 4. The environment each planned program needs
 
 ### Measured on this Mac

@@ -103,7 +103,7 @@ Phase 3 The other steps
 
 **Dependencies:** None (after task 3 by order: the same files)
 
-**Files likely touched:** `packages/cli/src/command/world.ts`, `packages/cli/src/command/run.ts`, `packages/cli/src/command/__tests__/world.test.ts`, `packages/cli/src/command/__tests__/run.test.ts`, `spec/SPEC-command-core.md`
+**Files likely touched:** `packages/cli/src/command/world.ts`, `packages/cli/src/command/fake-world.ts`, `packages/cli/src/command/run.ts`, `packages/cli/src/command/__tests__/world.test.ts`, `packages/cli/src/command/__tests__/fake-world.test.ts`, `packages/cli/src/command/__tests__/run.test.ts`, `spec/SPEC-command-core.md` (the World is split into five files since `e055fdf`)
 
 **Estimated scope:** Small
 
