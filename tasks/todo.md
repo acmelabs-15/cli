@@ -17,7 +17,7 @@ Phase 1 The World's limits
 Phase 2 The tracer and the settings
 
 - [x] 5. Tracer: a sample command gives a repo the Actions setting
-- [ ] 6. checkLogin names the gh command that fixes the login
+- [x] 6. checkLogin names the gh command that fixes the login
 - [x] 7. A command file may check a repo name at its top
 - [x] 8. Every repo can get Protect main
 - [x] 9. A step retries an unexpected 404 or 409
@@ -137,13 +137,13 @@ Phase 3 The other steps
 **Description:** `checkLogin` runs `gh auth status --hostname github.com --json hosts` and checks the active account's state and, for a token that reports scopes, the asked scopes. It uses `loginNeeded(service, fix)`, whose second argument task 5 added (`95eb913`), and `ghLogin` from `gh.ts`.
 
 **Acceptance criteria:**
-- [ ] Through a sample command: logged in with `repo` and `workflow` gives a done step with the login and scopes; a token that reports no scopes passes.
-- [ ] No account, or a state of `error`, ends with exit 4 naming `gh auth login`; a missing `workflow` ends with exit 4 naming `gh auth refresh -h github.com -s workflow`.
-- [ ] `loginNeeded` with one argument keeps today's message (tested since task 5).
+- [x] Through a sample command: logged in with `repo` and `workflow` gives a done step with the login and scopes; a token that reports no scopes passes.
+- [x] No account, or a state of `error`, ends with exit 4 naming `gh auth login`; a missing `workflow` ends with exit 4 naming `gh auth refresh -h github.com -s workflow`.
+- [x] `loginNeeded` with one argument keeps today's message (tested since task 5).
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/github packages/cli/src/command`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/github packages/cli/src/command`
+- [x] `bun run check` is green.
 
 **Dependencies:** 5
 
