@@ -189,8 +189,9 @@ async function install(root: string): Promise<void> {
     await Bun.write(path.join(modules, "@acmelabs/config", file), text);
   }
   const manifest = await readManifest(packageDir);
-  // A copy, as a hoisted install makes it: so a dependency's own imports, such as Ultracite's
-  // `import "oxlint"`, resolve from the sample repo's node_modules, not from this repo's.
+  // A copy, as a hoisted install makes it: so a dependency's own imports resolve from the sample
+  // repo's node_modules, not from this repo's. Ultracite is a devDependency, bundled into the
+  // built presets (ADR-0013), so the sample repo gets no Ultracite.
   for (const name of Object.keys(manifest.dependencies ?? {})) {
     const folder = await installedFolder(name, packageDir);
     await cp(folder, path.join(modules, name), { recursive: true });

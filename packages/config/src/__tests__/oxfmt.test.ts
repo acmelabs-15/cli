@@ -99,10 +99,13 @@ describe("the format preset's deviations from Ultracite's oxfmt preset", () => {
 });
 
 describe("the built format preset", () => {
-  test("dist/oxfmt.js keeps oxfmt and Ultracite's oxfmt preset as imports, which the repo resolves", async () => {
+  test("dist/oxfmt.js bundles Ultracite's oxfmt preset and imports only oxfmt, which the repo lists", async () => {
     const files = await builtPackage();
-    expect(files.get("dist/oxfmt.js")).toContain('from "oxfmt"');
-    expect(files.get("dist/oxfmt.js")).toContain('from "ultracite/oxfmt"');
+    const imports = new Bun.Transpiler({ loader: "js" }).scanImports(
+      files.get("dist/oxfmt.js") ?? "",
+    );
+    // The bundle keeps one import per bundled module, so oxfmt can be imported more than once.
+    expect([...new Set(imports.map((imported) => imported.path))]).toEqual(["oxfmt"]);
   });
 
   test("dist/oxfmt.d.ts types ignorePatterns as present: the spread thin caller needs no fallback", async () => {
@@ -192,6 +195,30 @@ describe("bun run format:check in a sample repo with the spread thin caller and 
     expect(run.output).toContain("src/imports.ts");
     expect(run.output).not.toContain("skills/");
     expect(run.output).not.toContain("dist/");
+    expect(run.output).toContain("Format issues found in above 1 files.");
+    expect(run.output).not.toContain(realNodeLine);
+    expect(run.exitCode).toBe(1);
+  });
+});
+
+describe("bun run format:check in a sample repo with no Ultracite in its node_modules", () => {
+  test("Ultracite is absent, and the bundled preset still applies Ultracite's options and the deviations", async () => {
+    // 95 columns: it passes at the preset's 100 and would wrap at Ultracite's 80.
+    const longLine =
+      "export const totals = sum(firstValue, secondValue, thirdValue, fourthValue, fifthValue, sixth);\n";
+    const repo = await sampleRepo(work, {
+      files: {
+        "oxfmt.config.ts": formatThinCaller,
+        "src/total.ts": longLine,
+        "src/imports.ts": importsInWrongOrder,
+      },
+    });
+    const ultraciteManifest = Bun.file(path.join(repo.root, "node_modules/ultracite/package.json"));
+    expect(await ultraciteManifest.exists()).toBe(false);
+    const run = await repo.run("format:check");
+    // Ultracite's sortImports rejects the imports; the preset's printWidth keeps the long line.
+    expect(run.output).toContain("src/imports.ts");
+    expect(run.output).not.toContain("src/total.ts");
     expect(run.output).toContain("Format issues found in above 1 files.");
     expect(run.output).not.toContain(realNodeLine);
     expect(run.exitCode).toBe(1);

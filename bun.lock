@@ -23,7 +23,7 @@
     "packages/config": {
       "name": "@acmelabs/config",
       "version": "0.0.0",
-      "dependencies": {
+      "devDependencies": {
         "ultracite": "7.12.0",
       },
       "peerDependencies": {

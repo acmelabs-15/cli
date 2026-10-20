@@ -6,7 +6,8 @@
   "license": "MIT",
   "files": [
     "dist",
-    "tsconfig.json"
+    "tsconfig.json",
+    "THIRD-PARTY-NOTICES.md"
   ],
   "type": "module",
   "exports": {
@@ -23,7 +24,7 @@
   "scripts": {
     "build": "bun scripts/build.ts"
   },
-  "dependencies": {
+  "devDependencies": {
     "ultracite": "7.12.0"
   },
   "peerDependencies": {

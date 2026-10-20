@@ -23,7 +23,7 @@ A repo lists the package and four tools in its `package.json`:
 - Pin `@acmelabs/config` to one exact version. An upgrade then bumps one line.
 - The repo lists `oxlint`, `oxfmt`, `typescript` and `@types/bun` itself, at these versions. They are peer dependencies of the package. With Bun's isolated linker, which Bun uses for a workspace, a dependency's own dependencies give the repo no `oxlint` or `oxfmt` command.
 - `oxlint` and `oxfmt` are exact, because the deviations name the rules and options of those versions.
-- The repo does not list `ultracite`. It is a dependency of the package.
+- The repo does not list `ultracite`, and installs none. The package bundles Ultracite's two presets into its built files ([ADR-0013](https://github.com/acmelabs-15/cli/blob/main/docs/decisions/0013-the-presets-bundle-ultracites-presets.md)). Ultracite's MIT notice ships with them, in `THIRD-PARTY-NOTICES.md`.
 
 The repo's `lint`, `format:check` and `typecheck` scripts stay as they are.
 
@@ -159,3 +159,4 @@ The package is built in [acmelabs-15/cli](https://github.com/acmelabs-15/cli). I
 | Why the presets are their own package | [ADR-0004](https://github.com/acmelabs-15/cli/blob/main/docs/decisions/0004-npm-packages-cli-and-config.md) |
 | Why the package ships built JavaScript | [ADR-0005](https://github.com/acmelabs-15/cli/blob/main/docs/decisions/0005-libraries-publish-built-javascript.md) |
 | Why the gate runs on Bun | [ADR-0012](https://github.com/acmelabs-15/cli/blob/main/docs/decisions/0012-the-gate-runs-on-bun.md) |
+| Why the package bundles Ultracite's presets | [ADR-0013](https://github.com/acmelabs-15/cli/blob/main/docs/decisions/0013-the-presets-bundle-ultracites-presets.md) |

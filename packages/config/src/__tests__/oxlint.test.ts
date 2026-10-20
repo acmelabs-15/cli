@@ -75,9 +75,13 @@ describe("the lint preset's deviations from Ultracite's core preset", () => {
 });
 
 describe("the built lint preset", () => {
-  test("dist/oxlint.js keeps Ultracite's core preset as an import, which the repo resolves", async () => {
+  test("dist/oxlint.js bundles Ultracite's core preset and imports only oxlint, which the repo lists", async () => {
     const files = await builtPackage();
-    expect(files.get("dist/oxlint.js")).toContain('from "ultracite/oxlint/core"');
+    const imports = new Bun.Transpiler({ loader: "js" }).scanImports(
+      files.get("dist/oxlint.js") ?? "",
+    );
+    // The bundle keeps one import per bundled module, so oxlint can be imported more than once.
+    expect([...new Set(imports.map((imported) => imported.path))]).toEqual(["oxlint"]);
   });
 
   test("dist/oxlint.d.ts types ignorePatterns as present: a thin caller extends it, no fallback", async () => {
@@ -199,6 +203,33 @@ describe("bun run lint in a sample repo with the extends thin caller and one mor
     expect(run.output).toContain("eslint(eqeqeq)");
     expect(run.output).not.toContain("skills/");
     expect(run.output).not.toContain("dist/");
+    expect(run.output).toContain("Found 0 warnings and 2 errors.");
+    expect(run.output).not.toContain(realNodeLine);
+    expect(run.exitCode).toBe(1);
+  });
+});
+
+describe("bun run lint in a sample repo with no Ultracite in its node_modules", () => {
+  test("Ultracite is absent, and the bundled preset still applies Ultracite's core rules and the deviations", async () => {
+    // An interface fails with the preset's deviation; == fails with Ultracite's core rule.
+    const twoErrors = [
+      "export interface Shape {",
+      "  name: string;",
+      "}",
+      "",
+      "export function same(left: Shape, right: Shape): boolean {",
+      "  return left.name == right.name;",
+      "}",
+      "",
+    ].join("\n");
+    const repo = await sampleRepo(work, {
+      files: { "oxlint.config.ts": lintThinCaller, "src/shape.ts": twoErrors },
+    });
+    const ultraciteManifest = Bun.file(path.join(repo.root, "node_modules/ultracite/package.json"));
+    expect(await ultraciteManifest.exists()).toBe(false);
+    const run = await repo.run("lint");
+    expect(run.output).toContain("typescript(consistent-type-definitions)");
+    expect(run.output).toContain("eslint(eqeqeq)");
     expect(run.output).toContain("Found 0 warnings and 2 errors.");
     expect(run.output).not.toContain(realNodeLine);
     expect(run.exitCode).toBe(1);

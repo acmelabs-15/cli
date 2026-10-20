@@ -41,7 +41,7 @@ Acceptance: see "Success criteria".
     "./oxfmt": { "types": "./dist/oxfmt.d.ts", "default": "./dist/oxfmt.js" },
     "./tsconfig.json": "./tsconfig.json"
   },
-  "files": ["dist", "tsconfig.json"],
+  "files": ["dist", "tsconfig.json", "THIRD-PARTY-NOTICES.md"],
   "devDependencies": { "ultracite": "7.12.0" },
   "peerDependencies": {
     "oxlint": "1.83.0",
@@ -52,7 +52,7 @@ Acceptance: see "Success criteria".
 }
 ```
 
-- **Ultracite is bundled into the package** (ADR-0013, Peter, 2026-10-20, review finding 3). The build puts Ultracite's two presets into the built JavaScript, Ultracite is a devDependency, and the package ships Ultracite's MIT notice. A repo installs no Ultracite and stops listing it.
+- **Ultracite is bundled into the package** (ADR-0013, Peter, 2026-10-20, review finding 3). The build puts Ultracite's two presets into the built JavaScript, Ultracite is a devDependency, and the package ships Ultracite's MIT notice in `THIRD-PARTY-NOTICES.md`, which each built file names. A repo installs no Ultracite and stops listing it.
 - **The four tools are peer dependencies, and each repo lists them itself.** **Agent's call, from evidence:** with Bun's isolated linker, which Bun uses for a workspace, a dependency's own dependencies give the repo no `oxlint` or `oxfmt` command (note 08, section 2). oxlint and oxfmt are exact, because the deviations name the rules and options of those versions.
 - **Private at 0.0.0 until `cli-release`,** as `@acmelabs/cli` is. A changeset records the new package.
 - **A `README.md`** (the rule for every package): what the package is, how to install it, the thin callers below, and the table of deviations with their reasons.

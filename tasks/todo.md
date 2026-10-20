@@ -28,7 +28,7 @@ Phase 3 The presets in use
 Phase 4 Review fixes (Peter chose them on 2026-10-20; `docs/reviews/2026-10-20-config-presets.md`)
 
 - [x] 9. The width-drift test fails for a wider or a narrower width
-- [ ] 10. The presets bundle Ultracite's presets
+- [x] 10. The presets bundle Ultracite's presets
 - [ ] 11. The build uses the TypeScript preset, and each option has its own reason
 - [ ] 12. The tool pins, the root typecheck and the test tsconfig stay true to the preset
 - [x] 13. Record fixes
@@ -221,13 +221,13 @@ Phase 4 Review fixes (Peter chose them on 2026-10-20; `docs/reviews/2026-10-20-c
 **Description:** Review finding 3, ADR-0013. The build puts Ultracite's two presets into `dist/oxlint.js` and `dist/oxfmt.js`; `oxlint` and `oxfmt` stay imports. Ultracite becomes a devDependency. The package ships Ultracite's MIT notice. A sample repo has no Ultracite in its `node_modules`.
 
 **Acceptance criteria:**
-- [ ] `dist/oxlint.js` and `dist/oxfmt.js` import only `oxlint` and `oxfmt`; `package.json` lists `ultracite` under `devDependencies` only.
-- [ ] Every sample-repo test passes with no Ultracite in the sample repo, and a test proves that it is absent.
-- [ ] The shipped files hold Ultracite's copyright and permission notice, taken from Ultracite's own license, and a test checks it; the README's "Install" part says the package bundles Ultracite.
+- [x] `dist/oxlint.js` and `dist/oxfmt.js` import only `oxlint` and `oxfmt`; `package.json` lists `ultracite` under `devDependencies` only.
+- [x] Every sample-repo test passes with no Ultracite in the sample repo, and a test proves that it is absent.
+- [x] The shipped files hold Ultracite's copyright and permission notice, taken from Ultracite's own license, and a test checks it; the README's "Install" part says the package bundles Ultracite.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/config`
-- [ ] `bun run check` is green, with the failing `node` too.
+- [x] Each test fails first, then passes: `bun test packages/config`
+- [x] `bun run check` is green, with the failing `node` too.
 
 **Dependencies:** None
 
