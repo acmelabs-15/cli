@@ -376,6 +376,68 @@ describe("fakeWorld", () => {
     expect(world.calls).toEqual([{ kind: "fetch", method: "GET", url }]);
   });
 
+  test("sleep moves the clock by its time at once, and is logged", async () => {
+    const world = fakeWorld({ now: new Date("2026-10-20T12:00:00.000Z") });
+    const started = performance.now();
+    await world.sleep(30 * 60 * 1000);
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(world.now()).toEqual(new Date("2026-10-20T12:30:00.000Z"));
+    expect(world.calls).toEqual([{ kind: "sleep", ms: 1_800_000 }]);
+  });
+
+  test("each sleep moves the clock on from the last, and the log keeps it among the other calls, in order", async () => {
+    const world = fakeWorld({
+      spawn: [
+        { commandLine: ["gh", "api", "repos/acmelabs-15/cli/actions/runs"] },
+        { commandLine: ["gh", "api", "repos/acmelabs-15/cli/actions/runs"] },
+      ],
+    });
+    const times: string[] = [];
+    await world.spawn(["gh", "api", "repos/acmelabs-15/cli/actions/runs"]);
+    await world.sleep(10_000);
+    times.push(world.now().toISOString());
+    await world.spawn(["gh", "api", "repos/acmelabs-15/cli/actions/runs"]);
+    await world.sleep(10_000);
+    times.push(world.now().toISOString());
+    await world.sleep(0);
+    times.push(world.now().toISOString());
+    expect(times).toEqual([
+      "2026-01-01T00:00:10.000Z",
+      "2026-01-01T00:00:20.000Z",
+      "2026-01-01T00:00:20.000Z",
+    ]);
+    expect(world.calls).toEqual([
+      { kind: "spawn", commandLine: ["gh", "api", "repos/acmelabs-15/cli/actions/runs"] },
+      { kind: "sleep", ms: 10_000 },
+      { kind: "spawn", commandLine: ["gh", "api", "repos/acmelabs-15/cli/actions/runs"] },
+      { kind: "sleep", ms: 10_000 },
+      { kind: "sleep", ms: 0 },
+    ]);
+  });
+
+  test("a sleep whose signal is aborted rejects with the reason, is logged, and does not move the clock", async () => {
+    const world = fakeWorld();
+    const reason = new Error("the user pressed Ctrl+C");
+    await expect(world.sleep(10_000, { signal: AbortSignal.abort(reason) })).rejects.toBe(reason);
+    expect(world.now()).toEqual(new Date("2026-01-01T00:00:00.000Z"));
+    expect(world.calls).toEqual([{ kind: "sleep", ms: 10_000 }]);
+  });
+
+  test("a sleep past about 24 days moves the clock as long as the real wait lasts", async () => {
+    // The real wait holds to the longest a timer holds, 2^31 - 1 ms; the fake clock must match.
+    const world = fakeWorld();
+    await world.sleep(30 * 24 * 60 * 60 * 1000);
+    expect(world.now()).toEqual(new Date("2026-01-25T20:31:23.647Z"));
+    expect(world.calls).toEqual([{ kind: "sleep", ms: 2_592_000_000 }]);
+  });
+
+  test("a Date that now returns is a copy: changing it does not move the clock", async () => {
+    const world = fakeWorld();
+    world.now().setUTCFullYear(2030);
+    await world.sleep(1000);
+    expect(world.now()).toEqual(new Date("2026-01-01T00:00:01.000Z"));
+  });
+
   test("a scripted body limit names the call's limit in words, or 10 MB when it sets none", async () => {
     const url = "https://registry.npmjs.org/@acmelabs/cli";
     const world = fakeWorld({

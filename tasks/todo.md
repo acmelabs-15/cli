@@ -11,7 +11,7 @@ Phase 1 The World's limits
 - [x] 1. A program runs in its own process group, under a time limit
 - [x] 2. A program's output stops at its output limit
 - [x] 3. A request stops at its time limit and its body limit
-- [ ] 4. The World can wait, and a fake World waits in no time
+- [x] 4. The World can wait, and a fake World waits in no time
 - [ ] Checkpoint: the World's limits
 
 Phase 2 The tracer and the settings
@@ -93,13 +93,13 @@ Phase 3 The other steps
 **Description:** The World gains `sleep(ms, { signal })`. `realWorld` waits with `setTimeout` from `node:timers/promises`, which takes the signal (note 11, Peter's choice to keep our code on 2026-10-20), and rejects with the signal's reason on a cancel. The context's `sleep` takes the run's signal, as `spawn` and `fetch` do. `fakeWorld`'s `sleep` moves its clock by `ms` at once, logs `{ kind: "sleep", ms }`, and rejects when its signal is aborted.
 
 **Acceptance criteria:**
-- [ ] `realWorld`'s sleep waits about `ms`; with an aborted signal it rejects with the reason in a few milliseconds.
-- [ ] A sample command that sleeps 30 minutes through `fakeWorld` ends at once, `now()` then reads 30 minutes later, and `calls` logs the sleep.
-- [ ] A cancel during a sleep in the context ends the command with exit 130.
+- [x] `realWorld`'s sleep waits about `ms`; with an aborted signal it rejects with the reason in a few milliseconds.
+- [x] A sample command that sleeps 30 minutes through `fakeWorld` ends at once, `now()` then reads 30 minutes later, and `calls` logs the sleep.
+- [x] A cancel during a sleep in the context ends the command with exit 130.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/command`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/command`
+- [x] `bun run check` is green.
 
 **Dependencies:** None (after task 3 by order: the same files)
 

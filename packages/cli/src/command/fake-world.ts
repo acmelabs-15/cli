@@ -1,5 +1,5 @@
 import { sameWords } from "./words";
-import type { FetchInit, SpawnOptions, Spawned, World } from "./world";
+import type { FetchInit, SleepOptions, SpawnOptions, Spawned, World } from "./world";
 import { failingBody, fetchOptions, methodAndUrl } from "./world-fetch";
 import {
   bodyLimitReached,
@@ -8,6 +8,7 @@ import {
   requestLimits,
   requestTimeLimitReached,
   timeLimitReached,
+  waitMs,
 } from "./world-limits";
 import { notInstalled } from "./world-spawn";
 
@@ -54,14 +55,15 @@ export type FakeWorldOptions = {
 };
 
 /**
- * One spawn or fetch call that a fake World received. The log leaves out the signal: it says how a
- * call is cancelled, not what the call asks for.
+ * One spawn, fetch or sleep call that a fake World received. The log leaves out the signal: it
+ * says how a call is cancelled, not what the call asks for.
  */
 export type WorldCall =
   | ({ kind: "spawn"; commandLine: readonly string[] } & Omit<SpawnOptions, "signal">)
-  | { kind: "fetch"; method: string; url: string };
+  | { kind: "fetch"; method: string; url: string }
+  | { kind: "sleep"; ms: number };
 
-/** A fake World, and the log of every spawn and fetch call it received, in order. */
+/** A fake World, and the log of every spawn, fetch and sleep call it received, in order. */
 export type FakeWorld = World & { calls: readonly WorldCall[] };
 
 /** A fake World's root when the options give none: a folder that does not exist. */
@@ -87,16 +89,19 @@ function fetchMatches(entry: ScriptedFetch, request: Request): boolean {
 /**
  * A fake World for tests. `spawn` and `fetch` answer from the scripts in the options: a call takes
  * the first unused scripted answer that matches it, so each answer answers one call. A call with no
- * answer left fails with an error that names the call. A call whose signal is aborted rejects with
- * the signal's reason, and an answer with a `limit` fails, each as the real one does. `calls` logs
- * every call, in order.
+ * answer left fails with an error that names the call. `sleep` waits for nothing: it moves the
+ * clock at once by as long as the real wait lasts, so a test of a 30-minute wait takes no time,
+ * and two sleeps at once move it by both. A call whose signal is aborted rejects with the signal's
+ * reason, and an answer with a `limit` fails, each as the real one does. `calls` logs every call,
+ * in order.
  *
  * With no root, the root is a folder that does not exist, so a test that forgets to give one fails
  * instead of writing in the working folder. With no env, env is empty; with no time, the clock
- * stands at 2026-01-01T00:00:00Z.
+ * starts at 2026-01-01T00:00:00Z. The clock moves only with a sleep.
  */
 export function fakeWorld(options: FakeWorldOptions = {}): FakeWorld {
-  const time = options.now ?? defaultTime;
+  // The clock's time, in milliseconds since 1970, as Date.getTime gives it.
+  let clock = (options.now ?? defaultTime).getTime();
   const calls: WorldCall[] = [];
   const spawnScript = [...(options.spawn ?? [])];
   const fetchScript = [...(options.fetch ?? [])];
@@ -155,7 +160,15 @@ export function fakeWorld(options: FakeWorldOptions = {}): FakeWorld {
     return new Response(body, { status: answer.status ?? 200, headers: answer.headers });
   }
 
-  // Promise.try turns a throw into a rejection, as the real spawn and fetch fail.
+  function answerSleep(ms: number, sleepOptions: SleepOptions = {}): void {
+    calls.push({ kind: "sleep", ms });
+    // A cancelled wait rejects, as the real one does, and the clock does not move.
+    sleepOptions.signal?.throwIfAborted();
+    // So does a wait that is a bug in the caller.
+    clock += waitMs(ms);
+  }
+
+  // Promise.try turns a throw into a rejection, as the real spawn, fetch and sleep fail.
   function fakeSpawn(
     commandLine: readonly string[],
     spawnOptions?: SpawnOptions,
@@ -167,14 +180,19 @@ export function fakeWorld(options: FakeWorldOptions = {}): FakeWorld {
     return Promise.try(answerFetch, input, init);
   }
 
+  function fakeSleep(ms: number, sleepOptions?: SleepOptions): Promise<void> {
+    return Promise.try(answerSleep, ms, sleepOptions);
+  }
+
   return {
     root: options.root ?? defaultRoot,
     env: options.env ?? {},
     spawn: fakeSpawn,
     fetch: fakeFetch,
     now() {
-      return new Date(time);
+      return new Date(clock);
     },
+    sleep: fakeSleep,
     calls,
   };
 }

@@ -149,6 +149,19 @@ export function bodyLimitReached(request: string, maxBodyBytes: number): Command
 export const longestTimerMs = 2 ** 31 - 1;
 
 /**
+ * How long a wait lasts, in milliseconds: the time a sleep call gives, up to `longestTimerMs`,
+ * about 24 days. 0 is a wait that ends at once, such as a retry whose time has come. A time that is
+ * not a finite number of 0 or more is a bug in the caller, so it throws a plain Error. realWorld
+ * and fakeWorld both use it, so a fake clock moves as long as the real wait lasts.
+ */
+export function waitMs(ms: number): number {
+  if (!Number.isFinite(ms) || ms < 0) {
+    throw new Error(`a wait is a finite number of milliseconds, 0 or more, not ${ms}`);
+  }
+  return Math.min(ms, longestTimerMs);
+}
+
+/**
  * The byte counter of one stream, for a program's output and for a response body: it counts each
  * chunk's bytes, and tells whether the count has passed `maxBytes`. Exactly `maxBytes` is kept.
  */

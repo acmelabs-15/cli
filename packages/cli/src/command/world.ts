@@ -1,4 +1,8 @@
+// Named `wait` here, so it is not taken for the global setTimeout, which takes no signal.
+import { setTimeout as wait } from "node:timers/promises";
+
 import { fetchWithLimits } from "./world-fetch";
+import { waitMs } from "./world-limits";
 import { spawnWithBun } from "./world-spawn";
 
 /**
@@ -42,6 +46,9 @@ export type FetchInit = RequestInit & {
   maxBodyBytes?: number;
 };
 
+/** How to wait: the signal that ends the wait early. */
+export type SleepOptions = { signal?: AbortSignal };
+
 /** The outside world a command reaches. Commands reach programs, the network and env only here. */
 export type World = {
   /** The repo folder the command acts on; the working folder by default. */
@@ -72,6 +79,13 @@ export type World = {
   fetch: (input: string | URL | Request, init?: FetchInit) => Promise<Response>;
   /** The current time. */
   now: () => Date;
+  /**
+   * Waits `ms` milliseconds, unless the signal aborts first: then the call rejects with the
+   * signal's reason, as spawn and fetch do. A fake World moves its clock instead of waiting. A wait
+   * past about 24 days, the longest a timer holds, ends after about 24 days. A time that is not a
+   * finite number of 0 or more is a bug in the caller.
+   */
+  sleep: (ms: number, options?: SleepOptions) => Promise<void>;
 };
 
 /** What realWorld takes: the grace between SIGTERM and SIGKILL when it stops a program. */
@@ -84,8 +98,27 @@ export type RealWorldOptions = {
 const defaultGraceMs = 5 * 1000;
 
 /**
+ * Waits with a timer from `node:timers/promises`, which takes the signal. On Bun 1.4.0 its cancel
+ * rejects with its own AbortError, which holds the signal's reason only as its `cause`, so the
+ * wait rejects with the reason itself. Its timer fires at once, with a warning on stderr, for a
+ * delay past `longestTimerMs`; `waitMs` holds the delay to that.
+ */
+async function sleepWithTimer(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  // An aborted signal starts no wait, and the call keeps the signal's reason.
+  signal?.throwIfAborted();
+  const delay = waitMs(ms);
+  try {
+    await wait(delay, undefined, { signal });
+  } catch (error) {
+    signal?.throwIfAborted();
+    throw error;
+  }
+}
+
+/**
  * The real World: the working folder, the process environment, Bun's spawn and fetch, each under
- * its limits, and the clock. It is the one place in the CLI that touches the process for these.
+ * its limits, the clock, and a timer. It is the one place in the CLI that touches the process for
+ * these.
  */
 export function realWorld(options: RealWorldOptions = {}): World {
   const graceMs = options.graceMs ?? defaultGraceMs;
@@ -98,6 +131,9 @@ export function realWorld(options: RealWorldOptions = {}): World {
     fetch: fetchWithLimits,
     now() {
       return new Date();
+    },
+    sleep(ms, sleepOptions = {}) {
+      return sleepWithTimer(ms, sleepOptions.signal);
     },
   };
 }

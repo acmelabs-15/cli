@@ -1284,17 +1284,18 @@ function endOf(settled: PromiseSettledResult<unknown>): unknown {
 }
 
 describe("runCommand: cancel reaches outside programs", () => {
-  test("context.spawn and context.fetch take the run's signal, so a cancel stops them", async () => {
+  test("context.spawn, context.fetch and context.sleep take the run's signal, so a cancel stops them", async () => {
     const finished = Promise.withResolvers<unknown[]>();
     const publish = defineCommand({
       path: ["sample", "publish"],
-      summary: "Publish the package, and check the registry.",
+      summary: "Publish the package, check the registry, and wait for the registry to update.",
       input: z.object({}),
       async run(_input, context) {
         context.progress({ kind: "message", level: "info", text: "publishing" });
         const ends = await Promise.allSettled([
           context.spawn(["npm", "publish"]),
           context.fetch("https://registry.npmjs.org/-/ping"),
+          context.sleep(60_000),
         ]);
         finished.resolve(ends.map(endOf));
         return "published";
@@ -1315,7 +1316,7 @@ describe("runCommand: cancel reaches outside programs", () => {
       },
     };
     expect(await runCommand(publish, {}, caller)).toEqual(cancelled("sample publish"));
-    expect(await finished.promise).toEqual([reason, reason]);
+    expect(await finished.promise).toEqual([reason, reason, reason]);
   });
 
   test("a signal the command passes itself wins over the run's signal", async () => {
@@ -1323,7 +1324,7 @@ describe("runCommand: cancel reaches outside programs", () => {
     const timeout = new Error("the command's own time limit");
     const check = defineCommand({
       path: ["sample", "check"],
-      summary: "Check the gh login and the GitHub API, each with its own signal.",
+      summary: "Check the gh login and the GitHub API, and wait, each with its own signal.",
       input: z.object({}),
       async run(_input, context) {
         // While the run is live, the command's aborted signal rejects the calls.
@@ -1331,6 +1332,7 @@ describe("runCommand: cancel reaches outside programs", () => {
         const before = await Promise.allSettled([
           context.spawn(["gh", "auth", "status"], { signal: timedOut }),
           context.fetch("https://api.github.com/", { signal: timedOut }),
+          context.sleep(10_000, { signal: timedOut }),
         ]);
         context.progress({ kind: "message", level: "info", text: "checked" });
         // After the cancel, the command's live signal lets the calls through.
@@ -1338,6 +1340,7 @@ describe("runCommand: cancel reaches outside programs", () => {
         const after = await Promise.allSettled([
           context.spawn(["gh", "auth", "status"], { signal: live }),
           context.fetch("https://api.github.com/", { signal: live }),
+          context.sleep(10_000, { signal: live }),
         ]);
         finished.resolve([...before, ...after].map(endOf));
         return "checked";
@@ -1355,7 +1358,14 @@ describe("runCommand: cancel reaches outside programs", () => {
       },
     };
     expect(await runCommand(check, {}, caller)).toEqual(cancelled("sample check"));
-    expect(await finished.promise).toEqual([timeout, timeout, "answered", "answered"]);
+    expect(await finished.promise).toEqual([
+      timeout,
+      timeout,
+      timeout,
+      "answered",
+      "answered",
+      "answered",
+    ]);
   });
 
   test("a Request keeps its own signal, and takes the run's signal too", async () => {
@@ -1475,6 +1485,62 @@ describe("runCommand: a request's limits", () => {
       },
     });
     expect(JSON.stringify(outcome)).not.toContain("abc123def");
+  });
+});
+
+describe("runCommand: a wait", () => {
+  test("a command that sleeps 30 minutes through fakeWorld ends at once, and now then reads 30 minutes later", async () => {
+    const wait = defineCommand({
+      path: ["sample", "wait"],
+      summary: "Wait 30 minutes, and report the time before and after.",
+      input: z.object({}),
+      async run(_input, context) {
+        const before = context.now().toISOString();
+        await context.sleep(30 * 60 * 1000);
+        return { before, after: context.now().toISOString() };
+      },
+    });
+    const world = fakeWorld({ now: new Date("2026-10-20T12:00:00.000Z") });
+    const outcome = await runCommand(wait, {}, frontEnd(world));
+    expect(outcome).toEqual({
+      ok: true,
+      command: "sample wait",
+      exitCode: 0,
+      durationMs: expect.any(Number),
+      result: { before: "2026-10-20T12:00:00.000Z", after: "2026-10-20T12:30:00.000Z" },
+    });
+    expect(outcome.durationMs).toBeLessThan(2000);
+    expect(world.calls).toEqual([{ kind: "sleep", ms: 1_800_000 }]);
+  });
+
+  test("a cancel during a sleep ends the wait at once, and the command with exit 130", async () => {
+    // The wait the command starts, and how that wait ends.
+    const sleeping = Promise.withResolvers<number>();
+    const finished = Promise.withResolvers<unknown>();
+    const poll = defineCommand({
+      path: ["sample", "poll"],
+      summary: "Wait 10 seconds before the next poll of the release run.",
+      input: z.object({}),
+      async run(_input, context) {
+        const slept = context.sleep(10_000);
+        sleeping.resolve(10_000);
+        const [end] = await Promise.allSettled([slept]);
+        finished.resolve(endOf(end));
+        return "polled";
+      },
+    });
+    const controller = new AbortController();
+    const reason = new Error("the user pressed Ctrl+C");
+    // The real World, so the wait runs on a real timer when the cancel comes.
+    const caller = { ...frontEnd(realWorld()), signal: controller.signal };
+    const started = performance.now();
+    const outcome = runCommand(poll, {}, caller);
+    await sleeping.promise;
+    controller.abort(reason);
+    expect(await outcome).toEqual(cancelled("sample poll"));
+    // The wait itself ends with the cancel's reason, not 10 seconds later.
+    expect(await finished.promise).toBe(reason);
+    expect(performance.now() - started).toBeLessThan(2000);
   });
 });
 
