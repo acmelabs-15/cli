@@ -11,7 +11,8 @@
     "format": "oxfmt packages oxlint.config.ts oxfmt.config.ts",
     "format:check": "oxfmt --check packages oxlint.config.ts oxfmt.config.ts",
     "test": "bun test",
-    "check": "bun run typecheck && bun run lint && bun run format:check && bun test",
+    "schema": "bun packages/cli/scripts/schema.ts",
+    "check": "bun run typecheck && bun run lint && bun run format:check && bun run schema --check && bun test",
     "changeset": "changeset",
     "version": "changeset version"
   },

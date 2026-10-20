@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "plugin": {
+      "type": "object",
+      "properties": {
+        "hosts": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["claude-code", "codex", "gemini-cli", "antigravity-cli"]
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": ["hosts"],
+      "additionalProperties": false
+    },
+    "library": {
+      "type": "object",
+      "properties": {
+        "packages": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(?!/|$)(?!(?:[^/]*/)*\\.\\.(?:/|$))",
+            "description": "A package folder's path from the repo root. Editors reject an empty path, a leading \"/\" and a \"..\" segment; acmelabs accepts a \"..\" segment while the path stays inside the repo."
+          },
+          "uniqueItems": true,
+          "description": "The package folders that publish, as relative paths from the repo root, each one once. Editors compare the paths as written, so \"./packages/cli\" and \"packages/cli\" are no repeat to an editor; acmelabs counts them as one."
+        }
+      },
+      "required": ["packages"],
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "anyOf": [
+    {
+      "required": ["plugin"]
+    },
+    {
+      "required": ["library"]
+    }
+  ]
+}

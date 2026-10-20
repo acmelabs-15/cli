@@ -16,7 +16,7 @@ Phase 2 repo-model
 - [x] 4. Read and check `acmelabs.json`
 - [x] 5. Manifests and validators per host
 - [x] 6. Canonical file text, and this repo's own `acmelabs.json`
-- [ ] 7. The JSON schema for editors
+- [x] 7. The JSON schema for editors
 - [ ] Checkpoint: repo-model complete
 
 ## Task 1: Workspace, TypeScript, and the first test: the four host ids
@@ -149,14 +149,14 @@ Phase 2 repo-model
 **Description:** `bun run schema` writes `packages/cli/schema/acmelabs.schema.json` from the zod schema, and `bun run schema --check` fails when the file is not current. The check joins `bun run check`, so the editor check and the command check never disagree.
 
 **Acceptance criteria:**
-- [ ] The shipped schema file equals `z.toJSONSchema(repoConfigSchema)`.
-- [ ] `bun run schema --check` exits 1 after a schema change with no regenerated file, and names the file.
-- [ ] `bun run check` includes the schema check.
+- [x] The shipped schema file equals `z.toJSONSchema(repoConfigSchema)` with the overrides for the refinements.
+- [x] `bun run schema --check` exits 1 after a schema change with no regenerated file, and names the file.
+- [x] `bun run check` includes the schema check.
 
 **Verification:**
-- [ ] The test for the check mode fails first, then passes: `bun test packages/cli`
-- [ ] `bun run check` is green.
-- [ ] Manual check: in an editor, a wrong host id in this repo's `acmelabs.json` is flagged.
+- [x] The test for the check mode fails first, then passes: `bun test packages/cli`
+- [x] `bun run check` is green.
+- [x] Manual check: in an editor, a wrong host id in this repo's `acmelabs.json` is flagged. (Checked with VS Code 1.136.1's own JSON language server, run under Bun, on a copy of the file.)
 
 **Dependencies:** 4
 
