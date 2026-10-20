@@ -14,7 +14,7 @@ Phase 1 The gate on Bun, and a first preset end to end
 
 Phase 2 The three presets
 
-- [ ] 3. Every lint deviation has its reason, and the lint results match today's
+- [x] 3. Every lint deviation has its reason, and the lint results match today's
 - [ ] 4. A sample repo formats with the format preset
 - [ ] 5. A sample repo type-checks with the TypeScript preset
 - [ ] Checkpoint: the presets
@@ -74,13 +74,13 @@ Phase 3 The presets in use
 **Description:** The `Deviation` type and the settings built from a list of them. The lint preset's four deviations become data with the spec's reasons. The lint cases from the spec's "Testing strategy" prove that the preset gives today's results, and a test proves every difference from Ultracite has a reason.
 
 **Acceptance criteria:**
-- [ ] `lintDeviations` holds the four deviations with the spec's settings and reasons, and the preset's `rules` are built from it.
-- [ ] In a sample repo: a function declaration above its caller passes; unsorted object keys pass; `await` in a loop passes; `==` fails with `eqeqeq`; a file under `dist/` is not linted; the spec's `extends` thin caller with one more ignored folder keeps the preset's rules and skips that folder.
-- [ ] A test compares the preset's rules with Ultracite core's: every rule that differs is in `lintDeviations` with a non-empty reason, and every deviation differs.
+- [x] `lintDeviations` holds the four deviations with the spec's settings and reasons, and the preset's `rules` are built from it.
+- [x] In a sample repo: a function declaration above its caller passes; unsorted object keys pass; `await` in a loop passes; `==` fails with `eqeqeq`; a file under `dist/` is not linted; the spec's `extends` thin caller with one more ignored folder keeps the preset's rules and skips that folder.
+- [x] A test compares the preset's rules with Ultracite core's: every rule that differs is in `lintDeviations` with a non-empty reason, and every deviation differs.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/config`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/config`
+- [x] `bun run check` is green.
 
 **Dependencies:** 2
 

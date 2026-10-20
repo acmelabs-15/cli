@@ -38,8 +38,8 @@ export const lintThinCaller = [
 
 /** The spec's lint thin caller for a repo that adds its own ignored folder, `skills`. */
 export const lintExtendingCaller = [
-  'import { defineConfig } from "oxlint";',
   'import preset from "@acmelabs/config/oxlint";',
+  'import { defineConfig } from "oxlint";',
   "",
   "export default defineConfig({",
   "  extends: [preset],",
