@@ -90,7 +90,7 @@ Phase 3 The other steps
 
 ## Task 4: The World can wait, and a fake World waits in no time
 
-**Description:** The World gains `sleep(ms, { signal })`. `realWorld` waits with `Bun.sleep` and rejects with the signal's reason on a cancel. The context's `sleep` takes the run's signal, as `spawn` and `fetch` do. `fakeWorld`'s `sleep` moves its clock by `ms` at once, logs `{ kind: "sleep", ms }`, and rejects when its signal is aborted.
+**Description:** The World gains `sleep(ms, { signal })`. `realWorld` waits with `setTimeout` from `node:timers/promises`, which takes the signal (note 11, Peter's choice to keep our code on 2026-10-20), and rejects with the signal's reason on a cancel. The context's `sleep` takes the run's signal, as `spawn` and `fetch` do. `fakeWorld`'s `sleep` moves its clock by `ms` at once, logs `{ kind: "sleep", ms }`, and rejects when its signal is aborted.
 
 **Acceptance criteria:**
 - [ ] `realWorld`'s sleep waits about `ms`; with an aborted signal it rejects with the reason in a few milliseconds.

@@ -342,3 +342,9 @@ Peter asked that everything from the interview be saved to Markdown in the layou
 ### The github-ops spec — approved 2026-10-20
 
 - **Approved:** `spec/SPEC-github-ops.md` as written (draft `0601f9b`), with the agent's calls: `clone` and `findTag` join the steps and `checkLogin` runs first; a new repo keeps GitHub's defaults for other settings; `watchRun` polls every 10 s, waits 2 min for the run to appear and 30 min for it to complete, and returns a failed run; an unexpected 404 or 409 is retried 3 times, 3 s apart; the exit-code table for GitHub's answers; the API version `2026-03-10`; `sleep` and process groups in the World, with SIGKILL 5 s after SIGTERM.
+
+### Packages in place of the custom command code — settled 2026-10-20 (module `github-ops`, during the build)
+
+- **Peter asked:** "All this logic we're building around commands and stuff. Does a package like city or the router package that we're using not provide any of this logic that we're doing? It just seems like a lot of custom stuff." The agent read "city" as citty.
+- **Facts given** (`docs/research/11-packages-for-the-command-runtime.md`, probes on Bun 1.4.0): citty and the router run no commands; the router's README says it "does not own handlers, effects, output, or process lifetime"; bombshell's planned framework, Clink, is not public. No package covers the fake World, the progress steps, the redaction, the JSON-line shapes, questions mid-run or the GitHub steps. execa 10.2.0 matched the World's program runner in four hard probes, at the cost of 18 packages unless bundled and no Bun claim. incur 0.7.1 gives a command runner, JSON mode and an MCP server from one declaration, but breaks ADR-0007 and ADR-0009 and reported one failed command to an MCP client as a success.
+- **Recommended and answered:** keep our code. The agent's call, with no loss: the World's `sleep` uses `setTimeout` from `node:timers/promises`, which takes the cancel signal.

@@ -150,7 +150,7 @@ export type World = {
 ```
 
 - **The environment:** a program gets the whole environment, as today, plus the call's `env`. No variable is removed (ADR-0015).
-- **A program runs in its own process group** (`detached: true`). At its time limit, at its output limit, or on a cancel, acmelabs sends SIGTERM to the whole group, then SIGKILL after a grace of 5 seconds, so no program that it started keeps acmelabs waiting (note 10, section 2). A group that is already gone is not an error.
+- **A program runs in its own process group** (`detached: true`). At its time limit, at its output limit, or on a cancel, acmelabs sends SIGTERM to the whole group, then SIGKILL after a grace of 5 seconds, so no program that it started keeps acmelabs waiting (note 10, section 2). A group that is already gone, or whose programs have all ended, is not an error, and the SIGKILL is then dropped, so acmelabs exits at once (fix `586c53b`).
 - **The output limit** counts the bytes of stdout and of stderr, each on its own, with a stream reader. Bun's `maxBuffer` is not used: it overshoots, and it cannot tell its stop from another SIGTERM (note 10, section 2).
 - **A limit is an outside failure** (exit 3) whose message names the program and the limit, such as `gh api ... ran longer than 5 minutes and was stopped`. A cancel still rejects with the signal's reason, as today.
 - **A request** gets `AbortSignal.timeout(timeoutMs)` beside its own signal, to the end of its body. A `Content-Length` above the limit fails before the body is read; a counting reader stops any other body at the limit. `TimeoutError` and an over-limit body are outside failures; a cancel stays a cancel.
