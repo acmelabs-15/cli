@@ -9,17 +9,26 @@ export type HostId = (typeof hostIds)[number];
 /** A host's manifest: its path from the repo root, and its version field's dot path or null. */
 export type Manifest = { host: HostId; path: string; version: string | null };
 
-/** A host's validator: the command that checks a plugin, and whether a missing tool fails it. */
+/**
+ * A host's validator: the command that checks a plugin, and `required`, true when a missing tool
+ * fails the check.
+ */
 export type Validator = { host: HostId; command: readonly string[]; required: boolean };
+
+/** A manifest as the host table lists it: a Manifest without its host. */
+type ManifestEntry = Omit<Manifest, "host">;
+
+/** A validator as the host table lists it: a Validator without its host. */
+type ValidatorEntry = Omit<Validator, "host">;
 
 /** One host in the host table: its name, and the manifests and validators of a plugin it loads. */
 export type Host = {
   name: string;
-  manifests: readonly Omit<Manifest, "host">[];
-  validators: readonly Omit<Validator, "host">[];
+  manifests: readonly ManifestEntry[];
+  validators: readonly ValidatorEntry[];
 };
 
-/** The host table: each host's name, manifests and validators, in host-table order. */
+/** The host table: each host's name, manifests and validators, in `hostIds` order. */
 export const hosts: Readonly<Record<HostId, Host>> = {
   "claude-code": {
     name: "Claude Code",
@@ -55,20 +64,20 @@ export const hosts: Readonly<Record<HostId, Host>> = {
   },
 };
 
-/** The repo's hosts in host-table order, whatever their order in the repo config. */
+/** The repo's hosts in `hostIds` order, whatever their order in the repo config. */
 function declaredHosts(config: RepoConfig): HostId[] {
   const declared = new Set(config.plugin?.hosts);
   return hostIds.filter((id) => declared.has(id));
 }
 
-/** Every manifest of the repo's hosts, in host-table order. Empty for a library-only repo. */
+/** Every manifest of the repo's hosts, in `hostIds` order. Empty for a library-only repo. */
 export function manifestsFor(config: RepoConfig): Manifest[] {
   return declaredHosts(config).flatMap((id) =>
     hosts[id].manifests.map((manifest) => ({ host: id, ...manifest })),
   );
 }
 
-/** Every validator of the repo's hosts, in host-table order. */
+/** Every validator of the repo's hosts, in `hostIds` order. */
 export function validatorsFor(config: RepoConfig): Validator[] {
   return declaredHosts(config).flatMap((id) =>
     hosts[id].validators.map((validator) => ({ host: id, ...validator })),

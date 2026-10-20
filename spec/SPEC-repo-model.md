@@ -50,12 +50,12 @@ Rules:
 
 Facts from `docs/research/01-acmelabs-repos.md`, and `agy plugin validate` run on 2026-10-20.
 
-| Host id | Manifests (path, version field) | Validators (required) |
-|---|---|---|
-| `claude-code` | `.claude-plugin/plugin.json` (`version`); `.claude-plugin/marketplace.json` (`plugins.0.version`) | `claude plugin validate . --strict` (yes); `claude plugin validate .claude-plugin/plugin.json --strict` (yes) |
-| `codex` | `.codex-plugin/plugin.json` (`version`); `.agents/plugins/marketplace.json` (`plugins.0.version`) | none exists |
-| `gemini-cli` | `gemini-extension.json` (`version`) | `gemini extensions validate .` (no: runs when `gemini` is on PATH) |
-| `antigravity-cli` | `plugin.json` (no version field) | `agy plugin validate .` (no: runs when `agy` is on PATH) |
+| Host id | Name | Manifests (path, version field) | Validators (required) |
+|---|---|---|---|
+| `claude-code` | Claude Code | `.claude-plugin/plugin.json` (`version`); `.claude-plugin/marketplace.json` (`plugins.0.version`) | `claude plugin validate . --strict` (yes); `claude plugin validate .claude-plugin/plugin.json --strict` (yes) |
+| `codex` | Codex | `.codex-plugin/plugin.json` (`version`); `.agents/plugins/marketplace.json` (`plugins.0.version`) | none exists |
+| `gemini-cli` | Gemini CLI | `gemini-extension.json` (`version`) | `gemini extensions validate .` (no: runs when `gemini` is on PATH) |
+| `antigravity-cli` | Antigravity CLI | `plugin.json` (no version field) | `agy plugin validate .` (no: runs when `agy` is on PATH) |
 
 A required validator that is not on PATH is a failure. An optional one is skipped with one line that says so, as brain's `validate.ts` does today.
 

@@ -128,3 +128,7 @@ _Avoid_: docs, manual
 
 **Running copy**:
 The install of the CLI that is executing now: a repo's pinned copy or the global install.
+
+**Editor schema**:
+The JSON schema, shipped in `@acmelabs/cli`, that an editor checks `acmelabs.json` against.
+_Avoid_: schema file, JSON schema for editors

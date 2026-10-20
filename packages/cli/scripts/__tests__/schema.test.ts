@@ -25,7 +25,7 @@ afterAll(async () => {
   await rm(work, { recursive: true, force: true });
 });
 
-describe("the shipped schema file", () => {
+describe("the shipped editor schema", () => {
   test("holds z.toJSONSchema(repoConfigSchema) with the refinements' overrides", async () => {
     expect(await Bun.file(schemaFile).json()).toEqual(editorSchema());
   });

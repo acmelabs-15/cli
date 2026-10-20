@@ -18,7 +18,7 @@ Phase 2 repo-model
 - [x] 6. Canonical file text, and this repo's own `acmelabs.json`
 - [x] 7. The JSON schema for editors
 - [x] 8. Review fixes: file reading, the package-path rule, one rule in both forms
-- [ ] 9. Review fixes: names, doc lines, nits and the glossary term
+- [x] 9. Review fixes: names, doc lines, nits and the glossary term
 - [ ] Checkpoint: repo-model complete
 
 ## Task 1: Workspace, TypeScript, and the first test: the four host ids
@@ -190,12 +190,12 @@ Phase 2 repo-model
 **Description:** Fix the review's findings 6 to 15, the rest of group 3, which Peter chose on 2026-10-20. No behaviour changes except the house wording for a non-object file.
 
 **Acceptance criteria:**
-- [ ] Findings 6 to 11 and 13 to 15 of the review are fixed as the review says; a file that holds a non-object, such as `[]`, fails with the house wording, with a test.
-- [ ] The spec's host table names each host (finding 12), and `CONTEXT.md` has an entry for the editor schema, used in the code's doc comments (finding 14).
-- [ ] The review file marks each fixed finding as fixed.
+- [x] Findings 6 to 11 and 13 to 15 of the review are fixed as the review says; a file that holds a non-object, such as `[]`, fails with the house wording, with a test.
+- [x] The spec's host table names each host (finding 12), and `CONTEXT.md` has an entry for the editor schema, used in the code's doc comments (finding 14).
+- [x] The review file marks each fixed finding as fixed.
 
 **Verification:**
-- [ ] `bun run check` is green.
+- [x] `bun run check` is green.
 
 **Dependencies:** 8
 

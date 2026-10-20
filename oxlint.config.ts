@@ -11,7 +11,7 @@ export default defineConfig({
   ignorePatterns: core.ignorePatterns,
   rules: {
     // Function declarations, not arrow constants, with helpers above their callers:
-    // Ultracite's no-use-before-define requires that order (Peter, 2026-10-20).
+    // Ultracite's no-use-before-define requires that order.
     "func-style": "off",
     // Object keys are ordered by meaning: a manifest's fields, a fixture tree's paths.
     "sort-keys": "off",

@@ -1,5 +1,5 @@
 /**
- * Write the JSON schema that editors check `acmelabs.json` against, from the zod schema.
+ * Write the editor schema from the zod schema.
  *
  *   bun run schema          write packages/cli/schema/acmelabs.schema.json
  *   bun run schema --check  exit 1, naming the file, when it is not current; write nothing
@@ -9,10 +9,11 @@ import path from "node:path";
 import { format } from "oxfmt";
 import { z } from "zod";
 
+// This import moves to @acmelabs/config with the config-presets module.
 import formatConfig from "../../../oxfmt.config";
 import { repoConfigSchema } from "../src/repo/config";
 
-/** The shipped schema file, which a repo's `$schema` line points at. */
+/** The file of the shipped editor schema, which a repo's `$schema` line points at. */
 export const schemaFile = path.resolve(import.meta.dir, "../schema/acmelabs.schema.json");
 
 type JsonSchema = z.core.JSONSchema.BaseSchema;
@@ -63,7 +64,7 @@ const refinements: Readonly<Record<string, JsonSchema>> = {
 };
 
 /**
- * The JSON schema for editors: `z.toJSONSchema(repoConfigSchema)` with the overrides added, by
+ * The editor schema: `z.toJSONSchema(repoConfigSchema)` with the overrides added, by
  * default the refinements. Throws when an override key matches no node, so a renamed field
  * cannot drop its override with no error.
  */
@@ -87,7 +88,7 @@ export function editorSchema(
   return schema;
 }
 
-/** The schema file's text: the JSON schema for editors, formatted as `bun run format` writes it. */
+/** The editor schema as file text, formatted as `bun run format` writes it. */
 export async function schemaText(): Promise<string> {
   const json = `${JSON.stringify(editorSchema(), null, 2)}\n`;
   const result = await format(path.basename(schemaFile), json, formatConfig);
@@ -100,7 +101,7 @@ export async function schemaText(): Promise<string> {
 /** One run's result: a line that names the file, and whether the run failed. */
 export type SchemaRun = { line: string; failed: boolean };
 
-/** Writes the schema file when it is not current; with `check`, fails instead of writing. */
+/** Writes the editor schema to `file` when it is not current; with `check`, fails instead. */
 export async function syncSchema(file: string, check: boolean): Promise<SchemaRun> {
   const text = await schemaText();
   const handle = Bun.file(file);

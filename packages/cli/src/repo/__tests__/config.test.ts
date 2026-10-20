@@ -88,6 +88,16 @@ describe("readRepoConfig", () => {
     const root = await fixture("package-dot-slash", json({ library: { packages: ["./"] } }));
     expect(await readRepoConfig(root)).toEqual({ library: { packages: ["."] } });
   });
+
+  test("reads a list of 10,000 distinct package paths in under 100 ms", async () => {
+    const packages = Array.from({ length: 10_000 }, (_, index) => `packages/p${index}`);
+    const root = await fixture("ten-thousand-packages", json({ library: { packages } }));
+    const start = performance.now();
+    const config = await readRepoConfig(root);
+    const elapsed = performance.now() - start;
+    expect(config).toEqual({ library: { packages } });
+    expect(elapsed).toBeLessThan(100);
+  });
 });
 
 describe("readRepoConfig errors", () => {
@@ -110,6 +120,25 @@ describe("readRepoConfig errors", () => {
     expect(error.issues).toHaveLength(1);
     expect(error.issues[0]?.path).toBe("");
     expect(error.message).toStartWith(`${root}/acmelabs.json: the file is not valid JSON: `);
+  });
+
+  test.each([
+    ["array", "[]"],
+    ["string", '"x"'],
+    ["null", "null"],
+  ])("a JSON %s, not an object: the error says what the file must hold", async (kind, text) => {
+    const root = await fixture(`not-an-object-${kind}`, `${text}\n`);
+    const error = await rejection(root);
+    expect(error.file).toBe(`${root}/acmelabs.json`);
+    expect(error.issues).toEqual([
+      {
+        path: "",
+        message: 'the file must hold a JSON object with "plugin", "library" or both',
+      },
+    ]);
+    expect(error.message).toBe(
+      `${root}/acmelabs.json: the file must hold a JSON object with "plugin", "library" or both`,
+    );
   });
 
   test("a folder named acmelabs.json: the error says the path is a folder", async () => {
@@ -307,7 +336,7 @@ describe("readRepoConfig errors", () => {
 
   test("a package path with a .. segment: the error names each such field", async () => {
     const root = await fixture(
-      "package-outside-repo",
+      "dot-dot-segment-package",
       json({
         library: {
           packages: ["../sibling", "packages/../..", "..cache", "packages/../packages/config"],

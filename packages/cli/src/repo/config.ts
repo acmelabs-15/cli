@@ -12,7 +12,7 @@ export type RepoConfig = {
   library?: { packages: string[] };
 };
 
-/** One problem in a repo config: the field path (empty for the whole file) and what is wrong. */
+/** One issue in a repo config: the field path (empty for the whole file) and what is wrong. */
 export type RepoConfigIssue = { path: string; message: string };
 
 const host = z.enum(hostIds, {
@@ -63,33 +63,45 @@ function distinctList<Item extends z.ZodType>(item: Item, noun: string) {
     })
     .min(1, `the list is empty; name at least one ${noun}`)
     .superRefine((items, context) => {
+      const seen = new Set<z.output<Item>>();
       for (const [index, value] of items.entries()) {
-        if (items.indexOf(value) !== index) {
+        if (seen.has(value)) {
           context.addIssue({
             code: "custom",
             path: [index],
             message: `${JSON.stringify(value)} is already in the list; name each ${noun} once`,
           });
         }
+        seen.add(value);
       }
     });
 }
 
-/** An object that allows only these fields; an unknown field's message lists them. */
-function fields<Shape extends z.ZodRawShape>(shape: Shape) {
+/**
+ * An object that allows only these fields; an unknown field's message lists them. `notObject`,
+ * when given, is the message for a value that is not an object.
+ */
+function fields<Shape extends z.ZodRawShape>(shape: Shape, notObject?: string) {
   const names = Object.keys(shape).join(", ");
   return z.strictObject(shape, {
-    error: (issue) =>
-      issue.code === "unrecognized_keys" ? `unknown field; the fields are ${names}` : undefined,
+    error: (issue) => {
+      if (issue.code === "unrecognized_keys") {
+        return `unknown field; the fields are ${names}`;
+      }
+      return issue.code === "invalid_type" ? notObject : undefined;
+    },
   });
 }
 
 /** The rules of `acmelabs.json`. The file's own `$schema` line is the one extra field allowed. */
-export const repoConfigSchema = fields({
-  $schema: z.string().optional(),
-  plugin: fields({ hosts: distinctList(host, "host") }).optional(),
-  library: fields({ packages: distinctList(packagePath, "package") }).optional(),
-}).refine((config) => config.plugin !== undefined || config.library !== undefined, {
+export const repoConfigSchema = fields(
+  {
+    $schema: z.string().optional(),
+    plugin: fields({ hosts: distinctList(host, "host") }).optional(),
+    library: fields({ packages: distinctList(packagePath, "package") }).optional(),
+  },
+  'the file must hold a JSON object with "plugin", "library" or both',
+).refine((config) => config.plugin !== undefined || config.library !== undefined, {
   message: 'neither "plugin" nor "library" is present; declare at least one repo kind',
 }) satisfies z.ZodType<RepoConfig>;
 
@@ -115,7 +127,7 @@ export class RepoConfigError extends Error {
 /** The largest repo config read, 1 MiB, so a hostile repo cannot make the CLI read a huge file. */
 const maxFileSize = 1_048_576;
 
-/** A RepoConfigError for a problem with the whole file, not with one field. */
+/** A RepoConfigError for an issue with the whole file, not with one field. */
 function fileError(file: string, message: string): RepoConfigError {
   return new RepoConfigError(file, [{ path: "", message }]);
 }
@@ -144,7 +156,8 @@ async function checkFile(file: string): Promise<void> {
   }
 }
 
-async function readJson(file: string): Promise<unknown> {
+/** Reads `file` and parses its JSON; each failure is a RepoConfigError that names the file. */
+async function readJsonFile(file: string): Promise<unknown> {
   await checkFile(file);
   const text = await Bun.file(file)
     .text()
@@ -172,11 +185,13 @@ function schemaIssues(issue: z.core.$ZodIssue): RepoConfigIssue[] {
 /** Reads and checks <root>/acmelabs.json. Throws RepoConfigError naming the file and each issue. */
 export async function readRepoConfig(root: string): Promise<RepoConfig> {
   const file = path.join(root, "acmelabs.json");
-  const result = repoConfigSchema.safeParse(await readJson(file));
+  const result = repoConfigSchema.safeParse(await readJsonFile(file));
   if (!result.success) {
     throw new RepoConfigError(file, result.error.issues.flatMap(schemaIssues));
   }
-  const { $schema: _schema, ...config } = result.data;
+  // The `$schema` line is for the editor; a command gets only the repo kinds.
+  const config = { ...result.data };
+  delete config.$schema;
   return config;
 }
 
