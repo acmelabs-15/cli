@@ -46,6 +46,42 @@ describe("realWorld", () => {
     expect(spawned).toEqual({ code: 0, stdout: "line one\nline two\n", stderr: "" });
   });
 
+  test("spawn stops the program soon after its signal aborts, and rejects with the reason", async () => {
+    const pidFile = path.join(work, "sleeper.pid");
+    const controller = new AbortController();
+    const started = performance.now();
+    const spawned = realWorld().spawn(
+      [
+        "bun",
+        "-e",
+        `await Bun.write(${JSON.stringify(pidFile)}, String(process.pid)); await Bun.sleep(10000)`,
+      ],
+      { signal: controller.signal },
+    );
+    // The program writes its process id first, so the abort comes while it runs.
+    while (!(await Bun.file(pidFile).exists())) {
+      await Bun.sleep(10);
+    }
+    const reason = new Error("the user pressed Ctrl+C");
+    controller.abort(reason);
+    await expect(spawned).rejects.toBe(reason);
+    expect(performance.now() - started).toBeLessThan(2000);
+    // Signal 0 checks that a process exists: the program no longer runs.
+    const pid = Number(await Bun.file(pidFile).text());
+    expect(() => process.kill(pid, 0)).toThrow();
+  });
+
+  test("spawn with a signal already aborted rejects with the reason, and starts nothing", async () => {
+    const marker = path.join(work, "started");
+    const reason = new Error("cancelled before the start");
+    const spawned = realWorld().spawn(
+      ["bun", "-e", `await Bun.write(${JSON.stringify(marker)}, "started")`],
+      { signal: AbortSignal.abort(reason) },
+    );
+    await expect(spawned).rejects.toBe(reason);
+    expect(await Bun.file(marker).exists()).toBe(false);
+  });
+
   test("root is the working folder, env the process environment, fetch the global fetch", () => {
     const world = realWorld();
     expect(world.root).toBe(process.cwd());
@@ -196,6 +232,28 @@ describe("fakeWorld", () => {
       },
       { kind: "spawn", commandLine: ["git", "push"] },
       { kind: "fetch", method: "DELETE", url: "https://example.com/" },
+    ]);
+  });
+
+  test("a spawn or fetch whose signal is aborted rejects with the reason, and is logged", async () => {
+    const world = fakeWorld({
+      spawn: [{ commandLine: ["git", "push"] }],
+      fetch: [{ url: "https://api.github.com/" }],
+    });
+    const reason = new Error("the user pressed Ctrl+C");
+    const signal = AbortSignal.abort(reason);
+    await expect(world.spawn(["git", "push"], { cwd: work, signal })).rejects.toBe(reason);
+    await expect(world.fetch("https://api.github.com/", { signal })).rejects.toBe(reason);
+    await expect(world.fetch(new Request("https://api.github.com/", { signal }))).rejects.toBe(
+      reason,
+    );
+    // A cancelled call uses up no scripted answer, so a call that is not cancelled still gets it.
+    expect(await world.spawn(["git", "push"])).toEqual({ code: 0, stdout: "", stderr: "" });
+    expect(world.calls).toEqual([
+      { kind: "spawn", commandLine: ["git", "push"], cwd: work },
+      { kind: "fetch", method: "GET", url: "https://api.github.com/" },
+      { kind: "fetch", method: "GET", url: "https://api.github.com/" },
+      { kind: "spawn", commandLine: ["git", "push"] },
     ]);
   });
 

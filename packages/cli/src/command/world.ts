@@ -1,5 +1,8 @@
-/** How to run a spawned program: its working folder, and the text it reads on stdin. */
-export type SpawnOptions = { cwd?: string; stdin?: string };
+/**
+ * How to run a spawned program: its working folder, the text it reads on stdin, and the signal that
+ * stops it.
+ */
+export type SpawnOptions = { cwd?: string; stdin?: string; signal?: AbortSignal };
 
 /** How a spawned program ended: its exit code, and its output as text. */
 export type Spawned = { code: number; stdout: string; stderr: string };
@@ -10,7 +13,10 @@ export type World = {
   root: string;
   /** The environment variables. */
   env: Readonly<Record<string, string | undefined>>;
-  /** Runs a program, with no shell, and returns its exit code and output. */
+  /**
+   * Runs a program, with no shell, and returns its exit code and output. When the signal aborts,
+   * the program stops and the call rejects with the signal's reason, as fetch does.
+   */
   spawn: (commandLine: readonly string[], options?: SpawnOptions) => Promise<Spawned>;
   /** Sends an HTTP request. */
   fetch: typeof globalThis.fetch;
@@ -20,22 +26,29 @@ export type World = {
 
 /**
  * Runs a program with Bun, with no shell, and collects its exit code and output as text. With no
- * stdin text, the program gets no stdin, so it can never wait on the user's terminal.
+ * stdin text, the program gets no stdin, so it can never wait on the user's terminal. Bun stops the
+ * program (SIGTERM) when the signal aborts.
  */
 async function spawnWithBun(
   commandLine: readonly string[],
   options: SpawnOptions = {},
 ): Promise<Spawned> {
+  const { signal } = options;
+  // An aborted signal starts no program. Bun would throw its own AbortError; this keeps the reason.
+  signal?.throwIfAborted();
   const child = Bun.spawn([...commandLine], {
     cwd: options.cwd,
     stdin: options.stdin === undefined ? "ignore" : new Blob([options.stdin]),
     stderr: "pipe",
+    signal,
   });
   const [stdout, stderr, code] = await Promise.all([
     child.stdout.text(),
     child.stderr.text(),
     child.exited,
   ]);
+  // A program stopped by the signal has no result to give.
+  signal?.throwIfAborted();
   return { code, stdout, stderr };
 }
 
@@ -77,9 +90,12 @@ export type FakeWorldOptions = {
   fetch?: readonly ScriptedFetch[];
 };
 
-/** One spawn or fetch call that a fake World received. */
+/**
+ * One spawn or fetch call that a fake World received. The log leaves out the signal: it says how a
+ * call is cancelled, not what the call asks for.
+ */
 export type WorldCall =
-  | ({ kind: "spawn"; commandLine: readonly string[] } & SpawnOptions)
+  | ({ kind: "spawn"; commandLine: readonly string[] } & Omit<SpawnOptions, "signal">)
   | { kind: "fetch"; method: string; url: string };
 
 /** A fake World, and the log of every spawn and fetch call it received, in order. */
@@ -113,7 +129,8 @@ function fetchMatches(entry: ScriptedFetch, request: Request): boolean {
 /**
  * A fake World for tests. `spawn` and `fetch` answer from the scripts in the options: a call takes
  * the first unused scripted answer that matches it, so each answer answers one call. A call with no
- * answer left fails with an error that names the call. `calls` logs every call, in order.
+ * answer left fails with an error that names the call. A call whose signal is aborted rejects with
+ * the signal's reason, as the real one does. `calls` logs every call, in order.
  *
  * With no root, the root is a folder that does not exist, so a test that forgets to give one fails
  * instead of writing in the working folder. With no env, env is empty; with no time, the clock
@@ -125,8 +142,11 @@ export function fakeWorld(options: FakeWorldOptions = {}): FakeWorld {
   const spawnScript = [...(options.spawn ?? [])];
   const fetchScript = [...(options.fetch ?? [])];
 
-  function answerSpawn(commandLine: readonly string[], spawnOptions?: SpawnOptions): Spawned {
-    calls.push({ kind: "spawn", commandLine: [...commandLine], ...spawnOptions });
+  function answerSpawn(commandLine: readonly string[], spawnOptions: SpawnOptions = {}): Spawned {
+    const { signal, ...logged } = spawnOptions;
+    calls.push({ kind: "spawn", commandLine: [...commandLine], ...logged });
+    // A cancelled call rejects, as the real one does, and uses up no scripted answer.
+    signal?.throwIfAborted();
     const scripted = take(spawnScript, (entry) => sameWords(entry.commandLine, commandLine));
     if (scripted === undefined) {
       throw new Error(
@@ -141,6 +161,7 @@ export function fakeWorld(options: FakeWorldOptions = {}): FakeWorld {
     const request =
       input instanceof Request ? new Request(input, init) : new Request(String(input), init);
     calls.push({ kind: "fetch", method: request.method, url: request.url });
+    request.signal.throwIfAborted();
     const scripted = take(fetchScript, (entry) => fetchMatches(entry, request));
     if (scripted === undefined) {
       throw new Error(

@@ -69,6 +69,7 @@ export type Context<Input> = World & {
 ```
 
 - **Commands reach the outside world only through `World`.** No command calls `Bun.spawn`, `fetch` or `process.env` itself. That makes the outside world one fake in tests (the command seam), and it keeps every outside call visible.
+- **`spawn` and `fetch` take the run's signal.** `spawn`'s options take a `signal`, as `fetch`'s do. `context.spawn` and `context.fetch` pass the context's `signal` unless the command passes its own, so a cancel also stops an outside program or request.
 - Files are not in `World`: commands use Bun's file APIs on paths under `root`, and tests use real files in a temp folder, as brain's tests do.
 - `realWorld()` builds the real one; `fakeWorld(options)` builds a fake with scripted `spawn` and `fetch` answers and a log of every call. Both live in `packages/cli/src/command/world.ts`, so later modules' tests use the same fake.
 

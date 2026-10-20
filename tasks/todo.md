@@ -14,7 +14,7 @@ Phase 1 A command runs
 Phase 2 The rest of the frame
 
 - [x] 4. Progress updates, and open steps closed on a throw
-- [ ] 5. Questions mid-run, and cancel
+- [x] 5. Questions mid-run, and cancel
 - [ ] 6. JSON mode's lines
 - [ ] 7. The command list and its rules
 - [ ] Checkpoint: command-core complete
@@ -103,13 +103,13 @@ Phase 2 The rest of the frame
 **Description:** `context.ask(field)` returns an optional input's value: the value given up front, else the answer from the front-end's `answer` function, else an input error that names the flag. Cancel through the front-end's signal ends with kind `cancelled` and exit 130.
 
 **Acceptance criteria:**
-- [ ] `ask` returns an up-front value without calling `answer`; with no value, it calls `answer`; with neither, the outcome is kind `input`, exit 2, naming `--field`.
-- [ ] An aborted signal gives kind `cancelled` and exit 130, and open steps close as failed.
-- [ ] A type test shows that `ask` accepts only fields of the command's input.
+- [x] `ask` returns an up-front value without calling `answer`; with no value, it calls `answer`; with neither, the outcome is kind `input`, exit 2, naming `--field`.
+- [x] An aborted signal gives kind `cancelled` and exit 130, and open steps close as failed.
+- [x] A type test shows that `ask` accepts only fields of the command's input.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/command`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/command`
+- [x] `bun run check` is green.
 
 **Dependencies:** 2
 

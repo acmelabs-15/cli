@@ -10,6 +10,7 @@ import type { ProgressUpdate } from "../command";
 import { defineCommand } from "../command";
 import type { Outcome } from "../outcome";
 import { exitCodes, inputError, loginNeeded, outsideError, problem } from "../outcome";
+import type { Question } from "../run";
 import { flagOf, runCommand } from "../run";
 import type { World } from "../world";
 import { fakeWorld } from "../world";
@@ -511,13 +512,23 @@ describe("runCommand: the context a command runs in", () => {
       { kind: "spawn", commandLine: ["git", "rev-parse", "HEAD"], cwd: "/work/repo" },
     ]);
   });
+});
 
+/** A world in which the release command's tag call succeeds. */
+function tagged() {
+  return fakeWorld({ spawn: [{ commandLine: ["git", "tag", "v1.0.0"] }] });
+}
+
+describe("runCommand: a question mid-run", () => {
   /** A sample command that asks, once its tag exists, whether to add it to the marketplace. */
   const release = defineCommand({
     path: ["sample", "release"],
     summary: "Release a plugin, and add it to the marketplace when asked.",
     input: z.object({
-      marketplace: z.boolean().optional().describe("Add the plugin to the marketplace."),
+      marketplace: z
+        .boolean({ error: "the answer is yes or no" })
+        .optional()
+        .describe("Add the plugin to the marketplace."),
     }),
     async run(_input, context) {
       await context.spawn(["git", "tag", "v1.0.0"]);
@@ -525,21 +536,48 @@ describe("runCommand: the context a command runs in", () => {
     },
   });
 
-  test("ask returns the value given up front, false too", async () => {
-    const yes = frontEnd(fakeWorld({ spawn: [{ commandLine: ["git", "tag", "v1.0.0"] }] }));
+  test("ask with no value asks the front-end's answer, and returns the answer", async () => {
+    const questions: Question[] = [];
+    const caller = {
+      ...frontEnd(tagged()),
+      answer(question: Question) {
+        questions.push(question);
+        return Promise.resolve(true);
+      },
+    };
+    const outcome = await runCommand(release, {}, caller);
+    expect(outcome).toMatchObject({ ok: true, exitCode: 0, result: { marketplace: true } });
+    expect(questions).toHaveLength(1);
+    expect(questions[0]).toMatchObject({
+      field: "marketplace",
+      flag: "--marketplace",
+      description: "Add the plugin to the marketplace.",
+    });
+    // The schema lets a front-end pick the prompt: a boolean is a yes/no question.
+    expect(questions[0]?.schema).toBe(release.input.shape.marketplace);
+  });
+
+  test("ask returns the value given up front, false too, and does not call answer", async () => {
+    const questions: Question[] = [];
+    function answer(question: Question) {
+      questions.push(question);
+      return Promise.resolve(true);
+    }
+    const yes = { ...frontEnd(tagged()), answer };
     expect(await runCommand(release, { marketplace: true }, yes)).toMatchObject({
       ok: true,
       result: { marketplace: true },
     });
-    const no = frontEnd(fakeWorld({ spawn: [{ commandLine: ["git", "tag", "v1.0.0"] }] }));
+    const no = { ...frontEnd(tagged()), answer };
     expect(await runCommand(release, { marketplace: false }, no)).toMatchObject({
       ok: true,
       result: { marketplace: false },
     });
+    expect(questions).toEqual([]);
   });
 
-  test("ask with no value gives kind input, exit 2, and an issue naming the field", async () => {
-    const caller = frontEnd(fakeWorld({ spawn: [{ commandLine: ["git", "tag", "v1.0.0"] }] }));
+  test("an answer the field's schema rejects gives kind input, exit 2, naming the flag", async () => {
+    const caller = { ...frontEnd(tagged()), answer: () => Promise.resolve("maybe") };
     const outcome = await runCommand(release, {}, caller);
     expect(outcome).toEqual({
       ok: false,
@@ -548,13 +586,66 @@ describe("runCommand: the context a command runs in", () => {
       durationMs: expect.any(Number),
       error: {
         kind: "input",
-        message: "the input marketplace has no value",
-        issues: [
-          {
-            field: "marketplace",
-            message: "no value was given; give one when you run the command",
-          },
-        ],
+        message: "the answer to --marketplace is not valid",
+        issues: [{ field: "--marketplace", message: "the answer is yes or no" }],
+      },
+    });
+  });
+
+  test("ask with no value and no answer names the flag, and how to give it", async () => {
+    const outcome = await runCommand(release, {}, frontEnd(tagged()));
+    const message =
+      "--marketplace has no value; give it on the command line, for example --marketplace";
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample release",
+      exitCode: 2,
+      durationMs: expect.any(Number),
+      error: { kind: "input", message, issues: [{ field: "--marketplace", message }] },
+    });
+  });
+
+  test("for a field that is not a boolean, the example gives the flag a value", async () => {
+    const create = defineCommand({
+      path: ["sample", "create"],
+      summary: "Create the GitHub repo, with the name asked when the folder has none.",
+      input: z.object({
+        repoName: z.string().optional().describe("The name of the GitHub repo."),
+      }),
+      async run(_input, context) {
+        return { repoName: await context.ask("repoName") };
+      },
+    });
+    const message =
+      "--repo-name has no value; give it on the command line, for example --repo-name <value>";
+    expect(await runCommand(create, {}, frontEnd(fakeWorld()))).toMatchObject({
+      exitCode: 2,
+      error: { kind: "input", message, issues: [{ field: "--repo-name", message }] },
+    });
+    // An answer with no value leaves the field with no value too.
+    const empty = { ...frontEnd(fakeWorld()), answer: () => Promise.resolve() };
+    expect(await runCommand(create, {}, empty)).toMatchObject({
+      exitCode: 2,
+      error: { kind: "input", message, issues: [{ field: "--repo-name", message }] },
+    });
+  });
+
+  test("ask accepts only the optional fields of the command's input", () => {
+    // A type test: tsc checks it in `bun run typecheck`, and the command never runs.
+    defineCommand({
+      path: ["sample", "publish"],
+      summary: "Publish a package, and ask for the tag when none is given.",
+      input: z.object({
+        name: z.string().describe("The package name."),
+        tag: z.string().optional().describe("The dist-tag to set."),
+      }),
+      async run(input, context) {
+        expectTypeOf(context.ask<"tag">).returns.toEqualTypeOf<Promise<string>>();
+        // @ts-expect-error -- name is required, so it always has a value and is never asked.
+        await context.ask("name");
+        // @ts-expect-error -- the input has no field named host.
+        await context.ask("host");
+        return input.name;
       },
     });
   });
@@ -882,6 +973,262 @@ describe("runCommand: progress updates", () => {
     });
     const outcome = await runCommand(retry, {}, frontEnd(world));
     expect(outcome).toMatchObject({ ok: true, exitCode: 0, result: 200 });
+  });
+});
+
+/** The outcome of a command the user cancelled. */
+function cancelled(command: string): Outcome<never> {
+  return {
+    ok: false,
+    command,
+    exitCode: 130,
+    durationMs: expect.any(Number),
+    error: { kind: "cancelled", message: "cancelled by the user", issues: [] },
+  };
+}
+
+describe("runCommand: cancel", () => {
+  test("an abort mid-run gives kind cancelled, exit 130, and closes open steps as failed", async () => {
+    const create = defineCommand({
+      path: ["sample", "create"],
+      summary: "Create the GitHub repo.",
+      input: z.object({}),
+      async run(_input, context) {
+        const repo = {
+          kind: "step",
+          step: "create-repo",
+          title: "Create the GitHub repo",
+        } as const;
+        context.progress({ ...repo, status: "started" });
+        await context.spawn(["gh", "repo", "create", "acmelabs-15/demo", "--public"]);
+        context.signal.throwIfAborted();
+        context.progress({ ...repo, status: "done" });
+        return "created";
+      },
+    });
+    const controller = new AbortController();
+    const updates: ProgressUpdate[] = [];
+    const caller = {
+      world: fakeWorld({
+        spawn: [{ commandLine: ["gh", "repo", "create", "acmelabs-15/demo", "--public"] }],
+      }),
+      signal: controller.signal,
+      progress(update: ProgressUpdate) {
+        updates.push(update);
+        // The user presses Ctrl+C once the step shows as running.
+        controller.abort(new Error("the user pressed Ctrl+C"));
+      },
+    };
+    const outcome = await runCommand(create, {}, caller);
+    expect(outcome).toEqual(cancelled("sample create"));
+    expect(updates).toEqual([
+      { kind: "step", step: "create-repo", title: "Create the GitHub repo", status: "started" },
+      { kind: "step", step: "create-repo", title: "Create the GitHub repo", status: "failed" },
+    ]);
+  });
+
+  test("a signal aborted before the run ends as cancelled, and the command does not run", async () => {
+    const world = fakeWorld({
+      spawn: [
+        { commandLine: ["gh", "api", "user", "--jq", ".login"], answer: { stdout: "octocat\n" } },
+      ],
+    });
+    const caller = { ...frontEnd(world), signal: AbortSignal.abort() };
+    const outcome = await runCommand(greet, { name: "Peter" }, caller);
+    expect(outcome).toEqual(cancelled("sample greet"));
+    expect(world.calls).toEqual([]);
+    expect(caller.updates).toEqual([]);
+  });
+
+  test("a command that ignores the signal ends as cancelled at once, and is not heard after", async () => {
+    // The build's long work, and the command's end, long after its outcome.
+    const work = Promise.withResolvers<string>();
+    const finished = Promise.withResolvers<string>();
+    const build = defineCommand({
+      path: ["sample", "build"],
+      summary: "Build the package, and publish it when asked.",
+      input: z.object({
+        publish: z.boolean().optional().describe("Publish the package after the build."),
+      }),
+      async run(_input, context) {
+        const step = { kind: "step", step: "build", title: "Build the package" } as const;
+        context.progress({ ...step, status: "started" });
+        // Long work that does not watch the signal.
+        const output = await work.promise;
+        context.progress({ ...step, status: "done", detail: output });
+        context.progress({ kind: "message", level: "info", text: "the build is done" });
+        try {
+          await context.ask("publish");
+        } catch {
+          // This sample ignores every error, the cancel too.
+        }
+        finished.resolve(output);
+        return output;
+      },
+    });
+    const controller = new AbortController();
+    const updates: ProgressUpdate[] = [];
+    const questions: Question[] = [];
+    const caller = {
+      world: fakeWorld(),
+      signal: controller.signal,
+      progress(update: ProgressUpdate) {
+        updates.push(update);
+        // The user presses Ctrl+C once the step shows as running.
+        controller.abort();
+      },
+      answer(question: Question) {
+        questions.push(question);
+        return Promise.resolve(true);
+      },
+    };
+    const outcome = await runCommand(build, {}, caller);
+    expect(outcome).toEqual(cancelled("sample build"));
+    // The command goes on after its outcome, and nothing it does reaches the front-end.
+    work.resolve("dist/index.js");
+    expect(await finished.promise).toBe("dist/index.js");
+    expect(updates).toEqual([
+      { kind: "step", step: "build", title: "Build the package", status: "started" },
+      { kind: "step", step: "build", title: "Build the package", status: "failed" },
+    ]);
+    expect(questions).toEqual([]);
+  });
+
+  test("an answer that rejects because the user cancelled ends as cancelled, not as a bug", async () => {
+    const tag = defineCommand({
+      path: ["sample", "tag"],
+      summary: "Move the latest tag when asked.",
+      input: z.object({ latest: z.boolean().optional().describe("Move the latest tag.") }),
+      async run(_input, context) {
+        return { latest: await context.ask("latest") };
+      },
+    });
+    const controller = new AbortController();
+    const caller = {
+      ...frontEnd(fakeWorld()),
+      signal: controller.signal,
+      answer() {
+        // The user presses Ctrl+C at the prompt: the front-end aborts, and the prompt fails.
+        controller.abort();
+        return Promise.reject(new Error("the prompt was closed"));
+      },
+    };
+    const outcome = await runCommand(tag, {}, caller);
+    expect(outcome).toEqual(cancelled("sample tag"));
+  });
+});
+
+/** How a call ended: the reason it rejected with, or "answered". */
+function endOf(settled: PromiseSettledResult<unknown>): unknown {
+  return settled.status === "rejected" ? settled.reason : "answered";
+}
+
+describe("runCommand: cancel reaches outside programs", () => {
+  test("context.spawn and context.fetch take the run's signal, so a cancel stops them", async () => {
+    const finished = Promise.withResolvers<unknown[]>();
+    const publish = defineCommand({
+      path: ["sample", "publish"],
+      summary: "Publish the package, and check the registry.",
+      input: z.object({}),
+      async run(_input, context) {
+        context.progress({ kind: "message", level: "info", text: "publishing" });
+        const ends = await Promise.allSettled([
+          context.spawn(["npm", "publish"]),
+          context.fetch("https://registry.npmjs.org/-/ping"),
+        ]);
+        finished.resolve(ends.map(endOf));
+        return "published";
+      },
+    });
+    const controller = new AbortController();
+    const reason = new Error("the user pressed Ctrl+C");
+    const caller = {
+      // Each call has a scripted answer, so only the signal can make it reject.
+      world: fakeWorld({
+        spawn: [{ commandLine: ["npm", "publish"] }],
+        fetch: [{ url: "https://registry.npmjs.org/-/ping" }],
+      }),
+      signal: controller.signal,
+      progress() {
+        // The user presses Ctrl+C at the first update.
+        controller.abort(reason);
+      },
+    };
+    expect(await runCommand(publish, {}, caller)).toEqual(cancelled("sample publish"));
+    expect(await finished.promise).toEqual([reason, reason]);
+  });
+
+  test("a signal the command passes itself wins over the run's signal", async () => {
+    const finished = Promise.withResolvers<unknown[]>();
+    const timeout = new Error("the command's own time limit");
+    const check = defineCommand({
+      path: ["sample", "check"],
+      summary: "Check the gh login and the GitHub API, each with its own signal.",
+      input: z.object({}),
+      async run(_input, context) {
+        // While the run is live, the command's aborted signal rejects the calls.
+        const timedOut = AbortSignal.abort(timeout);
+        const before = await Promise.allSettled([
+          context.spawn(["gh", "auth", "status"], { signal: timedOut }),
+          context.fetch("https://api.github.com/", { signal: timedOut }),
+        ]);
+        context.progress({ kind: "message", level: "info", text: "checked" });
+        // After the cancel, the command's live signal lets the calls through.
+        const live = new AbortController().signal;
+        const after = await Promise.allSettled([
+          context.spawn(["gh", "auth", "status"], { signal: live }),
+          context.fetch("https://api.github.com/", { signal: live }),
+        ]);
+        finished.resolve([...before, ...after].map(endOf));
+        return "checked";
+      },
+    });
+    const controller = new AbortController();
+    const caller = {
+      world: fakeWorld({
+        spawn: [{ commandLine: ["gh", "auth", "status"] }],
+        fetch: [{ url: "https://api.github.com/" }],
+      }),
+      signal: controller.signal,
+      progress() {
+        controller.abort();
+      },
+    };
+    expect(await runCommand(check, {}, caller)).toEqual(cancelled("sample check"));
+    expect(await finished.promise).toEqual([timeout, timeout, "answered", "answered"]);
+  });
+
+  test("a Request keeps its own signal, and takes the run's signal too", async () => {
+    const finished = Promise.withResolvers<unknown[]>();
+    const timeout = new Error("the command's own time limit");
+    const reason = new Error("the user pressed Ctrl+C");
+    const read = defineCommand({
+      path: ["sample", "read"],
+      summary: "Read the GitHub API with a Request.",
+      input: z.object({}),
+      async run(_input, context) {
+        const timedOut = AbortSignal.abort(timeout);
+        const own = await Promise.allSettled([
+          context.fetch(new Request("https://api.github.com/", { signal: timedOut })),
+        ]);
+        context.progress({ kind: "message", level: "info", text: "read" });
+        const plain = await Promise.allSettled([
+          context.fetch(new Request("https://api.github.com/")),
+        ]);
+        finished.resolve([...own, ...plain].map(endOf));
+        return "read";
+      },
+    });
+    const controller = new AbortController();
+    const caller = {
+      world: fakeWorld({ fetch: [{ url: "https://api.github.com/" }] }),
+      signal: controller.signal,
+      progress() {
+        controller.abort(reason);
+      },
+    };
+    expect(await runCommand(read, {}, caller)).toEqual(cancelled("sample read"));
+    expect(await finished.promise).toEqual([timeout, reason]);
   });
 });
 

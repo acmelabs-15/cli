@@ -17,6 +17,15 @@ export type ProgressUpdate =
     }
   | { kind: "message"; level: "info" | "warning"; text: string };
 
+/**
+ * The input fields that may have no value: the ones a command asks for mid-run. A required field
+ * always has a value once the input is checked, so asking for it says nothing.
+ */
+export type OptionalField<Input> = {
+  [Field in keyof Input]-?: undefined extends Input[Field] ? Field : never;
+}[keyof Input] &
+  string;
+
 /** What a command runs in: the outside world, progress, questions mid-run, and cancel. */
 export type Context<Input> = World & {
   /**
@@ -25,7 +34,7 @@ export type Context<Input> = World & {
    */
   progress: (update: ProgressUpdate) => void;
   /** The value of an optional input: given up front, asked in a terminal, or an input error. */
-  ask: <Field extends keyof Input & string>(field: Field) => Promise<NonNullable<Input[Field]>>;
+  ask: <Field extends OptionalField<Input>>(field: Field) => Promise<NonNullable<Input[Field]>>;
   /** Aborted when the user cancels (Ctrl+C). */
   signal: AbortSignal;
 };

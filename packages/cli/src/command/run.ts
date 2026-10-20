@@ -8,11 +8,31 @@ import type { CommandFailure, Outcome } from "./outcome";
 import { CommandError, exitCodes, inputError } from "./outcome";
 import type { World } from "./world";
 
-/** What a front-end gives runCommand: its world, where progress updates go, and its signal. */
+/** One question mid-run: what a front-end needs to ask the user for one optional input. */
+export type Question = {
+  /** The input field the answer fills, such as `marketplace`. */
+  field: string;
+  /** The field's flag, such as `--marketplace`, the way the caller gives the value up front. */
+  flag: string;
+  /** The field's description, given with `.describe()`. */
+  description: string | undefined;
+  /** The field's schema: its type picks the prompt, and runCommand checks the answer with it. */
+  schema: z.ZodType;
+};
+
+/** How a front-end with a terminal asks one question mid-run. It resolves to the user's answer. */
+export type Answerer = (question: Question) => Promise<unknown>;
+
+/**
+ * What a front-end gives runCommand: its world, where progress updates go, its signal, and how it
+ * asks. JSON mode and the MCP server give no `answer`, so a question with no value is an input
+ * error there.
+ */
 export type FrontEnd = {
   world: World;
   progress: (update: ProgressUpdate) => void;
   signal: AbortSignal;
+  answer?: Answerer;
 };
 
 /** The time since `started`, a `performance.now()` reading, in whole milliseconds. */
@@ -71,6 +91,43 @@ async function checkInput<Input extends z.ZodObject>(
   return checked.data;
 }
 
+/**
+ * The answer to a question mid-run, checked by the field's schema. A bad answer throws an input
+ * error with one issue per zod issue, named by the flag.
+ */
+async function checkAnswer(question: Question, answer: unknown): Promise<unknown> {
+  const checked = await question.schema.safeParseAsync(answer);
+  if (!checked.success) {
+    throw inputError(
+      `the answer to ${question.flag} is not valid`,
+      checked.error.issues.map((issue) => ({
+        field: fieldOf([question.field, ...issue.path], []),
+        message: issue.message,
+      })),
+    );
+  }
+  return checked.data;
+}
+
+/** Whether a field takes a boolean, under its optional and nullable wrappers. */
+function isBoolean(schema: z.ZodType): boolean {
+  let inner: z.core.$ZodType = schema;
+  while (inner instanceof z.ZodOptional || inner instanceof z.ZodNullable) {
+    inner = inner.unwrap();
+  }
+  return inner instanceof z.ZodBoolean;
+}
+
+/**
+ * The input error for a question with no value: it names the flag, and shows how to give the value
+ * on the command line. A boolean flag takes no value; any other flag takes one.
+ */
+function noValue(question: Question): CommandError {
+  const example = isBoolean(question.schema) ? question.flag : `${question.flag} <value>`;
+  const message = `${question.flag} has no value; give it on the command line, for example ${example}`;
+  return inputError(message, [{ field: question.flag, message }]);
+}
+
 /** The open steps of one run, and the progress that opens and ends them. */
 type Steps = {
   /**
@@ -82,7 +139,10 @@ type Steps = {
   defect: () => Error | undefined;
   /** At the command's normal end, throws the run's defect, or one that names each open step. */
   checkEnded: () => void;
-  /** Sends a `failed` update for each open step, in the order the steps started. */
+  /**
+   * Sends a `failed` update for each open step, in the order the steps started. After it, progress
+   * sends nothing on, so a command that ignores the signal is not heard after its outcome.
+   */
   closeAsFailed: () => void;
 };
 
@@ -97,8 +157,12 @@ function trackSteps(send: (update: ProgressUpdate) => void): Steps {
   const open = new Map<string, string>();
   // Kept, and not only thrown, so a command that catches it still ends as a bug.
   let restarted: Error | undefined;
+  let closed = false;
   return {
     progress(update) {
+      if (closed) {
+        return;
+      }
       if (update.kind === "step") {
         if (update.status !== "started") {
           open.delete(update.step);
@@ -129,12 +193,36 @@ function trackSteps(send: (update: ProgressUpdate) => void): Steps {
         send({ kind: "step", step, title, status: "failed" });
       }
       open.clear();
+      closed = true;
     },
   };
 }
 
-/** The context a command runs in: the front-end's world and signal, and the run's progress. */
+/**
+ * The world's fetch, with the run's signal unless the command passes its own in the options. A
+ * Request keeps its own signal, and takes the run's signal too.
+ */
+function fetchWithSignal(world: World, signal: AbortSignal): World["fetch"] {
+  function signalled(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+    const fallback = input instanceof Request ? AbortSignal.any([input.signal, signal]) : signal;
+    return world.fetch(input, { ...init, signal: init?.signal ?? fallback });
+  }
+  return Object.assign(signalled, {
+    preconnect(...args: Parameters<World["fetch"]["preconnect"]>) {
+      world.fetch.preconnect(...args);
+    },
+  });
+}
+
+/**
+ * The context a command runs in: the front-end's world and signal, the run's progress, and `ask`.
+ * `spawn` and `fetch` take the run's signal, so a cancel stops an outside program or request; a
+ * signal the command passes itself wins.
+ * `ask` returns the value given up front; with none, it asks the front-end's `answer` and checks
+ * the answer with the field's schema; with no answer either, it is an input error.
+ */
 function contextFor<Input>(
+  schema: z.ZodObject,
   input: Input,
   frontEnd: FrontEnd,
   progress: (update: ProgressUpdate) => void,
@@ -143,21 +231,36 @@ function contextFor<Input>(
   return {
     root: world.root,
     env: world.env,
-    spawn: world.spawn,
-    fetch: world.fetch,
+    spawn(commandLine, options) {
+      return world.spawn(commandLine, { ...options, signal: options?.signal ?? frontEnd.signal });
+    },
+    fetch: fetchWithSignal(world, frontEnd.signal),
     now: world.now,
     progress,
-    // ask rejects, and never throws, because its type promises a Promise.
-    ask(field) {
-      const value = input[field];
-      if (value === undefined || value === null) {
-        return Promise.reject(
-          inputError(`the input ${field} has no value`, [
-            { field, message: "no value was given; give one when you run the command" },
-          ]),
-        );
+    async ask(field) {
+      // A cancelled run asks nothing, so no prompt shows after the outcome.
+      frontEnd.signal.throwIfAborted();
+      const given = input[field];
+      if (given !== undefined && given !== null) {
+        return given;
       }
-      return Promise.resolve(value);
+      const fieldSchema: z.ZodType = schema.shape[field];
+      const question = {
+        field,
+        flag: flagOf(field),
+        description: fieldSchema.description,
+        schema: fieldSchema,
+      };
+      // Called through the front-end, so a front-end whose answer is a method keeps its `this`.
+      const answered =
+        frontEnd.answer === undefined
+          ? undefined
+          : await checkAnswer(question, await frontEnd.answer(question));
+      if (answered === undefined || answered === null) {
+        throw noValue(question);
+      }
+      // The field's schema checked the answer, so the answer has the field's type.
+      return answered as NonNullable<Input[typeof field]>;
     },
     signal: frontEnd.signal,
   };
@@ -196,6 +299,25 @@ function failureOf(error: unknown): CommandFailure {
   };
 }
 
+/**
+ * The work's own ending, or a rejection with the signal's reason as soon as the signal aborts,
+ * whichever comes first. The work may go on after an abort, but nothing waits for it.
+ */
+function untilAborted<Value>(work: Promise<Value>, signal: AbortSignal): Promise<Value> {
+  const aborted = Promise.withResolvers<never>();
+  function onAbort() {
+    aborted.reject(signal.reason);
+  }
+  if (signal.aborted) {
+    onAbort();
+  } else {
+    signal.addEventListener("abort", onAbort, { once: true });
+  }
+  return Promise.race([work, aborted.promise]).finally(() => {
+    signal.removeEventListener("abort", onAbort);
+  });
+}
+
 /** Runs one command: checks the input, runs it, and turns every ending into an Outcome. */
 export async function runCommand<Input extends z.ZodObject, Result>(
   command: Command<Input, Result>,
@@ -204,18 +326,30 @@ export async function runCommand<Input extends z.ZodObject, Result>(
 ): Promise<Outcome<Result>> {
   const started = performance.now();
   const name = command.path.join(" ");
+  const { signal } = frontEnd;
   // Called through the front-end, so a front-end whose progress is a method keeps its `this`.
   const steps = trackSteps((update) => frontEnd.progress(update));
-  try {
+
+  /** Checks the input and runs the command, unless the user cancelled before it starts. */
+  async function checkAndRun(): Promise<Result> {
     const input = await checkInput(command.input, command.positionals ?? [], rawInput);
-    const result = await command.run(input, contextFor(input, frontEnd, steps.progress));
+    signal.throwIfAborted();
+    return command.run(input, contextFor(command.input, input, frontEnd, steps.progress));
+  }
+
+  try {
+    // A command that ignores the signal does not keep the outcome waiting.
+    const result = await untilAborted(checkAndRun(), signal);
     steps.checkEnded();
     return { ok: true, command: name, exitCode: 0, durationMs: millisecondsSince(started), result };
   } catch (error) {
     // No front-end shows a step as running after the command stopped.
     steps.closeAsFailed();
-    // A defect in the command's progress wins over what the command threw after it.
-    const failure = failureOf(steps.defect() ?? error);
+    // Once the user cancels, every failure is the cancel: a closed prompt, a stopped program. A
+    // defect in the command's progress wins over what the command threw after it.
+    const failure: CommandFailure = signal.aborted
+      ? { kind: "cancelled", message: "cancelled by the user", issues: [] }
+      : failureOf(steps.defect() ?? error);
     return {
       ok: false,
       command: name,
