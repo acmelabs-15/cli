@@ -294,3 +294,7 @@ Peter asked that everything from the interview be saved to Markdown in the layou
 
 - **Facts given:** `formatRepoConfig` writes a 145-column line for five packages, and oxfmt rewrites it as 13 lines, so the file changes back and forth.
 - **Recommended and answered:** `formatRepoConfig` writes oxfmt's layout, proven by a test that runs oxfmt on its output. Rule for later modules: every file `acmelabs` writes passes the format check unchanged.
+
+### The config-presets spec — approved 2026-10-20
+
+- **Approved:** `spec/SPEC-config-presets.md` as written (draft `88a0907`), with the agent's three calls: the tool versions stay as today; each repo lists oxlint, oxfmt, typescript and `@types/bun` itself, and Ultracite moves into the preset; this repo imports the presets by relative path.

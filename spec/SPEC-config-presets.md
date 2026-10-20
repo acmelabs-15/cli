@@ -1,6 +1,6 @@
 # Spec: config-presets
 
-Module `config-presets`, layer 1 of the capability map (`spec/README.md`). It depends on no other module. At Peter's choice it also changes one function of `repo-model`, `formatRepoConfig` (open question 18). Words follow `CONTEXT.md`. Status: draft, waiting for Peter's approval.
+Module `config-presets`, layer 1 of the capability map (`spec/README.md`). It depends on no other module. At Peter's choice it also changes one function of `repo-model`, `formatRepoConfig` (open question 18). Words follow `CONTEXT.md`. Status: approved by Peter on 2026-10-20.
 
 ## Objective
 
