@@ -1,7 +1,11 @@
-import { describe, expect, expectTypeOf, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, expectTypeOf, test } from "bun:test";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import { z } from "zod";
 
+import { readRepoConfig } from "../../repo/config";
 import type { ProgressUpdate } from "../command";
 import { defineCommand } from "../command";
 import type { Outcome } from "../outcome";
@@ -250,7 +254,7 @@ describe("runCommand: a command that throws anything else", () => {
 });
 
 describe("runCommand: the input check", () => {
-  /** A sample command whose input has a required name and a list of tags, with a default. */
+  /** A sample command whose input has a required name, a list of tags and a dry-run switch. */
   const publish = defineCommand({
     path: ["sample", "publish"],
     summary: "Publish a package with its tags.",
@@ -260,6 +264,10 @@ describe("runCommand: the input check", () => {
         .array(z.string({ error: "a tag is text" }))
         .default(["latest"])
         .describe("The dist-tags to set."),
+      dryRun: z
+        .boolean({ error: "dry run is true or false" })
+        .default(false)
+        .describe("Show what would be published, and publish nothing."),
     }),
     async run(input, context) {
       await context.spawn(["npm", "publish", "--tag", input.tags.join(",")]);
@@ -267,7 +275,7 @@ describe("runCommand: the input check", () => {
     },
   });
 
-  test("bad input gives kind input, exit 2, one issue per zod issue with its path", async () => {
+  test("bad input gives kind input, exit 2, and one issue per flag, named --field", async () => {
     const outcome = await runCommand(publish, { tags: ["latest", 7] }, frontEnd(fakeWorld()));
     expect(outcome).toEqual({
       ok: false,
@@ -276,11 +284,106 @@ describe("runCommand: the input check", () => {
       durationMs: expect.any(Number),
       error: {
         kind: "input",
-        message: "the input is not valid",
+        message: "2 inputs are not valid",
         issues: [
-          { field: "name", message: "the name is missing" },
-          { field: "tags[1]", message: "a tag is text" },
+          { field: "--name", message: "the name is missing" },
+          { field: "--tags[1]", message: "a tag is text" },
         ],
+      },
+    });
+  });
+
+  test("a flag's name is the field in kebab case: dryRun is --dry-run", async () => {
+    const outcome = await runCommand(
+      publish,
+      { name: "@acmelabs/cli", dryRun: "yes" },
+      frontEnd(fakeWorld()),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 2,
+      error: {
+        kind: "input",
+        message: "1 input is not valid",
+        issues: [{ field: "--dry-run", message: "dry run is true or false" }],
+      },
+    });
+  });
+
+  test("the message counts the inputs that are wrong, not the issues", async () => {
+    const outcome = await runCommand(
+      publish,
+      { name: "@acmelabs/cli", tags: [7, 8] },
+      frontEnd(fakeWorld()),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 2,
+      error: {
+        kind: "input",
+        message: "1 input is not valid",
+        issues: [
+          { field: "--tags[0]", message: "a tag is text" },
+          { field: "--tags[1]", message: "a tag is text" },
+        ],
+      },
+    });
+  });
+
+  test("a positional's issue is named <field>, and a nested path keeps its tail", async () => {
+    const add = defineCommand({
+      path: ["sample", "add"],
+      summary: "Add a plugin to the marketplace with its tags.",
+      input: z.object({
+        name: z.string({ error: "the name is text" }).describe("The plugin's name."),
+        tags: z.array(z.string({ error: "a tag is text" })).describe("The plugin's tags."),
+        host: z.string({ error: "the host is text" }).describe("The host to add it for."),
+      }),
+      positionals: ["name", "tags"],
+      run(input) {
+        return Promise.resolve(input);
+      },
+    });
+    const outcome = await runCommand(
+      add,
+      { name: 7, tags: ["agents", 7], host: 3 },
+      frontEnd(fakeWorld()),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 2,
+      error: {
+        kind: "input",
+        message: "3 inputs are not valid",
+        issues: [
+          { field: "<name>", message: "the name is text" },
+          { field: "<tags>[1]", message: "a tag is text" },
+          { field: "--host", message: "the host is text" },
+        ],
+      },
+    });
+  });
+
+  test("an issue with the whole input, not one field, has an empty field", async () => {
+    const notify = defineCommand({
+      path: ["sample", "notify"],
+      summary: "Send a note by mail, by chat or both.",
+      input: z
+        .object({
+          mail: z.string().optional().describe("The mail address."),
+          chat: z.string().optional().describe("The chat channel."),
+        })
+        .refine((input) => input.mail !== undefined || input.chat !== undefined, {
+          error: "give --mail, --chat or both",
+        }),
+      run(input) {
+        return Promise.resolve(input);
+      },
+    });
+    const outcome = await runCommand(notify, {}, frontEnd(fakeWorld()));
+    expect(outcome).toMatchObject({
+      exitCode: 2,
+      error: {
+        kind: "input",
+        message: "1 input is not valid",
+        issues: [{ field: "", message: "give --mail, --chat or both" }],
       },
     });
   });
@@ -297,6 +400,74 @@ describe("runCommand: the input check", () => {
     expect(outcome).toMatchObject({
       ok: true,
       result: { name: "@acmelabs/cli", tags: ["latest"] },
+    });
+  });
+});
+
+describe("runCommand: a bad repo config", () => {
+  let work: string;
+
+  beforeAll(async () => {
+    work = await mkdtemp(path.join(tmpdir(), "acmelabs-run-"));
+  });
+
+  afterAll(async () => {
+    await rm(work, { recursive: true, force: true });
+  });
+
+  /** A sample command that reads the repo config of its root and names the repo kinds. */
+  const kinds = defineCommand({
+    path: ["sample", "kinds"],
+    summary: "Name the repo kinds that acmelabs.json declares.",
+    input: z.object({}),
+    async run(_input, context) {
+      return Object.keys(await readRepoConfig(context.root));
+    },
+  });
+
+  test("gives kind input, exit 2, the file, and each issue at its field path", async () => {
+    const root = path.join(work, "bad-fields");
+    await Bun.write(
+      path.join(root, "acmelabs.json"),
+      JSON.stringify({ plugin: { hosts: ["claude-code", "vscode"] }, library: { packages: [] } }),
+    );
+    const outcome = await runCommand(kinds, {}, frontEnd(fakeWorld({ root })));
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample kinds",
+      exitCode: 2,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "input",
+        message: `${root}/acmelabs.json is not a valid repo config`,
+        issues: [
+          {
+            field: "plugin.hosts[1]",
+            message:
+              '"vscode" is not a host; the hosts are claude-code, codex, gemini-cli, antigravity-cli',
+          },
+          { field: "library.packages", message: "the list is empty; name at least one package" },
+        ],
+      },
+    });
+  });
+
+  test("an issue with the whole file is named acmelabs.json", async () => {
+    const root = path.join(work, "no-config");
+    await mkdir(root);
+    const outcome = await runCommand(kinds, {}, frontEnd(fakeWorld({ root })));
+    expect(outcome).toMatchObject({
+      exitCode: 2,
+      error: {
+        kind: "input",
+        message: `${root}/acmelabs.json is not a valid repo config`,
+        issues: [
+          {
+            field: "acmelabs.json",
+            message: 'the file does not exist; create it with "plugin", "library" or both',
+          },
+        ],
+      },
     });
   });
 });

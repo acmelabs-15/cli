@@ -8,7 +8,7 @@ Phase 1 A command runs
 
 - [x] 1. World: realWorld and fakeWorld
 - [x] 2. A command runs and ends with its exit code
-- [ ] 3. Input errors named by flag and positional
+- [x] 3. Input errors named by flag and positional
 - [ ] Checkpoint: a command runs
 
 Phase 2 The rest of the frame
@@ -62,12 +62,12 @@ Phase 2 The rest of the frame
 **Description:** Bad input ends with kind `input` and exit 2, and each issue names the field as the caller wrote it: `--host` for a flag, `<name>` for a positional. A `RepoConfigError` from `repo-model` ends the same way, with its file and field issues kept.
 
 **Acceptance criteria:**
-- [ ] A zod input error gives one issue per field, named `--flag-name` (kebab case of the field) or `<field>` for a positional.
-- [ ] A `RepoConfigError` thrown inside `run` gives kind `input`, exit 2, and its issues with their `acmelabs.json` field paths.
+- [x] A zod input error gives one issue per field, named `--flag-name` (kebab case of the field) or `<field>` for a positional.
+- [x] A `RepoConfigError` thrown inside `run` gives kind `input`, exit 2, and its issues with their `acmelabs.json` field paths.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/command`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/command`
+- [x] `bun run check` is green.
 
 **Dependencies:** 2
 
