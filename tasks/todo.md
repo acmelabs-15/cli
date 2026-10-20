@@ -9,7 +9,7 @@ The task list for `tasks/plan.md`. Tick a task in the checklist, and each box in
 Phase 1 The gate on Bun, and a first preset end to end
 
 - [x] 1. The gate runs on Bun in this repo
-- [ ] 2. A sample repo lints with the built lint preset
+- [x] 2. A sample repo lints with the built lint preset
 - [ ] Checkpoint: the seam works
 
 Phase 2 The three presets
@@ -50,13 +50,13 @@ Phase 3 The presets in use
 **Description:** The tracer bullet. `packages/config` becomes `@acmelabs/config` with the lint preset: Ultracite's core through `extends`, its ignore list named again, and the four deviations as plain rules, ported from today's root config. `scripts/build.ts` builds it into JavaScript and a `.d.ts` file. The sample-repo seam exists: a helper builds the package once, writes a sample repo with a thin caller, a `bunfig.toml` with `run.bun` and a hand-made `node_modules`, and runs a script with the failing `node`.
 
 **Acceptance criteria:**
-- [ ] `bun run --filter @acmelabs/config build` writes `dist/oxlint.js` and `dist/oxlint.d.ts`; `package.json` has the spec's name, `private`, `exports` for `./oxlint`, `files`, `ultracite` 7.12.0 as a dependency and the four peer dependencies; `dist/` is in `.gitignore`.
-- [ ] In a sample repo whose `oxlint.config.ts` is the spec's one-line thin caller, `bun run lint` fails on an `interface` with `consistent-type-definitions` and passes on the same shape as a `type`, with no `REAL NODE WAS CALLED`.
-- [ ] Without `run.bun` in the sample repo, a run that starts a `node`-shebang tool calls the failing `node` and fails. This proves the seam's Node check is live.
+- [x] `bun run --filter @acmelabs/config build` writes `dist/oxlint.js` and `dist/oxlint.d.ts`; `package.json` has the spec's name, `private`, `exports` for `./oxlint`, `files`, `ultracite` 7.12.0 as a dependency and the four peer dependencies; `dist/` is in `.gitignore`.
+- [x] In a sample repo whose `oxlint.config.ts` is the spec's one-line thin caller, `bun run lint` fails on an `interface` with `consistent-type-definitions` and passes on the same shape as a `type`, with no `REAL NODE WAS CALLED`.
+- [x] Without `run.bun` in the sample repo, a run that starts a `node`-shebang tool calls the failing `node` and fails. This proves the seam's Node check is live.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/config`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/config`
+- [x] `bun run check` is green.
 
 **Dependencies:** None (task 1 first by order)
 
