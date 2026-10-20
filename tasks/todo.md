@@ -12,7 +12,7 @@ Phase 1 The World's limits
 - [x] 2. A program's output stops at its output limit
 - [x] 3. A request stops at its time limit and its body limit
 - [x] 4. The World can wait, and a fake World waits in no time
-- [ ] Checkpoint: the World's limits
+- [x] Checkpoint: the World's limits
 
 Phase 2 The tracer and the settings
 
@@ -109,9 +109,9 @@ Phase 3 The other steps
 
 ## Checkpoint: the World's limits
 
-- [ ] `bun run check` is green.
-- [ ] The spec's World criteria pass: the defaults are 5 minutes, 1 minute and 10 MB, a call can raise and lower each, and a program and the programs it started stop at a limit and on a cancel.
-- [ ] The World section of `spec/SPEC-command-core.md` matches the code.
+- [x] `bun run check` is green: 288 tests at `d0e14f1`.
+- [x] The spec's World criteria pass: the defaults are 5 minutes, 1 minute and 10 MB, a call can raise and lower each, and a program and the programs it started stop at a limit and on a cancel.
+- [x] The World section of `spec/SPEC-command-core.md` matches the code.
 
 ## Task 5: Tracer — a sample command gives a repo the Actions setting
 
