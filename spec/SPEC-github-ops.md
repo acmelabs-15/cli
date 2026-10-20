@@ -101,7 +101,7 @@ The body is the one that made acmelabs-15/cli's ruleset (note 09, section 5). br
 |---|---|---|---|
 | gh is not on PATH | `outside` | 3 | gh (the World does this today) |
 | gh exits 4 (no login), or GitHub answers 401 | `login` | 4 | `gh auth login` |
-| The login lacks an asked scope | `login` | 4 | `gh auth refresh -h github.com -s <scope>` |
+| The login lacks an asked scope, or gh names a scope that a call lacks (a plain scope only) | `login` | 4 | `gh auth refresh -h github.com -s <scope>` |
 | 404 for the owner; 403 or 404 for a repo the login cannot change; 422 "name already exists" | `input` | 2 | the owner or repo, and the login |
 | An existing repo that holds other work, or has the other visibility; another `origin`; an existing clone folder | `input` | 2 | the repo or folder |
 | 409 on the Actions setting; a push that GitHub rejects | `problem` | 1 | the organization's settings page; git's message |

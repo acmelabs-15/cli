@@ -24,8 +24,8 @@ export type RetriedStatus = 404 | 409;
  * One REST call through gh: the method (GET when unset), the API path, a write's JSON body, and
  * `expected`: each 404 or 409 that the step reads itself, such as 404 for "no such tag". A 404 or
  * 409 named in `expected` comes back at once. One that is not named is tried again first, on a
- * GET or a PUT (see `ghApi`). Every other status comes back at once in any case, so a step reads a
- * 422, say, with no entry here.
+ * GET or a PUT, unless gh names a missing scope (see `ghApi`). Every other status comes back at
+ * once in any case, so a step reads a 422, say, with no entry here.
  */
 export type GhRequest = {
   method?: Method;
@@ -37,15 +37,32 @@ export type GhRequest = {
 /**
  * GitHub's answer to one call, ok or not, with the call's method and path. An ok answer (2xx) has
  * its JSON body, or null for a 204, which has none. Any other answer has its HTTP status, GitHub's
- * message and the error body. A step reads the answers it expects, such as a 404 for "no such PR",
+ * message, the error body, and `missingScope`: the scope that gh says the gh login lacks for the
+ * call, when gh names one. A step reads the answers it expects, such as a 404 for "no such PR",
  * and gives the rest to `answerOrThrow`.
  */
 export type GhAnswer =
   | { ok: true; method: Method; path: string; body: Json }
-  | { ok: false; method: Method; path: string; status: number; message: string; body: Json };
+  | {
+      ok: false;
+      method: Method;
+      path: string;
+      status: number;
+      message: string;
+      body: Json;
+      missingScope?: string;
+    };
 
 /** The command line that gives gh a login: the failures for no login and a 401 name it. */
 export const ghLogin = "gh auth login";
+
+/**
+ * The command line that adds a scope to gh's login, such as `gh auth refresh -h github.com -s
+ * workflow`: the failure for a missing scope names it.
+ */
+export function ghRefresh(scope: string): string {
+  return `gh auth refresh -h github.com -s ${scope}`;
+}
 
 /**
  * The headers of every call: GitHub's JSON media type, and the REST API version that the spec's
@@ -89,6 +106,31 @@ function statusOf(body: Json, stderr: string): number | undefined {
   const line = httpErrorLine.exec(stderr)?.groups;
   const code = line?.code ?? line?.bare;
   return code === undefined ? undefined : Number(code);
+}
+
+/**
+ * gh's second stderr line on a 4xx other than 422, when the token lacks a scope that the endpoint
+ * checks: `gh: This API operation needs the "admin:org" scope. To request it, run: ...` (note 09,
+ * section 1.2). gh writes the one scope with Go's %q, so it sits in double quotes.
+ */
+const scopeLines = /^gh: This API operation needs the "(?<scope>[^"\n]*)" scope\./gmu;
+
+/**
+ * A plain OAuth scope, such as repo, workflow, admin:org or write:packages: a lowercase letter,
+ * then lowercase letters and underscores, with at most one colon inside, and a letter after it.
+ */
+const plainScope = /^[a-z][_a-z]*(?::[a-z][_a-z]*)?$/u;
+
+/**
+ * The scope that gh's scope line names, or undefined when gh names none. gh prints the line after
+ * the line with GitHub's message, so the last match is gh's own, and a line inside GitHub's
+ * message cannot win over it. acmelabs builds the command line that fixes the login from the
+ * scope, so a scope that is not a plain scope counts as none: no text from gh goes into a command
+ * line that the user runs.
+ */
+function missingScopeOf(stderr: string): string | undefined {
+  const scope = [...stderr.matchAll(scopeLines)].at(-1)?.groups?.scope;
+  return scope !== undefined && plainScope.test(scope) ? scope : undefined;
 }
 
 /** GitHub's message in its error body; a body without one says so, as the failure shows it. */
@@ -161,7 +203,15 @@ async function callOnce(
   if (status === undefined) {
     throw unreadable(`${method} ${path}`, spawned);
   }
-  return { ok: false, method, path, status, message: messageOf(answer), body: answer };
+  return {
+    ok: false,
+    method,
+    path,
+    status,
+    message: messageOf(answer),
+    body: answer,
+    missingScope: missingScopeOf(spawned.stderr),
+  };
 }
 
 /** The statuses of `RetriedStatus`, which ghApi checks an answer against. */
@@ -174,12 +224,14 @@ const retry = { times: 3, waitMs: 3000 } as const;
  * Whether ghApi tries a call again after this answer: a 404 or 409 that the call does not expect,
  * to a GET or a PUT. Both are idempotent (RFC 9110, section 9.2.2): a second one leaves GitHub as
  * one does. A POST is never sent again, because GitHub may have applied it, and a second POST
- * could create twice.
+ * could create twice. An answer for which gh names a missing scope is final too: no wait gives
+ * the login that scope.
  */
 function triesAgainAfter(answer: GhAnswer, expected: readonly number[]): boolean {
   return (
     !answer.ok &&
     answer.method !== "POST" &&
+    answer.missingScope === undefined &&
     retriedStatuses.has(answer.status) &&
     !expected.includes(answer.status)
   );
@@ -190,8 +242,9 @@ function triesAgainAfter(answer: GhAnswer, expected: readonly number[]): boolean
  * login failure, and an answer that is not JSON is an outside failure; every HTTP answer comes
  * back, ok or not. A 404 or 409 that the call does not expect is tried again up to 3 times, 3
  * seconds apart, before it comes back: right after a create, GitHub can give either for a few
- * seconds. Each wait goes through `context.sleep`, so a cancel stops it. Only gh.ts starts gh for
- * the API.
+ * seconds. A POST, and an answer for which gh names a missing scope, come back at once
+ * (`triesAgainAfter` says why). Each wait goes through `context.sleep`, so a cancel stops it.
+ * Only gh.ts starts gh for the API.
  */
 export async function ghApi(context: StepContext, request: GhRequest): Promise<GhAnswer> {
   const method = request.method ?? "GET";
@@ -218,7 +271,10 @@ function rateLimited(answer: FailedAnswer): boolean {
 /**
  * The failure for an answer that a step does not expect, by the spec's table "GitHub's answers and
  * the failure kinds". gh does not tell the login, so a message that names it says "the gh login".
- * The 422 "name already exists" row comes with `ensureRepo`, the step that meets it.
+ * A rate limit wins over a missing scope: the limit is what stopped this answer. GitHub answers 404,
+ * not 403, to a login that may not write a private resource (note 09, section 2.9), so a 404 on a
+ * write names the access, and only a 404 on a read says that GitHub found no repo. The 422 "name
+ * already exists" row comes with `ensureRepo`, the step that meets it.
  */
 function failureFor(answer: FailedAnswer, repo: GitHubRepo): CommandError {
   const call = `${answer.method} ${answer.path}`;
@@ -228,6 +284,14 @@ function failureFor(answer: FailedAnswer, repo: GitHubRepo): CommandError {
   if (rateLimited(answer)) {
     return outsideError(
       `GitHub's rate limit stopped ${call}; wait, then run the command again (HTTP ${answer.status}): ${answer.message}`,
+    );
+  }
+  if (answer.missingScope !== undefined) {
+    return loginNeeded("gh", ghRefresh(answer.missingScope));
+  }
+  if (answer.status === 404 && answer.method !== "GET") {
+    return inputError(
+      `GitHub answered ${call} with HTTP 404: the gh login may lack write access to ${fullName(repo)}, or the resource may not exist`,
     );
   }
   if (answer.status === 404) {

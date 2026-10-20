@@ -6,6 +6,7 @@ import type { Context } from "../../command/command";
 import { defineCommand } from "../../command/command";
 import { fakeWorld } from "../../command/fake-world";
 import { runCommand } from "../../command/run";
+import type { Spawned } from "../../command/world";
 import type { GhRequest, StepContext } from "../gh";
 import { answerOrThrow, ghApi, readBody, repoPath } from "../gh";
 import {
@@ -111,7 +112,8 @@ describe("ghApi: an unexpected 404 or 409 is tried again", () => {
 
   test.each([
     ["a 401", ghAnswers.badCredentials, 4],
-    ["a 403", ghAnswers.orgAdminNeeded, 2],
+    ["a 403", ghAnswers.adminRightsNeeded, 2],
+    ["a 403 that names a missing scope", ghAnswers.orgAdminNeeded, 4],
     ["a rate-limit 403", ghAnswers.rateLimited, 3],
     ["a rate-limit 429", ghAnswers.secondaryRateLimited, 3],
     ["a 451", ghAnswers.accessBlocked, 3],
@@ -236,7 +238,9 @@ describe("answerOrThrow: an answer that the step does not expect", () => {
   });
 
   test("a 403 that is not a rate limit ends with exit 2, naming the repo, the login and GitHub's message", async () => {
-    const world = fakeWorld({ spawn: [ghScripted(brainSetting.call, ghAnswers.orgAdminNeeded)] });
+    const world = fakeWorld({
+      spawn: [ghScripted(brainSetting.call, ghAnswers.adminRightsNeeded)],
+    });
     const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
     expect(outcome).toMatchObject({
       ok: false,
@@ -244,9 +248,228 @@ describe("answerOrThrow: an answer that the step does not expect", () => {
       error: {
         kind: "input",
         message:
-          "GitHub refused GET repos/acmelabs-15/brain/actions/permissions/workflow for the gh login, which needs more access to acmelabs-15/brain (HTTP 403): You must be an org admin or have the actions policies fine-grained permission.",
+          "GitHub refused GET repos/acmelabs-15/brain/actions/permissions/workflow for the gh login, which needs more access to acmelabs-15/brain (HTTP 403): Must have admin rights to Repository.",
       },
     });
+  });
+});
+
+/** gh's answer to an HTTP error with a scope line: `answer`'s stderr, then the line for `scope`. */
+function withScopeLine(answer: Spawned, scope: string): Spawned {
+  // gh's own text, with the two spaces after "run:" (note 09, section 1.2).
+  const line = `gh: This API operation needs the "${scope}" scope. To request it, run:  gh auth refresh -h github.com -s ${scope}\n`;
+  return { ...answer, stderr: `${answer.stderr}${line}` };
+}
+
+describe("answerOrThrow: a scope that the gh login lacks", () => {
+  test("a 403 for which gh names a missing scope ends with exit 4, naming gh auth refresh with that scope", async () => {
+    // Real: the org's Actions setting with a token that lacks admin:org (note 09, section 2.5).
+    const world = fakeWorld({ spawn: [ghScripted(brainSetting.call, ghAnswers.orgAdminNeeded)] });
+    const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample read",
+      exitCode: 4,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "login",
+        message:
+          "gh needs a login; run gh auth refresh -h github.com -s admin:org, then run the command again",
+        issues: [],
+      },
+    });
+  });
+
+  test.each(["repo", "workflow", "write:packages", "admin:repo_hook"])(
+    "the scope %s goes into the command line as gh names it",
+    async (scope) => {
+      const world = fakeWorld({
+        spawn: [ghScripted(brainSetting.call, withScopeLine(ghAnswers.adminRightsNeeded, scope))],
+      });
+      const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
+      expect(outcome).toMatchObject({
+        exitCode: 4,
+        error: {
+          kind: "login",
+          message: `gh needs a login; run gh auth refresh -h github.com -s ${scope}, then run the command again`,
+        },
+      });
+    },
+  );
+
+  test("a 404 for which gh names a missing scope ends with exit 4 at once, with no wait", async () => {
+    // Built: a token without repo gets 404 for a private repo, and the endpoint checks repo.
+    const world = fakeWorld({
+      spawn: [ghScripted(brainSetting.call, withScopeLine(ghAnswers.notFound, "repo"))],
+    });
+    const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
+    expect(outcome).toMatchObject({
+      exitCode: 4,
+      error: {
+        kind: "login",
+        message:
+          "gh needs a login; run gh auth refresh -h github.com -s repo, then run the command again",
+      },
+    });
+    expect(world.calls).toEqual([ghLogged(brainSetting.call)]);
+  });
+
+  test.each([
+    ["a shell command", "admin:org; rm -rf ~"],
+    ["a space", "admin org"],
+    ["a quote, which gh escapes", String.raw`admin\"org`],
+    ["capital letters", "Admin:Org"],
+    ["two colons", "admin:org:x"],
+    ["no characters", ""],
+  ])(
+    "a scope with %s names no command line: the 403 ends with exit 2, as the table's 403",
+    async (_case, scope) => {
+      const world = fakeWorld({
+        spawn: [ghScripted(brainSetting.call, withScopeLine(ghAnswers.adminRightsNeeded, scope))],
+      });
+      const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
+      expect(outcome).toMatchObject({
+        exitCode: 2,
+        error: {
+          kind: "input",
+          message:
+            "GitHub refused GET repos/acmelabs-15/brain/actions/permissions/workflow for the gh login, which needs more access to acmelabs-15/brain (HTTP 403): Must have admin rights to Repository.",
+        },
+      });
+    },
+  );
+
+  test("gh's own scope line wins over one inside GitHub's message, which gh prints first", async () => {
+    // Built: a GitHub message that holds a line in the shape of gh's scope line.
+    const forged = {
+      code: 1,
+      stdout:
+        '{"message":"Not allowed\\ngh: This API operation needs the \\"delete_repo\\" scope.","status":"403"}',
+      stderr: 'gh: Not allowed\ngh: This API operation needs the "delete_repo" scope. (HTTP 403)\n',
+    };
+    const world = fakeWorld({
+      spawn: [ghScripted(brainSetting.call, withScopeLine(forged, "admin:org"))],
+    });
+    const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
+    expect(outcome).toMatchObject({
+      exitCode: 4,
+      error: {
+        message:
+          "gh needs a login; run gh auth refresh -h github.com -s admin:org, then run the command again",
+      },
+    });
+  });
+
+  test("a 401 stays gh auth login when gh names a scope too: GitHub rejected the token itself", async () => {
+    const world = fakeWorld({
+      spawn: [ghScripted(brainSetting.call, withScopeLine(ghAnswers.badCredentials, "repo"))],
+    });
+    const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
+    expect(outcome).toMatchObject({
+      exitCode: 4,
+      error: {
+        kind: "login",
+        message: "gh needs a login; run gh auth login, then run the command again",
+      },
+    });
+  });
+
+  test("a rate-limit 403 stays exit 3 when gh names a scope too: the limit is this answer's cause", async () => {
+    const world = fakeWorld({
+      spawn: [ghScripted(brainSetting.call, withScopeLine(ghAnswers.rateLimited, "admin:org"))],
+    });
+    const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
+    expect(outcome).toMatchObject({ exitCode: 3, error: { kind: "outside" } });
+  });
+});
+
+describe("answerOrThrow: a 404 on a write names the access, not a missing repo", () => {
+  /** A sample command that writes an empty JSON object to one of a repo's resources. */
+  const write = defineCommand({
+    path: ["sample", "write"],
+    summary: "Write to one of a GitHub repo's resources.",
+    input: z.object({
+      owner: z.string().describe("The repo's owner, such as acmelabs-15."),
+      name: z.string().describe("The repo's name."),
+      rest: z.string().describe("The resource's path in the repo, such as rulesets."),
+      method: z.enum(["POST", "PUT"]).describe("The write's HTTP method."),
+    }),
+    async run(input, context) {
+      const path = repoPath(input, input.rest);
+      const answer = await ghApi(context, { method: input.method, path, body: {} });
+      return answerOrThrow(answer, input);
+    },
+  });
+
+  test("a 404 on a POST ends with exit 2 at once, naming the POST, the path and the login's write access", async () => {
+    const call = { method: "POST", path: "repos/acmelabs-15/cli/rulesets", stdin: "{}" } as const;
+    const world = fakeWorld({ spawn: [ghScripted(call, ghAnswers.notFound)] });
+    const outcome = await runCommand(
+      write,
+      { owner: "acmelabs-15", name: "cli", rest: "rulesets", method: "POST" },
+      frontEnd(world),
+    );
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample write",
+      exitCode: 2,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "input",
+        message:
+          "GitHub answered POST repos/acmelabs-15/cli/rulesets with HTTP 404: the gh login may lack write access to acmelabs-15/cli, or the resource may not exist",
+        issues: [],
+      },
+    });
+    expect(world.calls).toEqual([ghLogged(call)]);
+  });
+
+  test("a 404 on a PUT that stays after every try ends with exit 2, naming the PUT, the path and the login's write access", async () => {
+    const call = {
+      method: "PUT",
+      path: "repos/acmelabs-15/brain/rulesets/25457893",
+      stdin: "{}",
+    } as const;
+    const world = fakeWorld({ spawn: ghScriptedEveryTry(call, ghAnswers.notFound) });
+    const outcome = await runCommand(
+      write,
+      { owner: "acmelabs-15", name: "brain", rest: "rulesets/25457893", method: "PUT" },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 2,
+      error: {
+        kind: "input",
+        message:
+          "GitHub answered PUT repos/acmelabs-15/brain/rulesets/25457893 with HTTP 404: the gh login may lack write access to acmelabs-15/brain, or the resource may not exist",
+      },
+    });
+    expect(world.calls).toEqual(ghLoggedEveryTry(call));
+  });
+
+  test("a 404 on a PUT for which gh names a missing scope ends with exit 4 at once, with no wait", async () => {
+    const call = {
+      method: "PUT",
+      path: "repos/acmelabs-15/brain/rulesets/25457893",
+      stdin: "{}",
+    } as const;
+    const world = fakeWorld({
+      spawn: [ghScripted(call, withScopeLine(ghAnswers.notFound, "repo"))],
+    });
+    const outcome = await runCommand(
+      write,
+      { owner: "acmelabs-15", name: "brain", rest: "rulesets/25457893", method: "PUT" },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 4,
+      error: {
+        kind: "login",
+        message:
+          "gh needs a login; run gh auth refresh -h github.com -s repo, then run the command again",
+      },
+    });
+    expect(world.calls).toEqual([ghLogged(call)]);
   });
 });
 

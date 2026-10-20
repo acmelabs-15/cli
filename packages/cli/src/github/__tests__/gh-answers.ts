@@ -180,6 +180,14 @@ export const ghAnswers = {
     '{"message":"You must be an org admin or have the actions policies fine-grained permission.","documentation_url":"https://docs.github.com/rest/actions/permissions#get-default-workflow-permissions-for-an-organization","status":"403"}',
     'gh: You must be an org admin or have the actions policies fine-grained permission. (HTTP 403)\ngh: This API operation needs the "admin:org" scope. To request it, run:  gh auth refresh -h github.com -s admin:org\n',
   ),
+  /**
+   * Built: a login that may not read a repo's Actions setting, a 403 for which gh names no scope,
+   * as for a token that reports no scopes (note 09, section 1.4).
+   */
+  adminRightsNeeded: httpError(
+    '{"message":"Must have admin rights to Repository.","documentation_url":"https://docs.github.com/rest/actions/permissions#get-default-workflow-permissions-for-a-repository","status":"403"}',
+    "gh: Must have admin rights to Repository. (HTTP 403)\n",
+  ),
   /** Built: the primary rate limit, a 403 that says "rate limit" (note 09, section 3.4). */
   rateLimited: httpError(
     '{"message":"API rate limit exceeded for user ID 1234567.","documentation_url":"https://docs.github.com/rest/overview/rate-limits-for-the-rest-api","status":"403"}',
