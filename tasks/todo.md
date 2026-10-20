@@ -232,7 +232,7 @@ Phase 3 The other steps
 
 ## Task 11: push and clone through gh's login
 
-**Description:** `git.ts` gains the command lines that reach GitHub: each starts with the host-scoped credential helper arguments and adds `GIT_TERMINAL_PROMPT=0`. `push` checks or adds `origin`, compares `git ls-remote` with the local commit, then pushes with `--set-upstream`. `clone` clones the HTTPS URL into a new folder.
+**Description:** `git.ts` gains the command lines that reach GitHub: each starts with the host-scoped credential helper arguments and `-c core.askPass=`, and runs with `gitEnv` (no `GIT_` variables, then `GIT_TERMINAL_PROMPT=0`; ADR-0016, `fb4cda4`). `push` checks or adds `origin`, compares `git ls-remote` with the local commit, then pushes with `--set-upstream`. `clone` clones the HTTPS URL into a new folder.
 
 **Acceptance criteria:**
 - [ ] Through a sample command: no `origin` gets the HTTPS URL added; another `origin` ends with exit 2; a branch already at the local commit gives a skipped step; a new push uses gh's helper and `GIT_TERMINAL_PROMPT=0`; a rejected push ends with exit 1 and git's message.
