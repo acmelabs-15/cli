@@ -327,6 +327,11 @@ https://docs.github.com/en/rest/actions/workflow-runs
 - **Probe:** `repos/acmelabs-15/brain/actions/runs?head_sha=<sha>&event=push` returned exactly the two push runs (CI and Release) of that commit. acmelabs-15/cli has `total_count: 0` runs, because it has no `.github/workflows/` yet.
 - **Probe:** the runs list response carried `Cache-Control: private, max-age=60, s-maxage=60` and an `Etag`, and no `X-Poll-Interval`.
 - **Push events and runs:** "Events will not be created for tags when more than three tags are pushed at once." https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#push
+- **Probes under `2026-03-10`** (github-ops task 13, 2026-10-20, with the spec's two headers, read-only):
+  - `repos/acmelabs-15/brain/actions/runs?head_sha=7dee2ef38b7fadfa963ea14c76193457a2f19f91&event=push&per_page=100` returned `total_count: 2`: the CI run 39382027375 (`path` `.github/workflows/ci.yml`) and the Release run 39382027513 (`path` `.github/workflows/release.yml`), both created at `2026-10-20T06:43:16Z`, CI listed first. A run's `path` is its workflow file.
+  - `repos/acmelabs-15/brain/actions/runs/39382027513` returned the same fields and values as that run's item in the list.
+  - A `head_sha` with no runs returned `{"total_count":0,"workflow_runs":[]}`.
+  - Of brain's 25 push runs, 24 concluded `success` and one `failure` (35457136418, the first Release run, 2026-09-19). Every `run_attempt` is 1. A run carries `run_attempt` and `previous_attempt_url`.
 
 ### 2.9 Get a git ref
 
@@ -338,6 +343,10 @@ https://docs.github.com/en/rest/git/refs#get-a-reference
   - `repos/acmelabs-15/cli/git/ref/tags/latest` (no such tag): stdout `{"message":"Not Found","documentation_url":"https://docs.github.com/rest/git/refs#get-a-reference","status":"404"}`, stderr `gh: Not Found (HTTP 404)`, exit 1.
   - `repos/acmelabs-15/pinky/git/ref/tags/latest` (an empty repo): `{"message":"Git Repository is empty.",...,"status":"409"}`, stderr `gh: Git Repository is empty. (HTTP 409)`, exit 1.
 - **Probes under `2026-03-10`** (github-ops task 10, 2026-10-20, with the spec's two headers): `repos/acmelabs-15/cli/git/ref/heads/main` returned `{"ref":"refs/heads/main",...,"object":{"sha":"bb0c949064ca21a2a00beff42fea6d4c2d24c27e","type":"commit",...}}`; `repos/acmelabs-15/pinky/git/ref/heads/main` (an empty repo) returned the same 409 body as its `tags/latest`; `repos/acmelabs-15/pinky` returned `"visibility":"private","default_branch":"main","size":0`; `repos/acmelabs-no-such-org-4f2b9c/cli` returned 404 `{"message":"Not Found","documentation_url":"https://docs.github.com/rest/repos/repos#get-a-repository","status":"404"}`.
+- **Probes under `2026-03-10`** (github-ops task 13, 2026-10-20, read-only):
+  - Every tag of acmelabs-15/brain is lightweight (`object.type` `commit`): `latest`, and `v0.2.0` to `v0.6.0` (`git/matching-refs/tags/`).
+  - `repos/changesets/changesets/git/ref/tags/%40changesets%2Fcli%402.27.1` returned `refs/tags/@changesets/cli@2.27.1` with `object.type` `tag`. GitHub reads an encoded `/` and `@` in a tag, and changesets' release tags are annotated (message: the tag's name; tagger: github-actions[bot]).
+  - `repos/changesets/changesets/git/tags/5f4a8bc561ec41be9ca7844c8cf2da99e2413e80` returned the tag object, whose `object` is `{"sha":"c11391bc43be1b1c1afcad15b4abb6cf8ad6e354","type":"commit",...}`.
 - A 404 can also mean "no access" for a private repo: "GitHub uses a 404 Not Found response instead of a 403 Forbidden response to avoid confirming the existence of private repositories." https://docs.github.com/en/rest/using-the-rest-api/troubleshooting-the-rest-api
 
 ## 3. Timing and limits

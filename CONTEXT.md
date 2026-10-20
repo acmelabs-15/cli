@@ -57,6 +57,10 @@ _Avoid_: port, upgrade (for a repo)
 The repository ruleset on an ACMElabs repo's default branch that blocks force-pushes and deletion, with no one allowed to bypass it.
 _Avoid_: branch protection (GitHub's older, separate feature)
 
+**Workflow run**:
+One run of a GitHub Actions workflow file on a commit, such as the Release run after a push.
+_Avoid_: run (bare, for this), build, job
+
 **Actions setting**:
 The two GitHub Actions settings of a repo that the release flow needs: workflows get a read-only token by default, and workflows may create and approve pull requests.
 _Avoid_: workflow permissions (for the pair)

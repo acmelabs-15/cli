@@ -28,7 +28,7 @@ Phase 3 The other steps
 - [x] 10. ensureRepo creates a repo, or reuses only this run's repo
 - [ ] 11. push and clone through gh's login
 - [x] 12. openPullRequest reuses an open PR or opens one
-- [ ] 13. watchRun waits for a run, and findTag reads a tag
+- [x] 13. watchRun waits for a run, and findTag reads a tag
 - [ ] Checkpoint: github-ops complete
 
 ## Task 1: A program runs in its own process group, under a time limit
@@ -271,13 +271,13 @@ Phase 3 The other steps
 **Description:** `watchRun` polls the push runs of a commit every 10 seconds until the run of the given workflow file appears (within 2 minutes), then polls that run until it completes (within 30 minutes), and reports each status change as an info message. It returns the conclusion; the step ends as done for `success` and as failed for any other. `findTag` reads a tag's commit, or `null` for a 404.
 
 **Acceptance criteria:**
-- [ ] Through a sample command: a run that appears on the second poll and succeeds gives a done step; one that fails gives a failed step, its conclusion in the result, and exit 0; the polls in `calls` are 10 seconds apart.
-- [ ] A run that does not appear in 2 minutes, or does not complete in 30, ends with exit 3 (the second names the run's URL); the step's options change all three times.
-- [ ] `findTag` returns the commit for a tag, and `null` for a 404.
+- [x] Through a sample command: a run that appears on the second poll and succeeds gives a done step; one that fails gives a failed step, its conclusion in the result, and exit 0; the polls in `calls` are 10 seconds apart.
+- [x] A run that does not appear in 2 minutes, or does not complete in 30, ends with exit 3 (the second names the run's URL); the step's options change all three times.
+- [x] `findTag` returns the commit for a tag, and `null` for a 404.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/github`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/github`
+- [x] `bun run check` is green.
 
 **Dependencies:** 4, 5
 
