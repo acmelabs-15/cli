@@ -49,8 +49,12 @@ export function defineCommand<Input extends z.ZodObject, Result extends Json>(
 ## The context a command runs in
 
 ```ts
-/** The limits that every outside program gets unless the call changes them. */
-export const limits = { programMs: 5 * 60 * 1000, outputBytes: 10 * 1024 * 1024 } as const;
+/** The limits that every outside program and request gets unless the call changes them. */
+export const limits = {
+  programMs: 5 * 60 * 1000,
+  requestMs: 60 * 1000,
+  outputBytes: 10 * 1024 * 1024,
+} as const;
 
 export type SpawnOptions = {
   cwd?: string;
@@ -64,12 +68,20 @@ export type SpawnOptions = {
   maxOutputBytes?: number;
 };
 
+/** A request's options: fetch's own, and its limits. */
+export type FetchInit = RequestInit & {
+  /** The request's time limit in milliseconds, to the end of its body: `limits.requestMs` when unset. */
+  timeoutMs?: number;
+  /** The most bytes of the response body: `limits.outputBytes` when unset. */
+  maxBodyBytes?: number;
+};
+
 export type World = {
   /** The repo folder the command acts on; the working folder by default. */
   root: string;
   env: Readonly<Record<string, string | undefined>>;
   spawn: (commandLine: readonly string[], options?: SpawnOptions) => Promise<Spawned>;
-  fetch: typeof globalThis.fetch;
+  fetch: (input: string | URL | Request, init?: FetchInit) => Promise<Response>;
   now: () => Date;
 };
 export type Spawned = { code: number; stdout: string; stderr: string };
@@ -90,8 +102,9 @@ export type Context<Input> = World & {
 - **An outside program gets the whole environment**, plus the call's `env` (ADR-0015).
 - **An outside program runs in its own process group.** At a limit and on a cancel, the World sends SIGTERM to the whole group, then SIGKILL after a grace of 5 seconds, so no program that the outside program started keeps the command waiting. A group that is already gone, or whose programs have all ended, is not an error. Once nothing in the group is left to stop, the World cancels the SIGKILL, so acmelabs can exit at once.
 - **An outside program runs under a time limit and an output limit.** The time limit is `limits.programMs`, 5 minutes, unless the call sets `timeoutMs`. The output limit is `limits.outputBytes`, 10 MB, unless the call sets `maxOutputBytes`: the World counts the bytes of stdout and of stderr, each on its own, as it reads them, and output up to the limit stays byte for byte as the program printed it. A limit rejects with an outside failure (exit 3) that names the program and the limit, such as `gh api ... ran longer than 5 minutes and was stopped` or `gh api ... printed more than 10 MB on stdout and was stopped`; a cancel rejects with the signal's reason (`spec/SPEC-github-ops.md`, "The World's limits"). A limit that is not a positive number is a bug in the caller.
+- **A request runs under a time limit and a body limit.** `fetch` is a plain function, not Bun's fetch type, so the World copies nothing such as `preconnect`. The time limit is `limits.requestMs`, 1 minute, unless the call sets `timeoutMs`: an `AbortSignal.timeout` beside the call's own signal, which covers the whole answer, its body included. The body limit is `limits.outputBytes`, 10 MB, unless the call sets `maxBodyBytes`: a body whose `Content-Length` is above it is never read, and any other body is counted as the caller reads it, after Bun decompresses it. An answer that HTTP gives no body (to HEAD, a 204 or a 304) passes, whatever its `Content-Length`. A time-out before the response rejects the call, and a time-out during the body, or a body past its limit, rejects the read of the body (`text()`, `json()` or the stream), each with an outside failure (exit 3) that names the method, the URL and the limit, such as `GET https://registry.npmjs.org/@acmelabs%2fcli got no whole answer within 1 minute and was stopped` or `... got a body of more than 10 MB and was stopped`. A cancel rejects with the signal's reason, and wins over the time limit. The message holds the whole URL: `runCommand` removes a secret query value from it, as from every message. The response keeps its status, headers, URL and redirect flag.
 - Files are not in `World`: commands use Bun's file APIs on paths under `root`, and tests use real files in a temp folder, as brain's tests do.
-- `realWorld(options)` builds the real one; its `graceMs` shortens the grace for a test. `fakeWorld(options)` builds a fake with scripted `spawn` and `fetch` answers and a log of every call, with every spawn option except the signal. A scripted spawn answer can be `missing`, `limit: "time"` or `limit: "output"` (on stdout), which reject with the same outside failures as the real World. Both live in `packages/cli/src/command/world.ts`, so later modules' tests use the same fake.
+- `realWorld(options)` builds the real one; its `graceMs` shortens the grace for a test. `fakeWorld(options)` builds a fake with scripted `spawn` and `fetch` answers and a log of every call, with every spawn option except the signal. A scripted spawn answer can be `missing`, `limit: "time"` or `limit: "output"` (on stdout), which reject with the same outside failures as the real World. A scripted fetch answer can be `limit: "time"`, which rejects the call, or `limit: "output"`, which gives the response and rejects the read of its body, each with the same outside failure as the real World. Both live in `packages/cli/src/command/world.ts`, so later modules' tests use the same fake.
 
 ## Progress updates
 

@@ -10,7 +10,7 @@ Phase 1 The World's limits
 
 - [x] 1. A program runs in its own process group, under a time limit
 - [x] 2. A program's output stops at its output limit
-- [ ] 3. A request stops at its time limit and its body limit
+- [x] 3. A request stops at its time limit and its body limit
 - [ ] 4. The World can wait, and a fake World waits in no time
 - [ ] Checkpoint: the World's limits
 
@@ -74,13 +74,13 @@ Phase 3 The other steps
 **Description:** The World's `fetch` becomes a plain function type that takes `FetchInit` (`timeoutMs`, `maxBodyBytes`). `realWorld`'s fetch adds `AbortSignal.timeout` (`limits.requestMs`, 1 minute) beside the call's own signal, to the end of the body. A `Content-Length` above the body limit (10 MB) fails before the body is read; a reader that counts bytes stops any other body at the limit. A time-out and an over-limit body reject as outside failures that name the method, the URL and the limit; a cancel stays a cancel. `run.ts` stops copying Bun's `preconnect`. `fakeWorld`'s fetch scripts `limit: "time"` and `limit: "output"`.
 
 **Acceptance criteria:**
-- [ ] Against a local `Bun.serve` server: slow headers and a slow body each fail at a 300 ms limit with kind `outside`; a cancel rejects with the cancel's reason, not a time-out.
-- [ ] A body whose `Content-Length` is above the limit fails without being read; an endless chunked body stops at the limit; a body under the limit reads whole.
-- [ ] `fakeWorld`'s fetch `limit` answers reject the same way, and `runCommand` still gives fetch the run's signal.
+- [x] Against a local `Bun.serve` server: slow headers and a slow body each fail at a 300 ms limit with kind `outside`; a cancel rejects with the cancel's reason, not a time-out.
+- [x] A body whose `Content-Length` is above the limit fails without being read; an endless chunked body stops at the limit; a body under the limit reads whole.
+- [x] `fakeWorld`'s fetch `limit` answers reject the same way, and `runCommand` still gives fetch the run's signal.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/command`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/command`
+- [x] `bun run check` is green.
 
 **Dependencies:** None (after task 2 by order: the same file)
 

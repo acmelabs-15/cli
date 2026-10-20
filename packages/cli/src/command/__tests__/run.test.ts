@@ -1391,6 +1391,92 @@ describe("runCommand: cancel reaches outside programs", () => {
   });
 });
 
+describe("runCommand: a request's limits", () => {
+  test("a request past the time limit that the command sets ends with exit 3, naming the limit", async () => {
+    const ping = defineCommand({
+      path: ["sample", "ping"],
+      summary: "Ping the npm registry, with a short time limit.",
+      input: z.object({}),
+      async run(_input, context) {
+        const response = await context.fetch("https://registry.npmjs.org/-/ping", {
+          timeoutMs: 300,
+        });
+        return response.status;
+      },
+    });
+    const world = fakeWorld({
+      fetch: [{ url: "https://registry.npmjs.org/-/ping", limit: "time" }],
+    });
+    expect(await runCommand(ping, {}, frontEnd(world))).toEqual({
+      ok: false,
+      command: "sample ping",
+      exitCode: 3,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "outside",
+        message:
+          "GET https://registry.npmjs.org/-/ping got no whole answer within 300 milliseconds and was stopped",
+        issues: [],
+      },
+    });
+  });
+
+  test("a body past the body limit that the command sets ends with exit 3 when the command reads it", async () => {
+    const packument = defineCommand({
+      path: ["sample", "packument"],
+      summary: "Read the npm registry's document for @acmelabs/cli, up to 64 KB.",
+      input: z.object({}),
+      async run(_input, context) {
+        const response = await context.fetch("https://registry.npmjs.org/@acmelabs%2fcli", {
+          maxBodyBytes: 64 * 1024,
+        });
+        const document: unknown = await response.json();
+        return typeof document;
+      },
+    });
+    const world = fakeWorld({
+      fetch: [{ url: "https://registry.npmjs.org/@acmelabs%2fcli", limit: "output" }],
+    });
+    expect(await runCommand(packument, {}, frontEnd(world))).toEqual({
+      ok: false,
+      command: "sample packument",
+      exitCode: 3,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "outside",
+        message:
+          "GET https://registry.npmjs.org/@acmelabs%2fcli got a body of more than 64 KB and was stopped",
+        issues: [],
+      },
+    });
+  });
+
+  test("a request's limit failure keeps no secret from the URL's query", async () => {
+    const read = defineCommand({
+      path: ["sample", "read"],
+      summary: "Read the API with a token in the URL.",
+      input: z.object({}),
+      async run(_input, context) {
+        const response = await context.fetch("https://x.example/api?token=abc123def&page=2");
+        return response.status;
+      },
+    });
+    const world = fakeWorld({
+      fetch: [{ url: "https://x.example/api?token=abc123def&page=2", limit: "time" }],
+    });
+    const outcome = await runCommand(read, {}, frontEnd(world));
+    expect(outcome).toMatchObject({
+      exitCode: 3,
+      error: {
+        kind: "outside",
+        message:
+          "GET https://x.example/api?token=[redacted]&page=2 got no whole answer within 1 minute and was stopped",
+      },
+    });
+    expect(JSON.stringify(outcome)).not.toContain("abc123def");
+  });
+});
+
 /**
  * A front-end whose progress logs each update, then throws, as a write to a closed pipe does.
  * `before` runs first, such as a cancel.

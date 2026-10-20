@@ -18,18 +18,14 @@ function millisecondsSince(started: number): number {
 
 /**
  * The world's fetch, with the run's signal unless the command passes its own in the options. A
- * Request keeps its own signal, and takes the run's signal too.
+ * Request keeps its own signal, and takes the run's signal too. The call's limits pass on as they
+ * are.
  */
 function fetchWithSignal(world: World, signal: AbortSignal): World["fetch"] {
-  function signalled(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+  return (input, init) => {
     const fallback = input instanceof Request ? AbortSignal.any([input.signal, signal]) : signal;
     return world.fetch(input, { ...init, signal: init?.signal ?? fallback });
-  }
-  return Object.assign(signalled, {
-    preconnect(...args: Parameters<World["fetch"]["preconnect"]>) {
-      world.fetch.preconnect(...args);
-    },
-  });
+  };
 }
 
 /** The question for one optional input field: its flag, its description and its schema. */

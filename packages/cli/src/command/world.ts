@@ -2,11 +2,13 @@ import type { CommandError } from "./outcome";
 import { outsideError } from "./outcome";
 import { sameWords } from "./words";
 
-/** The limits that every outside program gets unless the call changes them. */
+/** The limits that every outside program and request gets unless the call changes them. */
 export const limits = {
   /** A program's time limit: 5 minutes. */
   programMs: 5 * 60 * 1000,
-  /** The most bytes kept from stdout, and from stderr: 10 MB. */
+  /** A request's time limit, to the end of its body: 1 minute. */
+  requestMs: 60 * 1000,
+  /** The most bytes kept from stdout, from stderr, or from a response body: 10 MB. */
   outputBytes: 10 * 1024 * 1024,
 } as const;
 
@@ -39,6 +41,17 @@ export type SpawnOptions = {
 /** How a spawned program ended: its exit code, and its output as text. */
 export type Spawned = { code: number; stdout: string; stderr: string };
 
+/** A request's options: fetch's own, and its limits. */
+export type FetchInit = RequestInit & {
+  /**
+   * The request's time limit in milliseconds, to the end of its body, a positive number:
+   * `limits.requestMs` when unset. A limit past about 24 days acts as about 24 days.
+   */
+  timeoutMs?: number;
+  /** The most bytes of the response body, a positive number: `limits.outputBytes` when unset. */
+  maxBodyBytes?: number;
+};
+
 /** The outside world a command reaches. Commands reach programs, the network and env only here. */
 export type World = {
   /** The repo folder the command acts on; the working folder by default. */
@@ -54,8 +67,15 @@ export type World = {
    * with an outside failure that names it.
    */
   spawn: (commandLine: readonly string[], options?: SpawnOptions) => Promise<Spawned>;
-  /** Sends an HTTP request. */
-  fetch: typeof globalThis.fetch;
+  /**
+   * Sends an HTTP request, as the global fetch does, under a time limit and a body limit. A request
+   * that gets no whole answer, its body included, within its time limit stops and rejects with an
+   * outside failure that names the method, the URL and the limit; a read of the body rejects so
+   * when the time-out comes during the body. A body past its body limit stops, and its read
+   * rejects with an outside failure too: at once when its Content-Length tells it, so it is never
+   * read. When the signal aborts, the call or the read rejects with the signal's reason.
+   */
+  fetch: (input: string | URL | Request, init?: FetchInit) => Promise<Response>;
   /** The current time. */
   now: () => Date;
 };
@@ -106,12 +126,13 @@ function sizeOf(bytes: number): string {
 }
 
 /**
- * A limit that a spawn call gives, such as its time limit in milliseconds. A limit that is not a
- * positive number is a bug in the caller, not an outside failure, so it throws a plain Error.
+ * A limit that a spawn or fetch call gives, such as its time limit in milliseconds. `name` says
+ * whose limit it is, such as "a program's time limit". A limit that is not a positive number is a
+ * bug in the caller, not an outside failure, so it throws a plain Error.
  */
 function positiveLimit(limit: number, name: string, unit: string): number {
   if (Number.isNaN(limit) || limit <= 0) {
-    throw new Error(`a program's ${name} is a positive number of ${unit}, not ${limit}`);
+    throw new Error(`${name} is a positive number of ${unit}, not ${limit}`);
   }
   return limit;
 }
@@ -119,10 +140,30 @@ function positiveLimit(limit: number, name: string, unit: string): number {
 /** A spawn call's limits: its own, or the ones in `limits`. */
 function programLimits(options: SpawnOptions): { timeoutMs: number; maxOutputBytes: number } {
   return {
-    timeoutMs: positiveLimit(options.timeoutMs ?? limits.programMs, "time limit", "milliseconds"),
+    timeoutMs: positiveLimit(
+      options.timeoutMs ?? limits.programMs,
+      "a program's time limit",
+      "milliseconds",
+    ),
     maxOutputBytes: positiveLimit(
       options.maxOutputBytes ?? limits.outputBytes,
-      "output limit",
+      "a program's output limit",
+      "bytes",
+    ),
+  };
+}
+
+/** A fetch call's limits: its own, or the ones in `limits`. */
+function requestLimits(init: FetchInit): { timeoutMs: number; maxBodyBytes: number } {
+  return {
+    timeoutMs: positiveLimit(
+      init.timeoutMs ?? limits.requestMs,
+      "a request's time limit",
+      "milliseconds",
+    ),
+    maxBodyBytes: positiveLimit(
+      init.maxBodyBytes ?? limits.outputBytes,
+      "a request's body limit",
       "bytes",
     ),
   };
@@ -154,6 +195,45 @@ function outputLimitReached(
   return outsideError(
     `${shortCommandLine(commandLine)} printed more than ${sizeOf(maxOutputBytes)} on ${stream} and was stopped`,
   );
+}
+
+/** fetch's own options: a fetch call's options without the World's limits. */
+function fetchOptions(init: FetchInit): RequestInit {
+  const { timeoutMs: _timeoutMs, maxBodyBytes: _maxBodyBytes, ...options } = init;
+  return options;
+}
+
+/** A request's method in capitals: the options' method, else a Request's own, else GET. */
+function methodOf(input: string | URL | Request, options: RequestInit): string {
+  return (options.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+}
+
+/**
+ * A request in words, for a message: its method and its URL in normal form, such as
+ * `GET https://api.github.com/`. The whole URL, its query too: runCommand removes a secret from
+ * every message, so the World does not.
+ */
+function methodAndUrl(input: string | URL | Request, options: RequestInit = {}): string {
+  const url = input instanceof Request ? input.url : new URL(input).href;
+  return `${methodOf(input, options)} ${url}`;
+}
+
+/**
+ * The outside failure for a request stopped at its time limit, kind `outside`, exit 3: it names
+ * the request and the limit. realWorld and fakeWorld both give it.
+ */
+function requestTimeLimitReached(request: string, timeoutMs: number): CommandError {
+  return outsideError(
+    `${request} got no whole answer within ${durationOf(timeoutMs)} and was stopped`,
+  );
+}
+
+/**
+ * The outside failure for a response body stopped past its body limit, kind `outside`, exit 3: it
+ * names the request and the limit. realWorld and fakeWorld both give it.
+ */
+function bodyLimitReached(request: string, maxBodyBytes: number): CommandError {
+  return outsideError(`${request} got a body of more than ${sizeOf(maxBodyBytes)} and was stopped`);
 }
 
 /**
@@ -277,6 +357,18 @@ function groupStop(pid: number, graceMs: number) {
 const longestTimerMs = 2 ** 31 - 1;
 
 /**
+ * The byte counter of one stream, for a program's output and for a response body: it counts each
+ * chunk's bytes, and tells whether the count has passed `maxBytes`. Exactly `maxBytes` is kept.
+ */
+function byteCounter(maxBytes: number): (chunk: Uint8Array) => boolean {
+  let bytes = 0;
+  return (chunk) => {
+    bytes += chunk.byteLength;
+    return bytes > maxBytes;
+  };
+}
+
+/**
  * Reads one output stream as text and counts its bytes. Past `maxBytes` it calls `onOverLimit` and
  * stops reading; the text it returns is then cut short, and the call that reads it rejects. A
  * character split across two reads stays whole, as with Bun's own `text()`. Bun's `maxBuffer` is
@@ -288,11 +380,10 @@ async function readOutput(
   onOverLimit: () => void,
 ): Promise<string> {
   const decoder = new TextDecoder();
-  let bytes = 0;
+  const pastLimit = byteCounter(maxBytes);
   let text = "";
   for await (const chunk of stream) {
-    bytes += chunk.byteLength;
-    if (bytes > maxBytes) {
+    if (pastLimit(chunk)) {
       onOverLimit();
       // Leaving the loop cancels the stream, so nothing more is read or kept.
       return text;
@@ -357,6 +448,166 @@ async function spawnWithBun(
   }
 }
 
+/**
+ * A response body whose first read rejects with `failure`. It reads nothing, and fails only when
+ * it is read.
+ */
+function failingBody(failure: CommandError): ReadableStream<Uint8Array> {
+  return new ReadableStream(
+    {
+      pull(controller) {
+        controller.error(failure);
+      },
+    },
+    // No read ahead, so the body fails at the caller's read, as a body that is read fails.
+    { highWaterMark: 0 },
+  );
+}
+
+/**
+ * The response with another body, and the same status, headers, URL and redirect flag. A new
+ * Response has no URL of its own, so it gets the fetched one's. Its `type` is "default", and a
+ * clone of it has no URL.
+ */
+function withBody(response: Response, body: ReadableStream<Uint8Array>): Response {
+  const replaced = new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+  return Object.defineProperties(replaced, {
+    url: { value: response.url },
+    redirected: { value: response.redirected },
+  });
+}
+
+/**
+ * The body limit of one request: the request in words, for the failure; the most bytes of its
+ * body; and the call's failure behind any other error of a read, such as the time-out.
+ */
+type BodyLimit = {
+  request: string;
+  maxBytes: number;
+  failureOf: (error: unknown) => unknown;
+};
+
+/**
+ * A response body that counts its bytes as the caller reads it. Past the limit it cancels the
+ * fetched body and rejects the read with the body limit's failure. Bun's fetch decompresses the
+ * body, so the count is of the bytes the caller gets, not of the bytes on the wire. A cancel of
+ * this body cancels the fetched one at once, a read in progress too.
+ */
+function countedBody(
+  body: ReadableStream<Uint8Array>,
+  limit: BodyLimit,
+): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  const pastLimit = byteCounter(limit.maxBytes);
+  return new ReadableStream(
+    {
+      async pull(controller) {
+        const next = await reader.read().catch((error: unknown) => {
+          throw limit.failureOf(error);
+        });
+        if (next.done) {
+          controller.close();
+        } else if (pastLimit(next.value)) {
+          await reader.cancel();
+          throw bodyLimitReached(limit.request, limit.maxBytes);
+        } else {
+          controller.enqueue(next.value);
+        }
+      },
+      cancel(reason) {
+        return reader.cancel(reason);
+      },
+    },
+    // No read ahead: the fetched body is read only as far as the caller reads.
+    { highWaterMark: 0 },
+  );
+}
+
+/**
+ * Whether HTTP gives an answer no body: the answer to HEAD, a 204 No Content or a 304 Not Modified.
+ * Such an answer's Content-Length tells the size of another answer's body, such as a GET's.
+ */
+function hasNoBody(method: string, status: number): boolean {
+  return method === "HEAD" || status === 204 || status === 304;
+}
+
+/**
+ * The fetched response, with a body that holds to the body limit. A body whose Content-Length is
+ * past the limit is never read: it is cancelled, and its first read rejects. Any other body is
+ * counted as it is read. An answer that HTTP gives no body comes back as it is.
+ */
+async function limitedResponse(
+  response: Response,
+  method: string,
+  limit: BodyLimit,
+): Promise<Response> {
+  const { body } = response;
+  if (body === null || hasNoBody(method, response.status)) {
+    return response;
+  }
+  const length = response.headers.get("content-length");
+  if (length !== null && Number(length) > limit.maxBytes) {
+    try {
+      await body.cancel();
+    } catch {
+      // A body that failed already, such as at the time-out, rejects the cancel too. It is gone
+      // either way, and its first read rejects with the body limit's failure all the same.
+    }
+    return withBody(response, failingBody(bodyLimitReached(limit.request, limit.maxBytes)));
+  }
+  return withBody(response, countedBody(body, limit));
+}
+
+/**
+ * Sends a request with Bun's fetch, under its time limit and its body limit. The time limit is an
+ * `AbortSignal.timeout` beside the call's own signal. Bun stops the body too when the signal on
+ * the request aborts, so the limit covers the whole answer (note 10, section 3). The call's own
+ * signal wins over the time limit: a cancel stays a cancel.
+ */
+async function fetchWithLimits(
+  input: string | URL | Request,
+  init: FetchInit = {},
+): Promise<Response> {
+  const options = fetchOptions(init);
+  // The call's own signal: the options' signal, else a Request's own, as fetch takes it.
+  const own = options.signal ?? (input instanceof Request ? input.signal : undefined);
+  // An aborted signal sends no request, and the call keeps the signal's reason.
+  own?.throwIfAborted();
+  const { timeoutMs, maxBodyBytes } = requestLimits(init);
+  const request = methodAndUrl(input, options);
+  // AbortSignal.timeout throws for a delay past the largest safe integer, such as Infinity.
+  const timeout = AbortSignal.timeout(Math.min(timeoutMs, longestTimerMs));
+  // The call's failure behind an error of the request or of its body: the cancel's reason, the
+  // time limit's failure, or else the error as it is.
+  function failureOf(error: unknown): unknown {
+    if (own?.aborted === true) {
+      return own.reason;
+    }
+    if (timeout.aborted) {
+      return requestTimeLimitReached(request, timeoutMs);
+    }
+    return error;
+  }
+  let response: Response;
+  try {
+    response = await fetch(input, {
+      ...options,
+      signal: own === undefined ? timeout : AbortSignal.any([own, timeout]),
+    });
+  } catch (error) {
+    throw failureOf(error);
+  }
+  return limitedResponse(response, methodOf(input, options), {
+    request,
+    maxBytes: maxBodyBytes,
+    failureOf,
+  });
+}
+
 /** What realWorld takes: the grace between SIGTERM and SIGKILL when it stops a program. */
 export type RealWorldOptions = {
   /** 5 seconds when unset; a test of a program that ignores SIGTERM sets less. */
@@ -367,8 +618,8 @@ export type RealWorldOptions = {
 const defaultGraceMs = 5 * 1000;
 
 /**
- * The real World: the working folder, the process environment, Bun's spawn, the global fetch and
- * the clock. It is the one place in the CLI that touches the process for these.
+ * The real World: the working folder, the process environment, Bun's spawn and fetch, each under
+ * its limits, and the clock. It is the one place in the CLI that touches the process for these.
  */
 export function realWorld(options: RealWorldOptions = {}): World {
   const graceMs = options.graceMs ?? defaultGraceMs;
@@ -378,7 +629,7 @@ export function realWorld(options: RealWorldOptions = {}): World {
     spawn(commandLine, spawnOptions = {}) {
       return spawnWithBun(commandLine, spawnOptions, graceMs);
     },
-    fetch: globalThis.fetch,
+    fetch: fetchWithLimits,
     now() {
       return new Date();
     },
@@ -403,12 +654,19 @@ export type ScriptedSpawn = {
 
 /**
  * A scripted answer to a fetch call: the method (GET when unset) and the URL it matches, and the
- * response's status, body and headers.
+ * response's status, body and headers. A request with a `limit` reached it, as realWorld's does.
  */
 export type ScriptedFetch = {
   method?: string;
   url: string;
   answer?: { status?: number; body?: string; headers?: Record<string, string> };
+  /**
+   * "time": the request got no whole answer within the call's time limit, or `limits.requestMs`;
+   * the call rejects. "output": its body passed the call's body limit, or `limits.outputBytes`;
+   * the call gives the response with the answer's status and headers, and a read of its body
+   * rejects.
+   */
+  limit?: "time" | "output";
 };
 
 /** What fakeWorld builds a fake World from. Each field is optional. */
@@ -455,7 +713,8 @@ function fetchMatches(entry: ScriptedFetch, request: Request): boolean {
  * A fake World for tests. `spawn` and `fetch` answer from the scripts in the options: a call takes
  * the first unused scripted answer that matches it, so each answer answers one call. A call with no
  * answer left fails with an error that names the call. A call whose signal is aborted rejects with
- * the signal's reason, as the real one does. `calls` logs every call, in order.
+ * the signal's reason, and an answer with a `limit` fails, each as the real one does. `calls` logs
+ * every call, in order.
  *
  * With no root, the root is a folder that does not exist, so a test that forgets to give one fails
  * instead of writing in the working folder. With no env, env is empty; with no time, the clock
@@ -494,22 +753,31 @@ export function fakeWorld(options: FakeWorldOptions = {}): FakeWorld {
     return { code: answer.code ?? 0, stdout: answer.stdout ?? "", stderr: answer.stderr ?? "" };
   }
 
-  function answerFetch(input: string | URL | Request, init?: RequestInit): Response {
+  function answerFetch(input: string | URL | Request, init: FetchInit = {}): Response {
+    const requestInit = fetchOptions(init);
     const request =
-      input instanceof Request ? new Request(input, init) : new Request(String(input), init);
+      input instanceof Request
+        ? new Request(input, requestInit)
+        : new Request(String(input), requestInit);
     calls.push({ kind: "fetch", method: request.method, url: request.url });
     request.signal.throwIfAborted();
+    // So does a call with a limit that is not a positive number.
+    const { timeoutMs, maxBodyBytes } = requestLimits(init);
     const scripted = take(fetchScript, (entry) => fetchMatches(entry, request));
     if (scripted === undefined) {
       throw new Error(
         `fakeWorld has no scripted answer for fetch ${request.method} ${request.url}; add one to its fetch list`,
       );
     }
+    if (scripted.limit === "time") {
+      throw requestTimeLimitReached(methodAndUrl(request), timeoutMs);
+    }
     const answer = scripted.answer ?? {};
-    return new Response(answer.body ?? null, {
-      status: answer.status ?? 200,
-      headers: answer.headers,
-    });
+    const body =
+      scripted.limit === "output"
+        ? failingBody(bodyLimitReached(methodAndUrl(request), maxBodyBytes))
+        : (answer.body ?? null);
+    return new Response(body, { status: answer.status ?? 200, headers: answer.headers });
   }
 
   // Promise.try turns a throw into a rejection, as the real spawn and fetch fail.
@@ -520,7 +788,7 @@ export function fakeWorld(options: FakeWorldOptions = {}): FakeWorld {
     return Promise.try(answerSpawn, commandLine, spawnOptions);
   }
 
-  function fakeFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+  function fakeFetch(input: string | URL | Request, init?: FetchInit): Promise<Response> {
     return Promise.try(answerFetch, input, init);
   }
 
@@ -528,11 +796,7 @@ export function fakeWorld(options: FakeWorldOptions = {}): FakeWorld {
     root: options.root ?? defaultRoot,
     env: options.env ?? {},
     spawn: fakeSpawn,
-    fetch: Object.assign(fakeFetch, {
-      preconnect() {
-        // Bun's fetch type carries `preconnect`. The fake opens no socket, so it has nothing to do.
-      },
-    }),
+    fetch: fakeFetch,
     now() {
       return new Date(time);
     },
