@@ -25,7 +25,7 @@ Phase 2 The tracer and the settings
 
 Phase 3 The other steps
 
-- [ ] 10. ensureRepo creates a repo, or reuses only this run's repo
+- [x] 10. ensureRepo creates a repo, or reuses only this run's repo
 - [ ] 11. push and clone through gh's login
 - [x] 12. openPullRequest reuses an open PR or opens one
 - [ ] 13. watchRun waits for a run, and findTag reads a tag
@@ -216,13 +216,13 @@ Phase 3 The other steps
 **Description:** `ensureRepo` reads the repo. On 404 it creates it in the organization with the name, the description and the visibility. When the repo exists, it checks the visibility, then reads the default branch: 409 "Git Repository is empty" means reuse; a commit means reuse only when `git merge-base --is-ancestor <sha> HEAD` succeeds in `localRoot`. `git.ts` starts with that command line.
 
 **Acceptance criteria:**
-- [ ] Through a sample command: a 404 gives a `POST` with the asked fields and a done step (`made: "created"`); an empty repo, and a repo whose main commit is in the local history, give a skipped step (`made: "reused"`) and no write.
-- [ ] Another visibility, a commit outside the local history, an unknown owner, and a 422 "name already exists" each end with exit 2 naming the repo, and make no write.
-- [ ] Against a real git repo in a temp folder, the local-history check says yes for an ancestor, and no for another commit and for an unknown sha.
+- [x] Through a sample command: a 404 gives a `POST` with the asked fields and a done step (`made: "created"`); an empty repo, and a repo whose main commit is in the local history, give a skipped step (`made: "reused"`) and no write.
+- [x] Another visibility, a commit outside the local history, an unknown owner, and a 422 "name already exists" each end with exit 2 naming the repo, and make no write.
+- [x] Against a real git repo in a temp folder, the local-history check says yes for an ancestor, and no for another commit and for an unknown sha.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/github`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/github`
+- [x] `bun run check` is green.
 
 **Dependencies:** 5 (after task 9 by order)
 
