@@ -7,7 +7,7 @@ The index of the spec. Peter approved this map on 2026-10-20 (`docs/design/spec-
 | Layer | Module id | Responsibility | Depends on | Spec |
 |---|---|---|---|---|
 | 1 | `repo-model` | The repo config (repo kind, hosts) and the host table: each host's manifests, version fields and validator | none | [built](SPEC-repo-model.md); merged in PR #1 (`082abe4`), 2026-10-20 |
-| 1 | `command-core` | The command list: each command's inputs, events, result, errors and exit codes | none | [approved](SPEC-command-core.md) 2026-10-20 |
+| 1 | `command-core` | The command list: each command's inputs, events, result, errors and exit codes | none | [built](SPEC-command-core.md); merged in PR #2 (`38888fa`), 2026-10-20 |
 | 1 | `tui-kit` | The theme, the vendored `@clack/ui` preview, and the Bubbles-style components with focus | none | not written; prototype first |
 | 1 | `config-presets` | `@acmelabs/config`: the oxlint, oxfmt and tsconfig presets, each deviation with its reason | none | not written |
 | 1 | `github-ops` | GitHub steps: create a repo, set visibility, the Actions setting and the "Protect main" ruleset, push, open a PR, watch a run | none | not written |

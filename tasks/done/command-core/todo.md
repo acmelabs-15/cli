@@ -20,7 +20,7 @@ Phase 2 The rest of the frame
 - [x] 8. Review fixes: secrets redacted, the progress sink guarded, a missing program exits 3, one shared helper
 - [x] 9. Review fixes: the front-end types in command.ts, and run.ts split into input, steps and run
 - [x] 10. Review fixes: list rules apart, descriptions through wrappers, nits, glossary and spec records
-- [ ] Checkpoint: command-core complete
+- [x] Checkpoint: command-core complete
 
 ## Task 1: World: realWorld and fakeWorld
 
@@ -218,4 +218,4 @@ Phase 2 The rest of the frame
 
 - [x] Every success criterion in `spec/SPEC-command-core.md` passes.
 - [x] The Definition of Done holds for the module.
-- [ ] `/brain:review` on the module's commits, then Peter's choice on the PR into `main`.
+- [x] `/brain:review` on the module's commits (approve after the re-check). Peter chose on 2026-10-20 to merge PR #2 at once; it merged as `38888fa`.
