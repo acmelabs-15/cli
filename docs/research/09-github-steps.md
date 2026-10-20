@@ -16,6 +16,7 @@ What this is: research for the `github-ops` module spec: the gh CLI, the REST en
 ### 1.2 `gh api`
 
 - **Token order:** `GH_TOKEN`, then `GITHUB_TOKEN`, then `oauth_token` in `hosts.yml`, then the system keyring for the active account. For a GitHub Enterprise Server host the variables are `GH_ENTERPRISE_TOKEN`, then `GITHUB_ENTERPRISE_TOKEN`. https://github.com/cli/go-gh/blob/v2.13.0/pkg/auth/auth.go (`tokenForHost`) · https://github.com/cli/cli/blob/v2.98.0/internal/config/config.go (`ActiveToken`) · `gh help environment`
+- **An empty variable counts as unset:** go-gh reads `GH_TOKEN`, then `GITHUB_TOKEN`, only when the variable has text (`os.Getenv(...) != ""` in `tokenForHost`, `pkg/auth/auth.go` at v2.13.0). gh's git helper reads the token the same way (`cfg.ActiveToken` in `pkg/cmd/auth/gitcredential/helper.go` at v2.98.0). gh auth login and gh auth refresh refuse while the active token's source ends in `_TOKEN` (`AuthTokenWriteable` in `pkg/cmd/auth/shared/writeable.go`), so with both variables set, clearing `GH_TOKEN` alone leaves gh on `GITHUB_TOKEN`, and the refusal stays. (Read from source by the github-ops last slice, 2026-10-20; not probed.)
 - gh 2.98.0 pins go-gh v2.13.0. (`go.mod` at `v2.98.0`)
 - **Header:** gh sends `Authorization: token <token>`. A `-H "Authorization: ..."` from the caller wins, because gh sets the header only when it is empty. https://github.com/cli/cli/blob/v2.98.0/api/http_client.go (`AddAuthTokenHeader`)
 - **An HTTP error (status 300 or more):**

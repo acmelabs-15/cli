@@ -296,6 +296,27 @@ describe("checkLogin: a login is needed", () => {
     expect(world.calls).toEqual([statusLogged]);
   });
 
+  test("a token from GH_TOKEN beside a set GITHUB_TOKEN names both to clear: gh reads GITHUB_TOKEN once GH_TOKEN is cleared", async () => {
+    // gh reads GH_TOKEN first (note 09, section 1.2), and refuses gh auth login while its token
+    // comes from either variable (section 1.4).
+    const world = fakeWorld({
+      env: { GH_TOKEN: "not-a-real-token", GITHUB_TOKEN: "also-not-a-real-token" },
+      spawn: [statusScripted(statusAnswers.badEnvToken)],
+    });
+    const outcome = await runCommand(
+      loginCommand,
+      { scopes: ["repo", "workflow"] },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 4,
+      error: {
+        kind: "login",
+        message: String.raw`gh needs a login; replace the token in GH_TOKEN, or clear both GH_TOKEN and GITHUB_TOKEN and run gh auth login, then run the command again: non-200 OK status code: 401 Unauthorized body: "{\r\n  \"message\": \"Bad credentials\",\r\n  \"documentation_url\": \"https://docs.github.com/rest\",\r\n  \"status\": \"401\"\r\n}"`,
+      },
+    });
+  });
+
   test("a token from GITHUB_TOKEN in the state error names GITHUB_TOKEN", async () => {
     // Built: as badEnvToken, with the token in GITHUB_TOKEN and no keyring login, as in CI.
     const world = fakeWorld({

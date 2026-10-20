@@ -945,3 +945,113 @@ describe("ghApi: a login is needed", () => {
     });
   });
 });
+
+describe("ghApi: a login failure for a token from GH_TOKEN or GITHUB_TOKEN", () => {
+  // gh auth login and gh auth refresh refuse to run while gh's token comes from either variable
+  // (note 09, section 1.4), so the message names the variable that gh reads, by gh's rule:
+  // GH_TOKEN when it has text, else GITHUB_TOKEN (note 09, section 1.2).
+  test("a 401 with GH_TOKEN set ends with exit 4, naming GH_TOKEN, then gh auth login after it is cleared", async () => {
+    const world = fakeWorld({
+      env: { GH_TOKEN: "not-a-real-token" },
+      spawn: [ghScripted(brainSetting.call, ghAnswers.badCredentials)],
+    });
+    const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample read",
+      exitCode: 4,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "login",
+        message:
+          "gh needs a login; replace the token in GH_TOKEN, or clear GH_TOKEN and run gh auth login, then run the command again",
+        issues: [],
+      },
+    });
+  });
+
+  test("a 401 with only GITHUB_TOKEN set names GITHUB_TOKEN", async () => {
+    const world = fakeWorld({
+      env: { GITHUB_TOKEN: "also-not-a-real-token" },
+      spawn: [ghScripted(brainSetting.call, ghAnswers.badCredentials)],
+    });
+    const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
+    expect(outcome).toMatchObject({
+      exitCode: 4,
+      error: {
+        kind: "login",
+        message:
+          "gh needs a login; replace the token in GITHUB_TOKEN, or clear GITHUB_TOKEN and run gh auth login, then run the command again",
+      },
+    });
+  });
+
+  test("a 401 with both set names GH_TOKEN's token, and both variables to clear: gh reads GITHUB_TOKEN once GH_TOKEN is cleared", async () => {
+    const world = fakeWorld({
+      env: { GH_TOKEN: "not-a-real-token", GITHUB_TOKEN: "also-not-a-real-token" },
+      spawn: [ghScripted(brainSetting.call, ghAnswers.badCredentials)],
+    });
+    const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
+    expect(outcome).toMatchObject({
+      exitCode: 4,
+      error: {
+        kind: "login",
+        message:
+          "gh needs a login; replace the token in GH_TOKEN, or clear both GH_TOKEN and GITHUB_TOKEN and run gh auth login, then run the command again",
+      },
+    });
+  });
+
+  test("an empty GH_TOKEN counts as unset, as gh counts it: GITHUB_TOKEN is named alone", async () => {
+    // go-gh reads a variable only when it has text (`tokenForHost` in pkg/auth/auth.go at v2.13.0).
+    const world = fakeWorld({
+      env: { GH_TOKEN: "", GITHUB_TOKEN: "also-not-a-real-token" },
+      spawn: [ghScripted(brainSetting.call, ghAnswers.badCredentials)],
+    });
+    const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
+    expect(outcome).toMatchObject({
+      exitCode: 4,
+      error: {
+        kind: "login",
+        message:
+          "gh needs a login; replace the token in GITHUB_TOKEN, or clear GITHUB_TOKEN and run gh auth login, then run the command again",
+      },
+    });
+  });
+
+  test("a scope that gh names as missing, with GH_TOKEN set, names GH_TOKEN, then gh auth refresh after it is cleared", async () => {
+    const world = fakeWorld({
+      env: { GH_TOKEN: "not-a-real-token" },
+      spawn: [ghScripted(brainSetting.call, ghAnswers.orgAdminNeeded)],
+    });
+    const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample read",
+      exitCode: 4,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "login",
+        message:
+          "gh needs a login; give the admin:org scope to the token in GH_TOKEN, or clear GH_TOKEN and run gh auth refresh -h github.com -s admin:org, then run the command again",
+        issues: [],
+      },
+    });
+  });
+
+  test("a scope that gh names as missing, with both set, names GH_TOKEN's token, and both variables to clear", async () => {
+    const world = fakeWorld({
+      env: { GH_TOKEN: "not-a-real-token", GITHUB_TOKEN: "also-not-a-real-token" },
+      spawn: [ghScripted(brainSetting.call, ghAnswers.orgAdminNeeded)],
+    });
+    const outcome = await runCommand(read, brainSetting.input, frontEnd(world));
+    expect(outcome).toMatchObject({
+      exitCode: 4,
+      error: {
+        kind: "login",
+        message:
+          "gh needs a login; give the admin:org scope to the token in GH_TOKEN, or clear both GH_TOKEN and GITHUB_TOKEN and run gh auth refresh -h github.com -s admin:org, then run the command again",
+      },
+    });
+  });
+});

@@ -1,10 +1,10 @@
 import { z } from "zod";
 
 import type { CommandError } from "../command/outcome";
-import { inputError, loginNeeded, outsideError, problem } from "../command/outcome";
+import { inputError, outsideError, problem } from "../command/outcome";
 import type { Spawned, World } from "../command/world";
 import type { StepContext } from "./gh";
-import { ghLogin, ghRefresh, repoPath } from "./gh";
+import { ghLoginNeeded, repoPath, tokenVariablesIn } from "./gh";
 import type { GitHubRepo } from "./names";
 import { fullName } from "./names";
 
@@ -255,16 +255,23 @@ const pushRejected = /! \[(?:remote )?rejected\]/u;
 /**
  * The failure for a git call to GitHub that did not exit 0, by the spec's table "GitHub's answers
  * and the failure kinds". The missing `workflow` scope comes first: GitHub gives it as a rejected
- * ref. A rejected push is a problem, exit 1, with git's message, and is never forced. Any other
- * end, such as a network failure, is an outside failure that names the call and git's message.
+ * ref. A login failure names a fix that works for the login's token variables in `env`, the
+ * World's env, as gh's helper reads them (`ghLoginNeeded`). A rejected push is a problem, exit 1,
+ * with git's message, and is never forced. Any other end, such as a network failure, is an outside
+ * failure that names the call and git's message.
  */
-function gitHubFailure(repo: GitHubRepo, call: GitCall, spawned: Spawned): CommandError {
+function gitHubFailure(
+  env: World["env"],
+  repo: GitHubRepo,
+  call: GitCall,
+  spawned: Spawned,
+): CommandError {
   const said = spawned.stderr.trim();
   if (workflowScopeMissing.test(said)) {
-    return loginNeeded("gh", ghRefresh("workflow"));
+    return ghLoginNeeded(tokenVariablesIn(env), { scopes: ["workflow"] });
   }
   if (noLogin.test(said)) {
-    return loginNeeded("gh", ghLogin);
+    return ghLoginNeeded(tokenVariablesIn(env));
   }
   if (repoNotFound.test(said)) {
     return inputError(
@@ -307,7 +314,7 @@ async function runOnGitHub(
     spawned = await runGit(context, withLogin);
   }
   if (spawned.code !== 0) {
-    throw gitHubFailure(repo, call, spawned);
+    throw gitHubFailure(context.env, repo, call, spawned);
   }
   return spawned;
 }

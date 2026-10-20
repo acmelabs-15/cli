@@ -425,6 +425,24 @@ describe("push: GitHub rejects the push", () => {
     expect(world.calls).toEqual([...loggedBeforePush, logged("push")]);
   });
 
+  test("the workflow scope missing from a token in GITHUB_TOKEN names GITHUB_TOKEN, then gh auth refresh after it is cleared", async () => {
+    // As in CI: a token in GITHUB_TOKEN, which gh's helper serves, and gh auth refresh refuses
+    // to run while it is set (note 09, section 1.4).
+    const world = fakeWorld({
+      env: { GITHUB_TOKEN: "also-not-a-real-token" },
+      spawn: [...beforePush, git("push", gitAnswers.workflowScope)],
+    });
+    const outcome = await runCommand(pushCommand, jevMain, frontEnd(world));
+    expect(outcome).toMatchObject({
+      exitCode: 4,
+      error: {
+        kind: "login",
+        message:
+          "gh needs a login; give the workflow scope to the token in GITHUB_TOKEN, or clear GITHUB_TOKEN and run gh auth refresh -h github.com -s workflow, then run the command again",
+      },
+    });
+  });
+
   test("a login that may not push ends with exit 2, naming the repo and git's message", async () => {
     const world = fakeWorld({ spawn: [...beforePush, git("push", gitAnswers.noPushAccess)] });
     const outcome = await runCommand(pushCommand, jevMain, frontEnd(world));
@@ -460,6 +478,33 @@ describe("push: git's answers on the way to GitHub", () => {
       },
     });
     expect(caller.updates).toEqual([pushStep("started"), pushStep("failed")]);
+    expect(world.calls).toEqual(loggedBeforePush);
+  });
+
+  test("a token from GH_TOKEN that GitHub rejects ends with exit 4, naming GH_TOKEN, then gh auth login after it is cleared", async () => {
+    // The probe of github-ops task 11: gh's helper with GH_TOKEN=not-a-real-token. gh auth login
+    // refuses to run while GH_TOKEN is set (note 09, section 1.4).
+    const world = fakeWorld({
+      env: { GH_TOKEN: "not-a-real-token" },
+      spawn: [
+        git("localCommit", { stdout: `${localSha}\n` }),
+        git("origin", { stdout: jevOrigin }),
+        git("remoteCommit", gitAnswers.badToken),
+      ],
+    });
+    const outcome = await runCommand(pushCommand, jevMain, frontEnd(world));
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample push",
+      exitCode: 4,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "login",
+        message:
+          "gh needs a login; replace the token in GH_TOKEN, or clear GH_TOKEN and run gh auth login, then run the command again",
+        issues: [],
+      },
+    });
     expect(world.calls).toEqual(loggedBeforePush);
   });
 
@@ -834,6 +879,28 @@ describe("clone", () => {
       error: {
         kind: "login",
         message: "gh needs a login; run gh auth login, then run the command again",
+      },
+    });
+  });
+
+  test("a token that GitHub rejects, with GH_TOKEN and GITHUB_TOKEN both set, names both to clear", async () => {
+    // gh's helper serves GH_TOKEN's token, and GITHUB_TOKEN's once GH_TOKEN is cleared (note 09,
+    // section 1.2).
+    const world = fakeWorld({
+      env: { GH_TOKEN: "not-a-real-token", GITHUB_TOKEN: "also-not-a-real-token" },
+      spawn: [{ commandLine: cloneLine, answer: gitAnswers.badToken }],
+    });
+    const outcome = await runCommand(
+      cloneCommand,
+      { owner: "acmelabs-15", name: "marketplace", into: newFolder },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 4,
+      error: {
+        kind: "login",
+        message:
+          "gh needs a login; replace the token in GH_TOKEN, or clear both GH_TOKEN and GITHUB_TOKEN and run gh auth login, then run the command again",
       },
     });
   });

@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Context } from "../command/command";
 import type { CommandError, Issue, Json } from "../command/outcome";
 import { inputError, loginNeeded, outsideError } from "../command/outcome";
-import type { SpawnOptions, Spawned } from "../command/world";
+import type { SpawnOptions, Spawned, World } from "../command/world";
 import type { GitHubRepo } from "./names";
 import { fullName, ownerSchema, repoNameSchema } from "./names";
 
@@ -37,9 +37,10 @@ export type GhRequest = {
 /**
  * GitHub's answer to one call, ok or not, with the call's method and path. An ok answer (2xx) has
  * its JSON body, or null for a 204, which has none. Any other answer has its HTTP status, GitHub's
- * message, the error body, and `missingScope`: the scope that gh says the gh login lacks for the
- * call, when gh names one. A step reads the answers it expects, such as a 404 for "no such PR",
- * and gives the rest to `answerOrThrow`.
+ * message, the error body, `missingScope`: the scope that gh says the gh login lacks for the call,
+ * when gh names one, and `tokenVariables`: the token variables of the login that made the call
+ * (`tokenVariablesIn`), so that a login failure names a fix that works. A step reads the answers it
+ * expects, such as a 404 for "no such PR", and gives the rest to `answerOrThrow`.
  */
 export type GhAnswer =
   | { ok: true; method: Method; path: string; body: Json }
@@ -51,17 +52,109 @@ export type GhAnswer =
       message: string;
       body: Json;
       missingScope?: string;
+      tokenVariables: readonly TokenVariable[];
     };
 
-/** The command line that gives gh a login: the failures for no login and a 401 name it. */
-export const ghLogin = "gh auth login";
+/**
+ * The variables from which gh reads a token for github.com, in gh's order: GH_TOKEN, then
+ * GITHUB_TOKEN (note 09, section 1.2). gh auth login and gh auth refresh refuse to run while gh's
+ * token comes from either (section 1.4).
+ */
+const tokenVariableNames = ["GH_TOKEN", "GITHUB_TOKEN"] as const;
+
+/** A variable from which gh reads a token for github.com: GH_TOKEN or GITHUB_TOKEN. */
+export type TokenVariable = (typeof tokenVariableNames)[number];
+
+/** Whether a name, such as gh's `tokenSource`, is a variable from which gh reads a token. */
+function isTokenVariable(name: string | undefined): name is TokenVariable {
+  return tokenVariableNames.some((variable) => variable === name);
+}
+
+/** Whether the World's env sets the variable: gh counts a variable with no text as unset. */
+function isSet(env: World["env"], name: TokenVariable): boolean {
+  return (env[name] ?? "") !== "";
+}
 
 /**
- * The command line that adds a scope to gh's login, such as `gh auth refresh -h github.com -s
- * workflow`: the failure for a missing scope names it.
+ * The token variables that the World's env sets, in gh's order, by gh's rule: gh reads GH_TOKEN
+ * when it has text, else GITHUB_TOKEN (`tokenForHost` in go-gh's pkg/auth/auth.go at v2.13.0). So
+ * the first one is the variable whose token gh and gh's git helper use, and a second one is the
+ * variable that gh reads once the first is cleared. None when gh's token comes from its own login.
+ * ghApi and git's calls use it, because gh does not tell them where its token comes from.
  */
-export function ghRefresh(scope: string): string {
-  return `gh auth refresh -h github.com -s ${scope}`;
+export function tokenVariablesIn(env: World["env"]): TokenVariable[] {
+  return tokenVariableNames.filter((name) => isSet(env, name));
+}
+
+/**
+ * The token variables for a login whose token comes from `source`, as gh auth status names it in
+ * `tokenSource`: that variable first, then each later one in gh's order that the World's env sets.
+ * None when `source` is no token variable, such as `keyring`. checkLogin uses it, because gh's own
+ * answer names the source, and so wins over a rule read again here.
+ */
+export function tokenVariablesFrom(source: string | undefined, env: World["env"]): TokenVariable[] {
+  if (!isTokenVariable(source)) {
+    return [];
+  }
+  const first = tokenVariableNames.indexOf(source);
+  return tokenVariableNames.filter(
+    (name, index) => index === first || (index > first && isSet(env, name)),
+  );
+}
+
+/** The command line that gives gh a new login. */
+const ghLogin = "gh auth login";
+
+/**
+ * The command line that adds scopes to gh's login, such as `gh auth refresh -h github.com -s
+ * workflow`. gh auth refresh takes several scopes in one --scopes, with commas between them.
+ */
+function ghRefresh(scopes: readonly string[]): string {
+  return `gh auth refresh -h github.com -s ${scopes.join(",")}`;
+}
+
+/** The scopes as a message names them: "the workflow scope", or "the repo and workflow scopes". */
+function scopesNamed(scopes: readonly string[]): string {
+  const list = new Intl.ListFormat("en").format(scopes);
+  return scopes.length === 1 ? `the ${list} scope` : `the ${list} scopes`;
+}
+
+/**
+ * What fixes gh's login, as a login failure names it. `scopes`: the plain scopes that the login
+ * lacks, which gh auth refresh adds; with none, the login itself fails, and gh auth login gives a
+ * new one. `reason`: why the login fails, such as gh's own error text; it ends the message.
+ */
+export type GhLoginFix = { scopes?: readonly string[]; reason?: string };
+
+/**
+ * The login failure for gh, exit 4, with a fix that works. checkLogin, ghApi and git's calls to
+ * GitHub all take their words from it. `variables` are the token variables of the login, the one
+ * that gh reads first (`tokenVariablesIn`, `tokenVariablesFrom`). The message has two forms:
+ *
+ * - No variable: run the gh command line, such as `run gh auth login`.
+ * - A variable: gh refuses its command line then (note 09, section 1.4). So the message says to
+ *   replace the token in the first variable, or give it the missing scopes, or to clear every
+ *   variable and then run the command line.
+ *
+ * Only a variable's name and plain scopes go into the message. Each scope is a caller's constant,
+ * or one that gh names and that passes `plainScope`.
+ */
+export function ghLoginNeeded(
+  variables: readonly TokenVariable[],
+  fix: GhLoginFix = {},
+): CommandError {
+  const { scopes = [], reason } = fix;
+  const command = scopes.length === 0 ? ghLogin : ghRefresh(scopes);
+  const [inUse] = variables;
+  if (inUse === undefined) {
+    return loginNeeded("gh", { ways: [`run ${command}`], reason });
+  }
+  const toToken = scopes.length === 0 ? "replace" : `give ${scopesNamed(scopes)} to`;
+  const cleared = variables.length === 1 ? inUse : `both ${variables.join(" and ")}`;
+  return loginNeeded("gh", {
+    ways: [`${toToken} the token in ${inUse}`, `clear ${cleared} and run ${command}`],
+    reason,
+  });
 }
 
 /**
@@ -187,9 +280,10 @@ async function callOnce(
   body: Json | undefined,
 ): Promise<GhAnswer> {
   const spawned = await context.spawn(...ghCall(method, path, body));
+  const tokenVariables = tokenVariablesIn(context.env);
   // gh exits 4 when it has no login at all, before it calls GitHub (note 09, section 1.3).
   if (spawned.code === 4) {
-    throw loginNeeded("gh", ghLogin);
+    throw ghLoginNeeded(tokenVariables);
   }
   const answer = jsonOf(spawned.stdout);
   if (answer === undefined) {
@@ -211,6 +305,7 @@ async function callOnce(
     message: messageOf(answer),
     body: answer,
     missingScope: missingScopeOf(spawned.stderr),
+    tokenVariables,
   };
 }
 
@@ -360,7 +455,7 @@ function failureFor(answer: FailedAnswer, repo: GitHubRepo): CommandError {
   const call = `${answer.method} ${answer.path}`;
   const said = messageWithError(answer);
   if (answer.status === 401) {
-    return loginNeeded("gh", ghLogin);
+    return ghLoginNeeded(answer.tokenVariables);
   }
   if (rateLimited(answer)) {
     return outsideError(
@@ -368,7 +463,7 @@ function failureFor(answer: FailedAnswer, repo: GitHubRepo): CommandError {
     );
   }
   if (answer.missingScope !== undefined) {
-    return loginNeeded("gh", ghRefresh(answer.missingScope));
+    return ghLoginNeeded(answer.tokenVariables, { scopes: [answer.missingScope] });
   }
   if (answer.status === 404 && answer.method !== "GET") {
     return inputError(

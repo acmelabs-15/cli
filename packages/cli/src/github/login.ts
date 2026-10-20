@@ -1,10 +1,9 @@
 import { z } from "zod";
 
-import type { LoginFix } from "../command/outcome";
-import { loginNeeded, outsideError } from "../command/outcome";
-import type { Spawned } from "../command/world";
+import { outsideError } from "../command/outcome";
+import type { Spawned, World } from "../command/world";
 import type { StepContext } from "./gh";
-import { ghLogin, ghRefresh, shownText } from "./gh";
+import { ghLoginNeeded, shownText, tokenVariablesFrom, tokenVariablesIn } from "./gh";
 
 /** The gh login that checkLogin checked: its login name, and the scopes its token reports. */
 export type CheckedLogin = { login: string; scopes: readonly string[] };
@@ -47,21 +46,19 @@ const accountBody = z.object({
   error: z.string().optional(),
 });
 
-/** One account in gh's answer, as the step reads it. */
-type Account = z.output<typeof accountBody>;
-
 /** gh's answer: the accounts of each host, the active one first. No host, no login. */
 const statusBody = z.object({ hosts: z.record(z.string(), z.array(accountBody)) });
 
 /**
- * gh's answer, read with its schema. gh's exit 4 means that it needs a login. Any other exit, an
- * answer that is not JSON, or an answer of another shape is an outside failure that names the
- * command line, and what gh printed on stderr or the first thing wrong. With `--json`, gh exits 0
- * when it has no login too, so exit 0 is the normal answer.
+ * gh's answer, read with its schema. gh's exit 4 means that it needs a login; `env`, the World's
+ * env, gives the login's token variables. Any other exit, an answer that is not JSON, or an answer
+ * of another shape is an outside failure that names the command line, and what gh printed on
+ * stderr or the first thing wrong. With `--json`, gh exits 0 when it has no login too, so exit 0
+ * is the normal answer.
  */
-function readStatus(spawned: Spawned): z.output<typeof statusBody> {
+function readStatus(spawned: Spawned, env: World["env"]): z.output<typeof statusBody> {
   if (spawned.code === 4) {
-    throw loginNeeded("gh", ghLogin);
+    throw ghLoginNeeded(tokenVariablesIn(env));
   }
   const stderrNote = spawned.stderr.trim() === "" ? "" : `: ${spawned.stderr.trim()}`;
   if (spawned.code !== 0) {
@@ -118,33 +115,6 @@ function holds(scopes: readonly string[], asked: string): boolean {
   return scopes.some((scope) => scope === asked || includedScopes.get(scope)?.includes(asked));
 }
 
-/** The scopes as a message names them: "the workflow scope", or "the repo and workflow scopes". */
-function scopesNamed(scopes: readonly string[]): string {
-  const list = new Intl.ListFormat("en").format(scopes);
-  return scopes.length === 1 ? `the ${list} scope` : `the ${list} scopes`;
-}
-
-/**
- * The variables from which gh reads a token for github.com, GH_TOKEN before GITHUB_TOKEN (note 09,
- * section 1.2). An account whose `tokenSource` is one of them has its token from that variable.
- */
-const tokenVariables: ReadonlySet<string> = new Set(["GH_TOKEN", "GITHUB_TOKEN"]);
-
-/**
- * The ways to fix the account's login, whose gh command line is `command`. gh auth login and gh
- * auth refresh refuse to run while the token comes from a variable (note 09, section 1.4), so for
- * such a token the ways are to do `toToken` to it, such as "replace" for "replace the token in
- * GH_TOKEN", or to clear the variable, then run the command line. Only a name in `tokenVariables`
- * goes into the message, never other text from gh.
- */
-function waysToFix(account: Account, command: string, toToken: string): LoginFix["ways"] {
-  const variable = account.tokenSource;
-  if (variable === undefined || !tokenVariables.has(variable)) {
-    return [`run ${command}`];
-  }
-  return [`${toToken} the token in ${variable}`, `clear ${variable} and run ${command}`];
-}
-
 /**
  * Checks gh's login for github.com before any write, so a missing scope shows before a half-made
  * repo. It reads the active account, the one that every gh call and gh's git helper use, also
@@ -153,11 +123,13 @@ function waysToFix(account: Account, command: string, toToken: string): LoginFix
  * that GitHub rejects and a network failure alike. A state of `timeout` is gh's request to GitHub
  * timing out: an outside failure, exit 3. When the token reports scopes and one of the asked
  * scopes is missing, it is a login failure that names `gh auth refresh` with every missing scope.
- * For a token from GH_TOKEN or GITHUB_TOKEN, a login failure names the variable too: gh refuses
- * those two command lines while it is set, so the message says to change that token, or to clear
- * the variable first. A token that reports no scopes, a fine-grained or app token, skips the scope
- * check, as gh does. The asked scopes are the caller's own constants, such as repo and workflow:
- * they go into that command line as they are, so no text from gh or from the user goes there.
+ * For a token from GH_TOKEN or GITHUB_TOKEN, gh's `tokenSource`, a login failure names the
+ * variable too: gh refuses those two command lines while it is set, so the message says to change
+ * that token, or to clear the variable first, and GITHUB_TOKEN too when the World's env sets both
+ * (`ghLoginNeeded` words it). A token that reports no scopes, a fine-grained or app token, skips
+ * the scope check, as gh does. The asked scopes are the caller's own constants, such as repo and
+ * workflow: they go into that command line as they are, so no text from gh or from the user goes
+ * there.
  */
 export async function checkLogin(
   context: StepContext,
@@ -169,7 +141,8 @@ export async function checkLogin(
     title: "Check the gh login for github.com",
   } as const;
   context.progress({ ...step, status: "started" });
-  const status = readStatus(await context.spawn(statusCommandLine, { env: ghEnv }));
+  const spawned = await context.spawn(statusCommandLine, { env: ghEnv });
+  const status = readStatus(spawned, context.env);
   const account = status.hosts["github.com"]?.find((entry) => entry.active);
   if (account?.state === "timeout") {
     throw outsideError(
@@ -177,27 +150,21 @@ export async function checkLogin(
     );
   }
   if (account === undefined) {
-    throw loginNeeded("gh", ghLogin);
+    throw ghLoginNeeded(tokenVariablesIn(context.env));
   }
+  const tokenVariables = tokenVariablesFrom(account.tokenSource, context.env);
   if (account.state !== "success") {
     // The state `error` covers a token that GitHub rejects and a network failure alike (gh's
     // buildEntry), so gh's own error text shows the user the cause. That text names gh's request
     // and GitHub's answer; it holds no token, which gh sends only in a header.
-    throw loginNeeded("gh", {
-      ways: waysToFix(account, ghLogin, "replace"),
-      reason: shownText(account.error ?? ""),
-    });
+    throw ghLoginNeeded(tokenVariables, { reason: shownText(account.error ?? "") });
   }
   const { login } = account;
   const scopes = scopesOf(account.scopes);
   const missing = options.scopes.filter((asked) => !holds(scopes, asked));
   // A token that reports no scopes has permissions instead, which gh does not check either.
   if (scopes.length > 0 && missing.length > 0) {
-    // gh auth refresh takes several scopes in one --scopes, with commas between them.
-    const fix = ghRefresh(missing.join(","));
-    throw loginNeeded("gh", {
-      ways: waysToFix(account, fix, `give ${scopesNamed(missing)} to`),
-    });
+    throw ghLoginNeeded(tokenVariables, { scopes: missing });
   }
   const shown = scopes.length === 0 ? "a token that reports no scopes" : scopes.join(", ");
   context.progress({ ...step, status: "done", detail: `${login}, with ${shown}` });
