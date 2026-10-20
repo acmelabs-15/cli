@@ -269,12 +269,32 @@ function rateLimited(answer: FailedAnswer): boolean {
 }
 
 /**
+ * Whether GitHub's error body says that a repo of the name already exists: an item of its `errors`
+ * whose message says "name already exists", as GitHub answers a create of a repo whose name is
+ * taken in the organization (note 09, section 2.3).
+ */
+function nameTaken(body: Json): boolean {
+  const errors = isJsonObject(body) ? body.errors : undefined;
+  return (
+    Array.isArray(errors) &&
+    errors.some(
+      (item: Json) =>
+        isJsonObject(item) &&
+        typeof item.message === "string" &&
+        item.message.includes("name already exists"),
+    )
+  );
+}
+
+/**
  * The failure for an answer that a step does not expect, by the spec's table "GitHub's answers and
  * the failure kinds". gh does not tell the login, so a message that names it says "the gh login".
  * A rate limit wins over a missing scope: the limit is what stopped this answer. GitHub answers 404,
  * not 403, to a login that may not write a private resource (note 09, section 2.9), so a 404 on a
- * write names the access, and only a 404 on a read says that GitHub found no repo. The 422 "name
- * already exists" row comes with `ensureRepo`, the step that meets it.
+ * write names the access, and only a 404 on a read says that GitHub found no repo. A 422 "name
+ * already exists" comes from a create whose name another run or a person took after the step's
+ * read, or a repo that the login cannot see: an input failure, exit 2. Any other 422 is an outside
+ * failure, as the table's other answers are.
  */
 function failureFor(answer: FailedAnswer, repo: GitHubRepo): CommandError {
   const call = `${answer.method} ${answer.path}`;
@@ -302,6 +322,11 @@ function failureFor(answer: FailedAnswer, repo: GitHubRepo): CommandError {
   if (answer.status === 403) {
     return inputError(
       `GitHub refused ${call} for the gh login, which needs more access to ${fullName(repo)} (HTTP 403): ${answer.message}`,
+    );
+  }
+  if (answer.status === 422 && nameTaken(answer.body)) {
+    return inputError(
+      `GitHub refused ${call} for the gh login: a repo named ${fullName(repo)} already exists, made a moment ago by another run or a person, or hidden from the login (HTTP 422); run the command again, or pick another name`,
     );
   }
   return outsideError(`GitHub answered ${call} with HTTP ${answer.status}: ${answer.message}`);
@@ -360,12 +385,13 @@ export function readBody<Schema extends z.ZodType>(
 const repoSchema = z.object({ owner: ownerSchema, name: repoNameSchema });
 
 /**
- * The API path of one of a repo's resources: `repos/{owner}/{name}/{rest}`. The owner and the name
- * go into the path, so each passes its name check first: one that fails is an input failure, exit
- * 2, before any call. `rest` is the caller's own text, such as `actions/permissions/workflow`; a
- * caller that puts a value in it, such as a branch, encodes the value first.
+ * The API path of one of a repo's resources: `repos/{owner}/{name}/{rest}`, or of the repo itself,
+ * `repos/{owner}/{name}`, with no `rest`. The owner and the name go into the path, so each passes
+ * its name check first: one that fails is an input failure, exit 2, before any call. `rest` is the
+ * caller's own text, such as `actions/permissions/workflow`; a caller that puts a value in it, such
+ * as a branch, encodes the value first.
  */
-export function repoPath(repo: GitHubRepo, rest: string): string {
+export function repoPath(repo: GitHubRepo, rest?: string): string {
   const checked = repoSchema.safeParse(repo);
   if (!checked.success) {
     throw inputError(
@@ -376,5 +402,5 @@ export function repoPath(repo: GitHubRepo, rest: string): string {
       })),
     );
   }
-  return `repos/${fullName(repo)}/${rest}`;
+  return rest === undefined ? `repos/${fullName(repo)}` : `repos/${fullName(repo)}/${rest}`;
 }

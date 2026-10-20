@@ -1,0 +1,45 @@
+import { z } from "zod";
+
+import { outsideError } from "../command/outcome";
+import type { StepContext } from "./gh";
+
+/**
+ * A full commit sha, as git and GitHub write it: 40 characters, each 0 to 9 or a to f. A sha goes
+ * into a git command line, so the check keeps out an option such as `--help`, and any other text.
+ */
+export const commitShaSchema = z.string().regex(/^[\da-f]{40}$/u, {
+  error: (issue) =>
+    `${JSON.stringify(issue.input)} is not a commit sha; a sha is 40 characters, each 0 to 9 or a to f`,
+});
+
+/** What `inLocalHistory` takes: the commit, and the folder of the local git repo to look in. */
+export type HistoryQuestion = { sha: string; localRoot: string };
+
+/**
+ * Whether the commit `sha` is in the local history: HEAD, or a commit that HEAD descends from, in
+ * the git repo at `localRoot`. It runs `git merge-base --is-ancestor <sha> HEAD` there, which exits
+ * 0 for yes and 1 for no. Exit 128 is no too: git does not know the commit, and gives 128 also for
+ * a folder with no git repo or a repo with no commit yet, whose history cannot hold the commit
+ * either. Any other exit is an outside failure that names the command line and git's message. The
+ * call reaches no remote, so it needs no credential helper. A sha that fails `commitShaSchema` is
+ * a bug in the caller, and no git starts.
+ */
+export async function inLocalHistory(
+  context: StepContext,
+  { sha, localRoot }: HistoryQuestion,
+): Promise<boolean> {
+  if (!commitShaSchema.safeParse(sha).success) {
+    throw new Error(`inLocalHistory takes a full commit sha, not ${JSON.stringify(sha)}`);
+  }
+  const commandLine = ["git", "merge-base", "--is-ancestor", sha, "HEAD"];
+  const spawned = await context.spawn(commandLine, { cwd: localRoot });
+  if (spawned.code === 0) {
+    return true;
+  }
+  if (spawned.code === 1 || spawned.code === 128) {
+    return false;
+  }
+  const said = spawned.stderr.trim();
+  const failed = `${commandLine.join(" ")} in ${localRoot} failed with exit ${spawned.code}`;
+  throw outsideError(said === "" ? failed : `${failed}: ${said}`);
+}
