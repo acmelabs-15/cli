@@ -23,5 +23,5 @@ Nothing blocks. Peter chose to merge PR #1 before his own review; a look at it o
 
 ## Next steps
 
-1. The other layer 1 specs, in build order (`spec/README.md`): `command-core`, `config-presets`, `github-ops`, `npm-ops`. `tui-kit` waits for its prototype (open question 3: the vendored `@clack/ui` on tty 0.9).
+1. `command-core`: spec approved on 2026-10-20 (`spec/SPEC-command-core.md`); next its plan, then the build on branch `command-core`. Then the other layer 1 specs: `config-presets`, `github-ops`, `npm-ops`. `tui-kit` waits for its prototype (open question 3: the vendored `@clack/ui` on tty 0.9).
 2. Each module: `/brain:spec` for its `spec/SPEC-<module-id>.md`, Peter's approval, `/brain:plan`, then the build on a branch named after the module.

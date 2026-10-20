@@ -269,6 +269,10 @@ Peter asked that everything from the interview be saved to Markdown in the layou
 - **Repaired version** was interrupted. **Peter:** "I think it would be good if we provide progress. Things like Claude Code mods allow displaying information like that. And just in general, displaying progress is a very useful feedback mechanism to see, so we should always include it."
 - **Result:** JSON mode prints one JSON line per progress update, then the final answer as the last line, typed `result`, as Claude Code's `stream-json` does. Recorded in ADR-0007. A Claude Code mod that shows `acmelabs` progress is an idea for `agent-guide` (open question 20 in `spec/README.md`).
 
+### The command-core spec — approved 2026-10-20
+
+- **Approved:** `spec/SPEC-command-core.md` as written, with one addition the agent proposed: exit code 70 (BSD's `EX_SOFTWARE`) for a defect inside acmelabs itself, so a bug never looks like "problem found". Recorded in ADR-0007.
+
 ### Where `CLAUDE.md` lives — settled 2026-10-20
 
 - **Peter asked:** should `.claude/CLAUDE.md` be at the root instead?
