@@ -2,13 +2,15 @@
 
 The one place for where the project stands. Every session reads it first and rewrites it last (see "Session end" in `AGENTS.md`). Keep it short: facts a new session needs to continue, nothing else.
 
-**Updated:** 2026-10-20, during the `github-ops` build, after task 3 and two extra slices, by the Claude Code session that runs `/brain:build auto`.
+**Updated:** 2026-10-20, during the `github-ops` build, after the parallel batch, by the Claude Code session that runs `/brain:build auto`.
 
 ## Where things stand
 
 - **The spec:** the capability map of 16 modules is approved (`spec/README.md`). Every interview decision is recorded (`docs/design/spec-interview.md`, `docs/decisions/`).
 - **Done and merged into main:** `repo-model` (PR #1, `082abe4`), `command-core` (PR #2, `38888fa`) and `config-presets` (PR #3, `7fcb916`). Their plans are in `tasks/done/`.
-- **In progress: `github-ops`, on branch `github-ops`, in `/brain:build auto`.** Spec and plan approved. Tasks 1 to 3 of 13 are done (`tasks/todo.md`): the World's process groups, the time and output limits for programs, and the time and body limits for requests. `bun run check` is green on the branch: 275 tests.
+- **In progress: `github-ops`, on branch `github-ops`, in `/brain:build auto`.** Spec and plan approved. 12 of 13 tasks are done (`tasks/todo.md`), with two checkpoints ticked: the World's limits (tasks 1 to 4), the tracer and the settings (5, 8, 9), and the parallel batch (6, 7, 10, 12, 13, each built in a worktree and cherry-picked). `bun run check` is green on the branch: 499 tests.
+- **On hold, by Peter's word (2026-10-20):** task 11 (push and clone) and every other git or GitHub change. git's variables such as `GIT_DIR` can point a git call at another repo; Peter called both offered fixes hacky and asked again for established packages with significantly less custom code. A research agent writes `docs/research/12-git-and-github-packages.md`; its options go to Peter before any more code.
+- **Queued after Peter's answer:** a slice that makes `checkLogin`'s message name a fix that works (a token from `GH_TOKEN`; gh's own error text) and puts GitHub's 422 detail into failures.
 - **Extra slices on the branch, not in the plan:** two fixes to the group stop (`586c53b`, `d278124`), the World split into five files (`e055fdf`: `world.ts`, `world-limits.ts`, `world-spawn.ts`, `world-fetch.ts`, `fake-world.ts`), and network failures of a request as outside failures, exit 3 (`c52a4df`).
 - **The build order** (Peter, 2026-10-20, `tasks/plan.md`): tasks 4, 5, 8 and 9 one at a time; then 6, 7, 10, 12 and 13 at once, each agent in its own git worktree; then 11. Each task is built by a fresh sub-agent, which reviews its own diff on five axes; the orchestrator checks the gate and pushes.
 - **Peter's choices during the build:** keep the repo's own command code rather than adopt execa, incur or ky (`docs/research/11-packages-for-the-command-runtime.md`); the World's `sleep` uses `setTimeout` from `node:timers/promises`.
@@ -33,5 +35,5 @@ Nothing blocks. Opening the PR and merging it are asked at the module's last che
 
 ## Next steps
 
-1. `github-ops` task 4: the World can wait, and a fake World waits in no time. Then the checkpoint "the World's limits", then tasks 5, 8, 9, the parallel batch, and 11.
+1. Read `docs/research/12-git-and-github-packages.md` and put its options to Peter. Then task 11 (push and clone) and the queued slice, as Peter decides, then the final checkpoint: `/brain:review`, and the PR (asked).
 2. After `github-ops`: the other layer 1 spec, `npm-ops`. `tui-kit` waits for its prototype (open question 3).
