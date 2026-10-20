@@ -249,7 +249,8 @@ Peter asked that everything from the interview be saved to Markdown in the layou
 
 - **Peter:** "Should also probably include a readme.md as should all plugins and packages that are created by the CLI." Effect: this repo's `README.md`, a rule for every repo, package and plugin, and `packages/cli/README.md` in task 1.
 - **License, recommended and answered:** MIT, the same as brain and jev-gate, with Peter Kloss as holder; MIT is also the default for new repos. `LICENSE` copied from brain.
-- **Peter:** "push frequently." Standing permission to push, recorded in `AGENTS.md`.
+- **Peter:** "push frequently." Standing permission to push after every commit, recorded in `AGENTS.md`.
+- **Push target, recommended and answered:** a branch per module, pushed after every commit, merged into main through one PR with a merge commit at the module's checkpoint, after Peter's review. Records and docs go straight to main.
 
 ### Where `CLAUDE.md` lives — settled 2026-10-20
 

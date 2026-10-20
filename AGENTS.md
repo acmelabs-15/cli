@@ -25,7 +25,7 @@ Run these steps at the end of every session and after each completed task:
 
 1. Tick the finished tasks in `tasks/todo.md`.
 2. Rewrite `docs/STATUS.md`: date, phase, last completed task, next task, anything red, and what waits on Peter. Done when a new session can continue from it alone.
-3. Commit, and tell Peter the commit's hash and subject. Peter gave standing permission on 2026-10-20 to commit at each task end and session end without asking. Done when `git status` is clean. A push is an outward step: ask before each one.
+3. Commit and push, and tell Peter the commit's hash and subject. Peter gave standing permission on 2026-10-20 to commit at each task end and session end, and to push after every commit ("push frequently"). Done when `git status` is clean and the branch matches its remote.
 
 ## Phases and gates
 
@@ -62,7 +62,7 @@ At a STOP, the next phase starts only after Peter approves in the conversation. 
 - **Bun 1.4.0 only.** No Node runtime ships. CI may run the npm CLI for the publish step only (ADR-0006).
 - **Tests first.** A failing test, then the code. Tests sit in `__tests__/` beside the file under test, named `<file>.test.ts`, with `bun:test`.
 - **The gate.** `bun run check` (typecheck, oxlint, oxfmt check, tests, version check) is green before every commit.
-- **Commits.** One commit per task. Stage the task's files by name. PRs merge with merge commits.
+- **Commits and branches.** One commit per task. Stage the task's files by name. Records and docs go straight to `main`. A module's code goes on a branch named after its module id, pushed after every commit, and merges into `main` through one PR with a merge commit at the module's checkpoint, after Peter's review. Merging is asked.
 - **Outward-facing steps.** Push, PR, merge, release, repo creation, visibility, npm publish and npm org creation are asked once, then run as small separate shell commands.
 - **Verify or say unverified.** Check Claude Code, GitHub Actions and npm behaviour against their current docs; all three change fast.
 - **Words.** Domain words come from `CONTEXT.md`. A concept the glossary lacks goes through the domain-modeling skill.
