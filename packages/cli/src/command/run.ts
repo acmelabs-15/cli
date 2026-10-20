@@ -3,8 +3,8 @@ import path from "node:path";
 import type { z } from "zod";
 
 import { RepoConfigError } from "../repo/config";
-import type { Command, Context, FrontEnd, ProgressUpdate } from "./command";
-import { checkAnswer, checkInput, flagOf, noValue } from "./input";
+import type { Command, Context, FrontEnd, ProgressUpdate, Question } from "./command";
+import { checkAnswer, checkInput, descriptionOf, flagOf, noValue } from "./input";
 import type { CommandFailure, Json, Outcome } from "./outcome";
 import { CommandError, exitCodes } from "./outcome";
 import { redactorFor } from "./redact";
@@ -32,12 +32,24 @@ function fetchWithSignal(world: World, signal: AbortSignal): World["fetch"] {
   });
 }
 
+/** The question for one optional input field: its flag, its description and its schema. */
+function questionFor(schema: z.ZodObject, field: string): Question {
+  const fieldSchema: z.ZodType = schema.shape[field];
+  return {
+    field,
+    flag: flagOf(field),
+    description: descriptionOf(fieldSchema),
+    schema: fieldSchema,
+  };
+}
+
 /**
  * The context a command runs in: the front-end's world and signal, the run's progress, and `ask`.
  * `spawn` and `fetch` take the run's signal, so a cancel stops an outside program or request; a
  * signal the command passes itself wins.
  * `ask` returns the value given up front; with none, it asks the front-end's `answer` and checks
- * the answer with the field's schema; with no answer either, it is an input error.
+ * the answer with the field's schema; with no answer either, it is an input error. After a cancel,
+ * `ask` rejects with the signal's reason, before the question and after a late answer.
  */
 function contextFor<Input>(
   schema: z.ZodObject,
@@ -62,18 +74,15 @@ function contextFor<Input>(
       if (given !== undefined && given !== null) {
         return given;
       }
-      const fieldSchema: z.ZodType = schema.shape[field];
-      const question = {
-        field,
-        flag: flagOf(field),
-        description: fieldSchema.description,
-        schema: fieldSchema,
-      };
+      const question = questionFor(schema, field);
+      if (frontEnd.answer === undefined) {
+        throw noValue(question);
+      }
       // Called through the front-end, so a front-end whose answer is a method keeps its `this`.
-      const answered =
-        frontEnd.answer === undefined
-          ? undefined
-          : await checkAnswer(question, await frontEnd.answer(question));
+      const answer = await frontEnd.answer(question);
+      // An answer that comes after a cancel is not used, so the command does not go on with it.
+      frontEnd.signal.throwIfAborted();
+      const answered = await checkAnswer(question, answer);
       if (answered === undefined || answered === null) {
         throw noValue(question);
       }
@@ -220,11 +229,13 @@ export async function runCommand<Input extends z.ZodObject, Result extends Json>
   } catch (error) {
     // No front-end shows a step as running after the command stopped.
     steps.closeAsFailed();
-    // Once the user cancels, every failure is the cancel: a closed prompt, a stopped program. A
-    // defect in the command's progress wins over what the command threw after it.
+    // Once the user cancels, every failure is the cancel: a closed prompt, a stopped program.
+    // A step started again while open is a bug that the run keeps, and it wins over what the
+    // command threw after it: a command that caught the bug's error may throw its own failure, and
+    // that failure must not hide the bug as a problem or an outside failure.
     const failure: CommandFailure = signal.aborted
       ? { kind: "cancelled", message: "cancelled by the user", issues: [] }
-      : failureOf(steps.defect() ?? error);
+      : failureOf(steps.bug() ?? error);
     return {
       ok: false,
       command: name,

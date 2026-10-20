@@ -10,7 +10,7 @@ export const exitCodes = {
   login: 4,
   /** The user cancelled. */
   cancelled: 130,
-  /** Anything else thrown: a defect in acmelabs itself (BSD's EX_SOFTWARE). */
+  /** Anything else thrown: a bug in acmelabs itself (BSD's EX_SOFTWARE). */
   bug: 70,
 } as const;
 

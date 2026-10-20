@@ -24,66 +24,66 @@ The final-checkpoint review of module `command-core` (`/brain:review`, the five-
 
 ### Required
 
-1. **A bug message can carry a secret into logs.** `[judgement]` (security)
+1. **A bug message can carry a secret into logs.** _Fixed in fa1e36c (task 8)._ `[judgement]` (security)
    `packages/cli/src/command/run.ts:299-303`, `failureOf`: `acmelabs hit a bug: ${text}`. The text is any thrown error's message: a fetch error holds the full URL, a token in its query included. The message goes into the result line and CI logs, and asks the reader to paste it into a public issue.
    Fix: one redaction step in `runCommand` for every text that leaves it (failure and issue messages, progress titles, details and messages): remove the value of every `world.env` entry whose name matches `TOKEN`, `SECRET`, `KEY` or `PASSWORD`, URL credentials (`://user:pass@`), and token-like query values. A test throws `new Error("https://x?token=abc")` and checks that `abc` is absent from the outcome.
 
-2. **A throwing progress sink makes `runCommand` reject.** `[hard: spec/SPEC-command-core.md, Boundaries: "a command ends only through runCommand, so every ending has an exit code"]` (correctness)
+2. **A throwing progress sink makes `runCommand` reject.** _Fixed in fa1e36c (task 8)._ `[hard: spec/SPEC-command-core.md, Boundaries: "a command ends only through runCommand, so every ending has an exit code"]` (correctness)
    `run.ts:196-202` and `:369`: `closeAsFailed` sends to `frontEnd.progress` inside the `catch`. If the front-end throws (a broken pipe), the error escapes `runCommand`.
    Fix: guard the sends in `closeAsFailed`, so a front-end's failure cannot escape; test it.
 
-3. **A program that is not installed ends as a bug, not as an outside failure.** `[judgement]` (correctness)
+3. **A program that is not installed ends as a bug, not as an outside failure.** _Fixed in fa1e36c (task 8)._ `[judgement]` (correctness)
    `packages/cli/src/command/world.ts`, `realWorld().spawn`: `Bun.spawn` throws when the program is missing, so the command ends with exit 70, unless every command catches it. The spec's table puts "a required tool is missing" under `outside`, exit 3.
    Fix: `realWorld().spawn` rejects with an outside failure that names the program, for example `claude is not installed or not on PATH`; `fakeWorld` can script it; test both.
 
-4. **One helper, written twice.** `[judgement]` (readability, architecture)
+4. **One helper, written twice.** _Fixed in fa1e36c (task 8)._ `[judgement]` (readability, architecture)
    `world.ts:117` `sameWords` and `packages/cli/src/command/list.ts:24` `samePath` have the same body: two word lists with the same words in the same order.
    Fix: one shared helper, used by both.
 
 ### Optional
 
-5. **`run.ts` holds five jobs, and front-ends must import the runner for their types.** `[judgement]` (architecture, readability, orchestrator)
+5. **`run.ts` holds five jobs, and front-ends must import the runner for their types.** _Fixed in cadd635 (task 9)._ `[judgement]` (architecture, readability, orchestrator)
    `run.ts` holds flag naming (`flagOf`, `fieldOf`), input and answer checks, the step tracker, the context, failure mapping and the abort race, in 383 lines; `run.test.ts` is 1,334 lines. `FrontEnd`, `Question` and `Answerer` live in `run.ts:11-36`, so `cli-frontend` and `tui-app` would import the runner file to implement them; a later move would break them.
    Fix: before any front-end imports them, move `FrontEnd`, `Question` and `Answerer` beside `Context` in `command.ts`; move flag naming and input checks to `input.ts`, and the step tracker to `steps.ts`; split the tests the same way.
 
-6. **The command list's rules sit with its type.** `[judgement]` (architecture, readability)
+6. **The command list's rules sit with its type.** _Fixed in task 10._ `[judgement]` (architecture, readability)
    `list.ts:118-140` (`light`, `heavyImports`, `Bun.Transpiler`) and `commandListProblems` are test-time rules; `CommandList` is the type every front-end reads.
    Fix: move the rules to `list-rules.ts`, so the published package does not carry a source scanner.
 
-7. **A description given before `.optional()` is not found.** `[judgement]` (correctness)
+7. **A description given before `.optional()` is not found.** _Fixed in task 10._ `[judgement]` (correctness)
    `list.ts:68-73` and `run.ts:256` read `schema.description`, so `z.string().describe("x").optional()` counts as undescribed, and its `Question` has no description; the MCP schema still shows it.
    Fix: read the description through the optional, nullable and default wrappers, in both places; test both orders.
 
-8. **`trackSteps.progress` nests a four-way branch.** `[judgement]` (readability)
+8. **`trackSteps.progress` nests a four-way branch.** _Fixed in task 10._ `[judgement]` (readability)
    `run.ts:166-183`. Fix: send a non-step update early, then one `if` for `started`.
 
-9. **Child programs inherit every environment variable.** `[judgement]` (security)
+9. **Child programs inherit every environment variable.** _Deferred: open questions 21 and 22 in spec/README.md._ `[judgement]` (security)
    `world.ts`, `Bun.spawn` sets no `env`, so every validator runs with `GH_TOKEN` and `NPM_TOKEN`.
    Fix: decide with `github-ops` and `repo-checks`, which know what each program needs; an allowlist risks breaking a tool that needs a proxy or certificate variable.
 
-10. **No size or time limit on an outside program or request.** `[judgement]` (security)
+10. **No size or time limit on an outside program or request.** _Deferred: open questions 21 and 22 in spec/README.md._ `[judgement]` (security)
     `world.ts`: `stdout.text()` and `stderr.text()` read without limit; `fetch` has only the cancel signal. A hostile pull request could stall or flood CI.
     Fix: decide with `github-ops` and `shared-workflows`: a byte cap that stops the program, and a default time limit a command can override.
 
 ### Nit
 
-11. The spec's style rule "a one-line doc comment per export" reads as "at most one line", which the code of both modules does not follow. `[judgement]` (readability) Fix: reword the rule to what it means: every export has a doc comment whose first line says what it is.
-12. `run.ts:372`: the reason a kept step defect wins over a later failure lives only in `trackSteps`; add one comment at the `catch`. `[judgement]` (readability)
-13. `run.ts:245-269`: `ask` builds its question inline; extract `questionFor(schema, field)`. `[judgement]` (readability)
-14. The glossary lacks World, Outcome, Failure kind and Progress update, and the code says both "defect" and "bug" for one concept. `[judgement]` (readability) Fix: through the domain-modeling skill; pick one word.
-15. `list.ts:32-34`: an empty command path passes the rules. `[judgement]` (correctness) Fix: a path has one word or more.
-16. `list.ts:79-81`: `mayLeaveOut` uses `safeParse`, which throws on an async schema. `[judgement]` (correctness) Fix: `safeParseAsync`.
-17. The spec's first line says the module "depends on no other module", but it maps `RepoConfigError` from `repo-model`. `[judgement]` (architecture) Fix: say it depends on `repo-model` for that one error.
-18. Two behaviours the build added are not in the spec: a step started again while open is a bug, and JSON mode's lines also escape DEL, the C1 controls, U+2028 and U+2029. `[judgement]` (correctness, scope creep) Fix: keep both, because each protects a promise the spec makes (no step shown twice; one line per line), and record them in the spec.
+11. The spec's style rule "a one-line doc comment per export" reads as "at most one line", which the code of both modules does not follow. _Fixed in task 10._ `[judgement]` (readability) Fix: reword the rule to what it means: every export has a doc comment whose first line says what it is.
+12. `run.ts:372`: the reason a kept step defect wins over a later failure lives only in `trackSteps`; add one comment at the `catch`. _Fixed in task 10._ `[judgement]` (readability)
+13. `run.ts:245-269`: `ask` builds its question inline; extract `questionFor(schema, field)`. _Fixed in task 10._ `[judgement]` (readability)
+14. The glossary lacks World, Outcome, Failure kind and Progress update, and the code says both "defect" and "bug" for one concept. _Fixed in task 10._ `[judgement]` (readability) Fix: through the domain-modeling skill; pick one word.
+15. `list.ts:32-34`: an empty command path passes the rules. _Fixed in task 10._ `[judgement]` (correctness) Fix: a path has one word or more.
+16. `list.ts:79-81`: `mayLeaveOut` uses `safeParse`, which throws on an async schema. _Fixed in task 10._ `[judgement]` (correctness) Fix: `safeParseAsync`.
+17. The spec's first line says the module "depends on no other module", but it maps `RepoConfigError` from `repo-model`. _Fixed in task 10._ `[judgement]` (architecture) Fix: say it depends on `repo-model` for that one error.
+18. Two behaviours the build added are not in the spec: a step started again while open is a bug, and JSON mode's lines also escape DEL, the C1 controls, U+2028 and U+2029. _Fixed in task 10._ `[judgement]` (correctness, scope creep) Fix: keep both, because each protects a promise the spec makes (no step shown twice; one line per line), and record them in the spec.
 
 ### FYI
 
-19. Open question 19 is now live: a parse error that quotes a linked `acmelabs.json` reaches JSON mode's lines through `failureOf`. It must be settled before `repo-checks` ships a command that reads the config. (security)
+19. Open question 19 is now live: a parse error that quotes a linked `acmelabs.json` reaches JSON mode's lines through `failureOf`. _Open: blocks repo-checks; open question 19._ It must be settled before `repo-checks` ships a command that reads the config. (security)
 20. After a cancel, the command's own file writes may go on; only `spawn` and `fetch` get the signal. Documented in the code; the spec could say it. (correctness)
 21. `cli-frontend` will need one "what kind of field is this" helper for its prompts; `isBoolean` and `mayLeaveOut` ask it two other ways today. (architecture)
 22. `fakeWorld` ships in `world.ts` beside `realWorld`, as the spec requires so later modules' tests share it. (architecture)
 23. Importing `run.ts` costs about 17-22 ms, nearly all zod; `bun run check` takes about 2 s; `writable` and `resultLine` write a result as JSON twice; one `{ once: true }` abort listener per run is removed when the run ends. (performance)
-24. Test gaps the fixes should close: an `answer` that resolves after a cancel; a throwing progress sink; a program that is not installed. (correctness)
+24. Test gaps the fixes should close: an `answer` that resolves after a cancel; a throwing progress sink; a program that is not installed. _Closed: the three gaps have tests (tasks 8 and 10)._ (correctness)
 
 ## Checked and clean
 

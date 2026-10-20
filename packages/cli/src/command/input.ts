@@ -16,6 +16,30 @@ export function flagOf(field: string): string {
   return `--${words.toLowerCase()}`;
 }
 
+/** Whether a schema is an optional, nullable or default wrapper around another schema. */
+function isWrapper(
+  schema: z.core.$ZodType,
+): schema is z.ZodOptional | z.ZodNullable | z.ZodDefault {
+  return (
+    schema instanceof z.ZodOptional ||
+    schema instanceof z.ZodNullable ||
+    schema instanceof z.ZodDefault
+  );
+}
+
+/**
+ * A field's description, given with `.describe()`, found through its optional, nullable and default
+ * wrappers: `.describe("x").optional()` and `.optional().describe("x")` both give "x". The list's
+ * rules and a question read it here, so both find the same description. The outermost one wins.
+ */
+export function descriptionOf(schema: z.ZodType): string | undefined {
+  let inner: z.core.$ZodType = schema;
+  while (z.globalRegistry.get(inner)?.description === undefined && isWrapper(inner)) {
+    inner = inner.unwrap();
+  }
+  return z.globalRegistry.get(inner)?.description;
+}
+
 /**
  * A zod issue's field, named as the caller wrote it: `<field>` for a positional, else the field's
  * flag, then the rest of zod's path, such as `--tags[1]` or `<tags>[1]`. An issue with the whole

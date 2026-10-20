@@ -19,7 +19,7 @@ Phase 2 The rest of the frame
 - [x] 7. The command list and its rules
 - [x] 8. Review fixes: secrets redacted, the progress sink guarded, a missing program exits 3, one shared helper
 - [x] 9. Review fixes: the front-end types in command.ts, and run.ts split into input, steps and run
-- [ ] 10. Review fixes: list rules apart, descriptions through wrappers, nits, glossary and spec records
+- [x] 10. Review fixes: list rules apart, descriptions through wrappers, nits, glossary and spec records
 - [ ] Checkpoint: command-core complete
 
 ## Task 1: World: realWorld and fakeWorld
@@ -200,13 +200,13 @@ Phase 2 The rest of the frame
 **Description:** Fix the review's findings 6 to 8 and 11 to 18, chosen by Peter on 2026-10-20, and mark every finding's outcome in the review file.
 
 **Acceptance criteria:**
-- [ ] The command list's rules live apart from `CommandList`; a description is found through optional, nullable and default wrappers, in the rules and in a `Question`; an empty path and an async schema are handled; `trackSteps` reads with less nesting (findings 6, 7, 8, 15, 16).
-- [ ] The nits are fixed: the comments and `questionFor` (12, 13); the glossary gains World, Outcome, Failure kind and Progress update, and one word replaces "defect" and "bug" for one concept (14).
-- [ ] The spec records: the reworded doc-comment rule, its first line on `repo-model`, the step-restart rule and the line escaping (11, 17, 18); the review file marks each finding's outcome.
+- [x] The command list's rules live apart from `CommandList`; a description is found through optional, nullable and default wrappers, in the rules and in a `Question`; an empty path and an async schema are handled; `trackSteps` reads with less nesting (findings 6, 7, 8, 15, 16).
+- [x] The nits are fixed: the comments and `questionFor` (12, 13); the glossary gains World, Outcome, Failure kind and Progress update, and one word replaces "defect" and "bug" for one concept (14).
+- [x] The spec records: the reworded doc-comment rule, its first line on `repo-model`, the step-restart rule and the line escaping (11, 17, 18); the review file marks each finding's outcome.
 
 **Verification:**
-- [ ] Each behaviour change gets a failing test first: `bun test packages/cli/src`
-- [ ] `bun run check` is green, by its own exit code.
+- [x] Each behaviour change gets a failing test first: `bun test packages/cli/src`
+- [x] `bun run check` is green, by its own exit code.
 
 **Dependencies:** 9
 

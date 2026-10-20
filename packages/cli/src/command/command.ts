@@ -31,7 +31,7 @@ export type OptionalField<Input> = {
 export type Context<Input> = World & {
   /**
    * Reports one progress update to the front-end. A second `started` update for an open step is a
-   * defect: it throws, and the command ends as a bug.
+   * bug in the command: it throws, and the command ends as a bug.
    */
   progress: (update: ProgressUpdate) => void;
   /** The value of an optional input: given up front, asked in a terminal, or an input error. */

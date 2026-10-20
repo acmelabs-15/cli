@@ -623,6 +623,36 @@ describe("runCommand: a question mid-run", () => {
     expect(questions[0]?.schema).toBe(release.input.shape.marketplace);
   });
 
+  test("the question's description is found before or after the optional wrapper", async () => {
+    const add = defineCommand({
+      path: ["sample", "add"],
+      summary: "Add a plugin to the marketplace, and ask for its host and tag.",
+      input: z.object({
+        host: z.string().describe("The host to add it for.").optional(),
+        tag: z.string().optional().describe("The tag the entry follows."),
+      }),
+      async run(_input, context) {
+        return { host: await context.ask("host"), tag: await context.ask("tag") };
+      },
+    });
+    const questions: Question[] = [];
+    const caller = {
+      ...frontEnd(fakeWorld()),
+      answer(question: Question) {
+        questions.push(question);
+        return Promise.resolve(question.field === "host" ? "codex" : "latest");
+      },
+    };
+    expect(await runCommand(add, {}, caller)).toMatchObject({
+      ok: true,
+      result: { host: "codex", tag: "latest" },
+    });
+    expect(questions.map((question) => [question.field, question.description])).toEqual([
+      ["host", "The host to add it for."],
+      ["tag", "The tag the entry follows."],
+    ]);
+  });
+
   test("ask returns the value given up front, false too, and does not call answer", async () => {
     const questions: Question[] = [];
     function answer(question: Question) {
@@ -927,7 +957,7 @@ describe("runCommand: progress updates", () => {
         context.progress({ ...push, status: "started" });
         const pushed = await context.spawn(["git", "push", "origin", "v1.0.0"]);
         if (pushed.code !== 0) {
-          // The defect: the retry starts the step again before the step ended.
+          // The bug: the retry starts the step again before the step ended.
           context.progress({ ...push, title: "Force the release tag", status: "started" });
           await context.spawn(["git", "push", "--force", "origin", "v1.0.0"]);
         }
@@ -955,7 +985,7 @@ describe("runCommand: progress updates", () => {
         issues: [],
       },
     });
-    // The front-end shows the step once, and the command stops at the defect.
+    // The front-end shows the step once, and the command stops at the bug.
     expect(caller.updates).toEqual([
       { kind: "step", step: "push-tag", title: "Push the release tag", status: "started" },
       { kind: "step", step: "push-tag", title: "Push the release tag", status: "failed" },
@@ -965,7 +995,7 @@ describe("runCommand: progress updates", () => {
     ]);
   });
 
-  test("a command that catches that defect still ends as a bug", async () => {
+  test("a command that catches that bug's error still ends as a bug", async () => {
     const build = { kind: "step", step: "build", title: "Build the package" } as const;
     const ignores = defineCommand({
       path: ["sample", "ignore"],
@@ -976,7 +1006,7 @@ describe("runCommand: progress updates", () => {
         try {
           context.progress({ ...build, status: "started" });
         } catch {
-          // This sample ignores every error, the defect too.
+          // This sample ignores every error, the bug's error too.
         }
         context.progress({ ...build, status: "done" });
         return Promise.resolve("built");
@@ -1018,7 +1048,7 @@ describe("runCommand: progress updates", () => {
       summary: "Push the tag, and report the push without waiting for it.",
       input: z.object({}),
       run(_input, context) {
-        // The defect: work the command does not wait for.
+        // The bug: work the command does not wait for.
         late.promise.then((text) => {
           context.progress({ kind: "message", level: "info", text });
           sent.resolve(text);
@@ -1204,6 +1234,46 @@ describe("runCommand: cancel", () => {
     };
     const outcome = await runCommand(tag, {}, caller);
     expect(outcome).toEqual(cancelled("sample tag"));
+  });
+
+  test("an answer that resolves after a cancel is not used: the command does not go on", async () => {
+    // What the command did after ask: went on with the answer, or stopped with ask's error.
+    const after = Promise.withResolvers<unknown>();
+    const tag = defineCommand({
+      path: ["sample", "tag"],
+      summary: "Move the latest tag when asked.",
+      input: z.object({ latest: z.boolean().optional().describe("Move the latest tag.") }),
+      async run(_input, context) {
+        try {
+          const latest = await context.ask("latest");
+          after.resolve(`went on with ${String(latest)}`);
+          return { latest };
+        } catch (error) {
+          after.resolve(error);
+          throw error;
+        }
+      },
+    });
+    const controller = new AbortController();
+    const reason = new Error("the user pressed Ctrl+C");
+    // The question the front-end shows, and the answer the user gives to it.
+    const asked = Promise.withResolvers<Question>();
+    const answered = Promise.withResolvers<unknown>();
+    const caller = {
+      ...frontEnd(fakeWorld()),
+      signal: controller.signal,
+      answer(question: Question) {
+        asked.resolve(question);
+        return answered.promise;
+      },
+    };
+    const outcome = runCommand(tag, {}, caller);
+    await asked.promise;
+    // The user presses Ctrl+C while the prompt shows, and the prompt still gives an answer.
+    controller.abort(reason);
+    expect(await outcome).toEqual(cancelled("sample tag"));
+    answered.resolve(true);
+    expect(await after.promise).toBe(reason);
   });
 });
 

@@ -4,10 +4,10 @@ import { z } from "zod";
 
 import { defineCommand } from "../command";
 import type { CommandList } from "../list";
-import { commandListProblems, heavyImports } from "../list";
+import { commandListProblems, heavyImports } from "../list-rules";
 
 describe("commandListProblems", () => {
-  test("a list whose commands keep every rule has no problems", () => {
+  test("a list whose commands keep every rule has no problems", async () => {
     // The list's type holds commands with different inputs and results: tsc checks that in
     // `bun run typecheck`.
     const list: CommandList = [
@@ -36,11 +36,11 @@ describe("commandListProblems", () => {
         run: (input) => Promise.resolve([input.name, input.kind]),
       }),
     ];
-    expect(commandListProblems(list)).toEqual([]);
-    expect(commandListProblems([])).toEqual([]);
+    expect(await commandListProblems(list)).toEqual([]);
+    expect(await commandListProblems([])).toEqual([]);
   });
 
-  test("two commands with the same path give one problem that counts them", () => {
+  test("two commands with the same path give one problem that counts them", async () => {
     const list: CommandList = [
       defineCommand({
         path: ["version", "sync"],
@@ -61,10 +61,10 @@ describe("commandListProblems", () => {
         run: () => Promise.resolve("synced again"),
       }),
     ];
-    expect(commandListProblems(list)).toEqual(["version sync: 2 commands have this path"]);
+    expect(await commandListProblems(list)).toEqual(["version sync: 2 commands have this path"]);
   });
 
-  test("a path that is the start of another command's path gives a problem per longer path", () => {
+  test("a path that is the start of another command's path gives a problem per longer path", async () => {
     const list: CommandList = [
       defineCommand({
         path: ["version"],
@@ -92,13 +92,35 @@ describe("commandListProblems", () => {
         run: () => Promise.resolve(["0.1.0"]),
       }),
     ];
-    expect(commandListProblems(list)).toEqual([
+    expect(await commandListProblems(list)).toEqual([
       "version: the path is the start of the path of version sync",
       "version: the path is the start of the path of version check",
     ]);
   });
 
-  test("a summary that is empty, or more than one line, gives a problem", () => {
+  test("an empty path gives one problem, and the command is named (no path)", async () => {
+    const list: CommandList = [
+      defineCommand({
+        path: [],
+        summary: "Print the version of acmelabs.",
+        input: z.object({ short: z.boolean() }),
+        run: () => Promise.resolve("0.1.0"),
+      }),
+      // An empty path is not the start of this path: it breaks its own rule only.
+      defineCommand({
+        path: ["version", "sync"],
+        summary: "Write package.json's version into each manifest.",
+        input: z.object({}),
+        run: () => Promise.resolve("synced"),
+      }),
+    ];
+    expect(await commandListProblems(list)).toEqual([
+      "(no path): the path is empty; a path has one word or more",
+      "(no path): the input field short has no description",
+    ]);
+  });
+
+  test("a summary that is empty, or more than one line, gives a problem", async () => {
     const list: CommandList = [
       defineCommand({
         path: ["version", "sync"],
@@ -127,7 +149,7 @@ describe("commandListProblems", () => {
         run: () => Promise.resolve("upgraded"),
       }),
     ];
-    expect(commandListProblems(list)).toEqual([
+    expect(await commandListProblems(list)).toEqual([
       "version sync: the summary is empty",
       "version check: the summary is empty",
       "new: the summary is more than one line",
@@ -135,7 +157,7 @@ describe("commandListProblems", () => {
     ]);
   });
 
-  test("an input field with no description gives a problem that names the field", () => {
+  test("an input field with no description gives a problem that names the field", async () => {
     const list: CommandList = [
       defineCommand({
         path: ["new"],
@@ -147,26 +169,40 @@ describe("commandListProblems", () => {
         }),
         run: () => Promise.resolve("created"),
       }),
-      // A description given before .optional() stays on the inner schema. The field's own schema,
-      // which a question reads, has none.
+      // A wrapper around a field with no description has none either.
       defineCommand({
         path: ["marketplace", "add"],
         summary: "Add a plugin repo to the marketplace.",
-        input: z.object({
-          host: z.string().describe("The host to add it for.").optional(),
-          tag: z.string().optional().describe("The tag the entry follows."),
-        }),
+        input: z.object({ host: z.string().optional().nullable().default(null) }),
         run: () => Promise.resolve("added"),
       }),
     ];
-    expect(commandListProblems(list)).toEqual([
+    expect(await commandListProblems(list)).toEqual([
       "new: the input field kind has no description",
       "new: the input field public has no description",
       "marketplace add: the input field host has no description",
     ]);
   });
 
-  test("a positional that names no input field, or an optional one, gives a problem", () => {
+  test("a description counts before or after the optional, nullable and default wrappers", async () => {
+    const list: CommandList = [
+      defineCommand({
+        path: ["marketplace", "add"],
+        summary: "Add a plugin repo to the marketplace.",
+        input: z.object({
+          host: z.string().describe("The host to add it for.").optional(),
+          tag: z.string().optional().describe("The tag the entry follows."),
+          note: z.string().describe("A note for the entry.").nullable(),
+          branch: z.string().describe("The branch the entry reads.").default("main"),
+          owner: z.string().describe("The repo's owner.").nullable().optional().default(null),
+        }),
+        run: () => Promise.resolve("added"),
+      }),
+    ];
+    expect(await commandListProblems(list)).toEqual([]);
+  });
+
+  test("a positional that names no input field, or an optional one, gives a problem", async () => {
     const list: CommandList = [
       defineCommand({
         path: ["new"],
@@ -191,9 +227,33 @@ describe("commandListProblems", () => {
         run: () => Promise.resolve("added"),
       }),
     ];
-    expect(commandListProblems(list)).toEqual([
+    expect(await commandListProblems(list)).toEqual([
       "new: the positional folder names no input field",
       "marketplace add: the positional host names an optional input field",
+      "marketplace add: the positional tag names an optional input field",
+    ]);
+  });
+
+  test("a positional whose field has an async check is checked as any other", async () => {
+    const list: CommandList = [
+      defineCommand({
+        path: ["marketplace", "add"],
+        summary: "Add a plugin repo to the marketplace.",
+        input: z.object({
+          // Async checks, such as one that asks GitHub whether the repo exists. The first field is
+          // required; the second fills a value when the caller leaves it out.
+          repo: z
+            .custom<string>((value) => Promise.resolve(typeof value === "string"))
+            .describe("The plugin repo, as owner/name."),
+          tag: z
+            .preprocess((value) => Promise.resolve(value ?? "latest"), z.string())
+            .describe("The tag the entry follows."),
+        }),
+        positionals: ["repo", "tag"],
+        run: () => Promise.resolve("added"),
+      }),
+    ];
+    expect(await commandListProblems(list)).toEqual([
       "marketplace add: the positional tag names an optional input field",
     ]);
   });

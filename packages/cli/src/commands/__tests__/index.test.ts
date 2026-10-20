@@ -1,15 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
 
-import { commandListProblems, heavyImports } from "../../command/list";
+import { commandListProblems, heavyImports } from "../../command/list-rules";
 import { commands } from "../index";
 
 /** The folder that holds the command files and the command list. */
 const commandsFolder = path.join(import.meta.dir, "..");
 
 describe("the command list", () => {
-  test("keeps every rule: unique paths, one-line summaries, described fields, positionals", () => {
-    expect(commandListProblems(commands)).toEqual([]);
+  test("keeps every rule: unique paths, one-line summaries, described fields, positionals", async () => {
+    expect(await commandListProblems(commands)).toEqual([]);
   });
 });
 
