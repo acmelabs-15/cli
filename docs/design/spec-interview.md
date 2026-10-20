@@ -257,6 +257,18 @@ Peter asked that everything from the interview be saved to Markdown in the layou
 - **Found by task 7:** the editor schema rejects any `..` in a package path, because a JSON schema cannot tell whether `..` leaves the repo; the command accepted `..` that stays inside.
 - **Recommended and answered:** the command rejects any `..` too, so the two checks agree on every path. One accepted difference stays: an editor does not see `./packages/cli` and `packages/cli` as a repeat.
 
+### Exit codes — settled 2026-10-20 (module `command-core`)
+
+- **First version:** 0/1/2, recommended to match brain's scripts and `claude plugin validate`. Peter: "I'm feeling a little bit conflicted between option one and option two. Just to be clear, all choices or decisions that we make should be made because they're the best decision, not because they're easiest or fastest or anything like that."
+- **Research then:** clig.dev says "Map the non-zero exit codes to the most important failure modes." The GitHub CLI documents 1 failure, 2 cancelled, 4 authentication required.
+- **Recommended and answered:** one code per failure mode: 0 done; 1 problem found; 2 bad input or config; 3 an outside tool or service failed; 4 a login is needed; 130 cancelled by the user. Recorded in ADR-0007.
+
+### JSON mode and progress — settled 2026-10-20 (module `command-core`)
+
+- **First version** recommended one final answer only (clig.dev; Claude Code's `json` format). Peter answered `/wait-what`. Defect: unexplained terms (stdout, stderr, stream, contract) and an inline JSON example that hid the choice.
+- **Repaired version** was interrupted. **Peter:** "I think it would be good if we provide progress. Things like Claude Code mods allow displaying information like that. And just in general, displaying progress is a very useful feedback mechanism to see, so we should always include it."
+- **Result:** JSON mode prints one JSON line per progress update, then the final answer as the last line, typed `result`, as Claude Code's `stream-json` does. Recorded in ADR-0007. A Claude Code mod that shows `acmelabs` progress is an idea for `agent-guide` (open question 20 in `spec/README.md`).
+
 ### Where `CLAUDE.md` lives — settled 2026-10-20
 
 - **Peter asked:** should `.claude/CLAUDE.md` be at the root instead?

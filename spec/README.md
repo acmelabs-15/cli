@@ -70,7 +70,7 @@ The brief's done-when list, with Peter's additions from the interview:
 - [ ] jev-gate runs on the shared pieces with no behaviour change: `bun run check` and `bun run validate` pass, and its next release still tags `v<version>` and moves the latest tag.
 - [ ] `@acmelabs/cli` and `@acmelabs/config` are on npm through the placeholder path, published from CI with provenance.
 - [ ] The shared workflows have a `v1.0.0` release and a `v1` tag in acmelabs-15/.github.
-- [ ] `acmelabs` with no command opens the TUI. Every command runs in CLI mode and in JSON mode, and `acmelabs mcp` serves every command.
+- [ ] `acmelabs` with no command opens the TUI. Every command runs in CLI mode and in JSON mode, and `acmelabs mcp` serves every command. JSON mode prints each progress update as a JSON line, then the final answer; every command exits with the codes in ADR-0007.
 - [ ] The agent guide's skill is generated from the command list, and a test fails when they disagree.
 - [ ] `acmelabs upgrade` upgrades the running copy, and says so when it is already the latest.
 - [ ] `acmelabs --help` lists every command, and adding a command follows the rule above.
@@ -106,3 +106,4 @@ The brief's done-when list, with Peter's additions from the interview:
 | 17 | brain's `oxlint.config.ts` says function declarations let "helpers below their callers", but Ultracite's `no-use-before-define` forbids that order and brain's code puts helpers above. Peter chose on 2026-10-20 to keep the rule and fix the wording; fixed here, not yet in brain | a brain PR; `config-presets` | Fix the wording in brain |
 | 18 | `formatRepoConfig` writes one line per repo kind. A library line over 100 columns (about four packages) is rewrapped by oxfmt, so the file churns if a repo's format check covers `acmelabs.json`. This repo's does not | `scaffold`, `config-presets` | Settle whether new repos format `acmelabs.json`, or let `formatRepoConfig` wrap long lists the way oxfmt does |
 | 19 | `acmelabs.json` may be a link to a file outside the repo, and a JSON parse error can quote a fragment of that file. Harmless locally; a risk if CI runs the CLI on an untrusted pull request (review finding 21) | `shared-workflows`, `repo-checks` | Decide with the CI design: reject links that leave the repo, or keep file content out of the parse error |
+| 20 | A Claude Code mod (a panel or status line) that shows `acmelabs` progress live, from JSON mode's progress lines. Peter named the idea on 2026-10-20 | `agent-guide` | Spec it with the agent guide |
