@@ -186,6 +186,7 @@ bun = true
 - The root `oxlint.config.ts` and `oxfmt.config.ts` import the presets' source by relative path (`./packages/config/src/oxlint.ts`), and `tsconfig.json` extends `./packages/config/tsconfig.json`. **Agent's call, small and reversible:** Bun runs the source with no build, so the gate needs no build step. This repo's `$schema` line already points at its own source the same way. The sample-repo tests prove the import by package name, from the built package.
 - The root drops `ultracite` from its devDependencies.
 - A root `bunfig.toml` holds `run.bun` (ADR-0012).
+- **Known limit, accepted by Peter on 2026-10-20:** the presets' source imports its own files with no file extension, as all code in this repo does. Bun loads it; real Node cannot ("Cannot find module"). So in this repo, an editor's oxc extension that starts oxlint or oxfmt on Node cannot load the root configs. Other repos import the built package, which loads under Node (task 6, `3ecbb09`).
 
 ## `formatRepoConfig` writes oxfmt's layout
 
