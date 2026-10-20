@@ -34,5 +34,5 @@ The release workflow arrives with the `shared-workflows` module, and this repo s
 Other facts for now:
 
 - Each package stays `"private": true` until the `cli-release` module. `privatePackages.version` in `config.json` lets changesets version a private package. The `cli-release` module revisits `access` before the first publish.
-- `@acmelabs/config` arrives with the `config-presets` module, and the agent-guide plugin with the `agent-guide` module.
+- The agent-guide plugin arrives with the `agent-guide` module.
 - Where the plugin's version and changelog live is open question 11 in `spec/README.md`.

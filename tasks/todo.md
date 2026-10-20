@@ -31,7 +31,7 @@ Phase 4 Review fixes (Peter chose them on 2026-10-20; `docs/reviews/2026-10-20-c
 - [ ] 10. The presets bundle Ultracite's presets
 - [ ] 11. The build uses the TypeScript preset, and each option has its own reason
 - [ ] 12. The tool pins, the root typecheck and the test tsconfig stay true to the preset
-- [ ] 13. Record fixes
+- [x] 13. Record fixes
 - [ ] Checkpoint: config-presets complete
 
 ## Task 1: The gate runs on Bun in this repo
@@ -278,12 +278,12 @@ Phase 4 Review fixes (Peter chose them on 2026-10-20; `docs/reviews/2026-10-20-c
 **Description:** Review findings 10, 11, 12 and 15. `.changeset/README.md` no longer says that `@acmelabs/config` is still to come. `AGENTS.md` lists the gate as the `check` script runs it. Note 07 names `AI_AGENT` beside `CLAUDECODE`. `spec/README.md` gets an open question for `cli-release`: each package folder needs a `LICENSE`. Finding 13 (the `env` sentence's source) is in `docs/design/spec-interview.md` already.
 
 **Acceptance criteria:**
-- [ ] Each of the four records says what is true today.
-- [ ] `AGENTS.md` is edited through the writing-for-agents skill, as `CLAUDE.md` asks.
-- [ ] Records that belong on `main` (`AGENTS.md`, note 07, `spec/README.md`) go to `main`; `.changeset/README.md` goes with the module branch.
+- [x] Each of the four records says what is true today.
+- [x] `AGENTS.md` is edited through the writing-for-agents skill, as `CLAUDE.md` asks.
+- [x] Records that belong on `main` (`AGENTS.md`, note 07, `spec/README.md`) go to `main`; `.changeset/README.md` goes with the module branch.
 
 **Verification:**
-- [ ] `bun run check` is green.
+- [x] `bun run check` is green.
 
 **Dependencies:** None
 

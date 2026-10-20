@@ -257,7 +257,7 @@ export default defineConfig({
 
 ## Testing strategy
 
-The sample-repo seam, new in this module (Peter, 2026-10-20). The three agreed seams test a command, a command line or a screen; this module has none of them. A test writes a sample repo in a temp folder, with the thin callers above, a `bunfig.toml` with `run.bun`, and a `node_modules` that holds the built `@acmelabs/config` and links to this repo's installed tools. No network is used. The test then runs `bun run lint`, `bun run format:check` or `bun run typecheck` in the sample repo and checks the exit code and the messages. Every run puts a `node` first on PATH that fails when anything calls it, so each test also proves that no check runs on Node. Measured on 2026-10-20: oxlint 0.09 s, oxfmt 0.07 s, tsc 0.88 s. The package is built once per test run.
+The sample-repo seam, new in this module (Peter, 2026-10-20). The three agreed seams test a command, a command line or a screen; this module has none of them. A test writes a sample repo in a temp folder, with the thin callers above, a `bunfig.toml` with `run.bun`, and a `node_modules` that holds the built `@acmelabs/config` and links to this repo's installed tools. No network is used. The test then runs `bun run lint`, `bun run format:check`, `bun run format` or `bun run typecheck` in the sample repo and checks the exit code and the messages. Every run puts a `node` first on PATH that fails when anything calls it, so each test also proves that no check runs on Node. Measured on 2026-10-20: oxlint 0.09 s, oxfmt 0.07 s, tsc 0.88 s. The package is built once per test run.
 
 Cases:
 
@@ -266,7 +266,7 @@ Cases:
 - **TypeScript:** `Bun.file` type-checks; an unchecked index read fails (`noUncheckedIndexedAccess`); a type-only import without `type` fails (`verbatimModuleSyntax`); the sample repo's own `include` decides which files are checked.
 - **No Node:** with `run.bun` removed from the sample repo, the failing `node` is called and the run fails. This proves the check is live.
 - **Reasons:** every rule and option in which the presets differ from Ultracite's has a deviation with a non-empty reason; the README lists each deviation; every option in the TypeScript preset has a comment line above it.
-- **`formatRepoConfig`:** oxfmt with the preset leaves the output unchanged for a plugin-only config, all four hosts, one package, a library line of 101 columns, five packages, and both kinds together. The existing read-back and byte-identical tests stay.
+- **`formatRepoConfig`:** oxfmt with the preset leaves the output unchanged for a plugin-only config, all four hosts, one package, a library line of 101 columns, five packages, and both kinds together. oxfmt in write mode turns the one-line form of the 100-column, 101-column and five-package cases into `formatRepoConfig`'s text, so a format width above or below 100 fails a test (review finding 1, task 9). The existing read-back and byte-identical tests stay.
 
 ## Boundaries
 
@@ -326,7 +326,7 @@ Cases:
 - [ ] Every deviation has a reason, and the README lists each one; every TypeScript preset option has its reason comment.
 - [ ] This repo's root configs use the presets, the root lists no `ultracite`, and `bunfig.toml` holds `run.bun`.
 - [ ] In this repo, `bun run check` passes with a `node` first on PATH that fails when called.
-- [ ] oxfmt with the preset leaves `formatRepoConfig`'s output unchanged for the six cases above.
+- [ ] oxfmt with the preset leaves `formatRepoConfig`'s output unchanged for the six cases above, and turns the one-line form into `formatRepoConfig`'s text.
 - [ ] `spec/README.md` holds the sample-repo seam and the rule that every file `acmelabs` writes passes the format check unchanged.
 - [ ] A changeset records `@acmelabs/config`, and `bun run check` is green.
 
