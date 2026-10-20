@@ -2,13 +2,13 @@
 
 The one place for where the project stands. Every session reads it first and rewrites it last (see "Session end" in `AGENTS.md`). Keep it short: facts a new session needs to continue, nothing else.
 
-**Updated:** 2026-10-20, after the `github-ops` spec was approved, by the Claude Code session that wrote it.
+**Updated:** 2026-10-20, after the `github-ops` plan was approved, by the Claude Code session that wrote the spec and the plan.
 
 ## Where things stand
 
 - **The spec:** the capability map of 16 modules is approved (`spec/README.md`). Every interview decision is recorded (`docs/design/spec-interview.md`, `docs/decisions/`).
 - **Done and merged into main:** `repo-model` (PR #1, `082abe4`), `command-core` (PR #2, `38888fa`) and `config-presets` (PR #3, `7fcb916`). Their plans are in `tasks/done/`. `bun run check` is green on main: 213 tests.
-- **In progress: `github-ops`.** The spec is approved (`spec/SPEC-github-ops.md`, draft `0601f9b`). Phase: Plan. `tasks/plan.md` and `tasks/todo.md` do not exist yet; no branch exists yet.
+- **In progress: `github-ops`, on branch `github-ops`.** The spec is approved (`spec/SPEC-github-ops.md`, draft `0601f9b`). The plan is approved: 13 tasks in three phases (`tasks/plan.md`, `tasks/todo.md`). Phase: Build. No task is done yet.
 - **What the `github-ops` spec settled:** GitHub calls run through `gh api`, and push and clone through git with gh's credential helper (ADR-0014); each step reads before it writes and picks up a half-done run; outside programs keep the whole environment, and every program and request runs under limits of 5 minutes, 1 minute and 10 MB (ADR-0015, open questions 21 and 22 settled); the tests use the command seam and the World's own tests, and no test calls GitHub. Research notes 09 and 10 hold the facts.
 - **The repo:** public at https://github.com/acmelabs-15/cli, main protected by "Protect main". Peter's standing permissions: commit at task and session ends, push after every commit, one branch per module merged through one PR; opening a PR and merging are asked.
 
@@ -25,9 +25,9 @@ The one place for where the project stands. Every session reads it first and rew
 
 ## Waiting on Peter
 
-Nothing blocks. The `github-ops` plan stops for Peter's approval when it is written.
+Nothing blocks. Opening the PR and merging it are asked at the module's last checkpoint.
 
 ## Next steps
 
-1. `/brain:plan` for `github-ops`: `tasks/plan.md` and `tasks/todo.md`, then Peter's approval, then the build on the branch `github-ops`.
+1. `/brain:build` for `github-ops` (or `/brain:build auto`, which Peter's plan approval allows): task 1, a program runs in its own process group, under a time limit.
 2. The other layer 1 spec: `npm-ops`. `tui-kit` waits for its prototype (open question 3: the vendored `@clack/ui` on tty 0.9).
