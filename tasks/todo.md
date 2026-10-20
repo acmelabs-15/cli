@@ -27,7 +27,7 @@ Phase 3 The presets in use
 
 Phase 4 Review fixes (Peter chose them on 2026-10-20; `docs/reviews/2026-10-20-config-presets.md`)
 
-- [ ] 9. The width-drift test fails for a wider or a narrower width
+- [x] 9. The width-drift test fails for a wider or a narrower width
 - [ ] 10. The presets bundle Ultracite's presets
 - [ ] 11. The build uses the TypeScript preset, and each option has its own reason
 - [ ] 12. The tool pins, the root typecheck and the test tsconfig stay true to the preset
@@ -202,13 +202,13 @@ Phase 4 Review fixes (Peter chose them on 2026-10-20; `docs/reviews/2026-10-20-c
 **Description:** Review finding 1 (Required). The spec says "the sample-repo test catches a drift" of the format width, but a preset `printWidth` above 100 passes today, because oxfmt keeps an open object open. A sample-repo test runs oxfmt in write mode on the one-line form of the 101-column and five-package cases, then expects `formatRepoConfig`'s text.
 
 **Acceptance criteria:**
-- [ ] The new test passes, and oxfmt's output for each case equals `formatRepoConfig`'s text byte for byte.
-- [ ] With the format preset's `printWidth` set to 120 for one run, the test fails; with 90, it fails too. Both changes are undone before the commit.
-- [ ] The spec's sentence "the sample-repo test catches a drift" is true as written.
+- [x] The new test passes, and oxfmt's output for each case equals `formatRepoConfig`'s text byte for byte.
+- [x] With the format preset's `printWidth` set to 120 for one run, the test fails; with 90, it fails too. Both changes are undone before the commit.
+- [x] The spec's sentence "the sample-repo test catches a drift" is true as written.
 
 **Verification:**
-- [ ] The mutation runs, with their output kept in the task's report.
-- [ ] `bun run check` is green.
+- [x] The mutation runs, with their output kept in the task's report.
+- [x] `bun run check` is green.
 
 **Dependencies:** None
 

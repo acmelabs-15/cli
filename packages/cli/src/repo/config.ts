@@ -202,8 +202,8 @@ function jsonList(items: readonly string[]): string {
 
 /**
  * The widest line, in columns: `printWidth` of the format preset, `@acmelabs/config/oxfmt`. The
- * CLI does not depend on that package; a sample-repo test runs oxfmt with the preset on
- * `formatRepoConfig`'s output, so a drift fails there.
+ * CLI does not depend on that package. A sample-repo test runs oxfmt with the preset on each repo
+ * kind's one-line form and expects `formatRepoConfig`'s text, so a wider or a narrower width fails.
  */
 const printWidth = 100;
 

@@ -80,7 +80,12 @@ export const typescriptThinCaller = [
 ].join("\n");
 
 /** The scripts in a sample repo's package.json, as an ACMElabs repo names them. */
-const scripts = { lint: "oxlint", "format:check": "oxfmt --check", typecheck: "tsc --noEmit" };
+const scripts = {
+  lint: "oxlint",
+  format: "oxfmt",
+  "format:check": "oxfmt --check",
+  typecheck: "tsc --noEmit",
+};
 
 /** The fields of a package.json that the sample repo's install reads. */
 type Manifest = {

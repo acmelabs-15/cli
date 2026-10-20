@@ -596,6 +596,26 @@ describe("formatRepoConfig", () => {
   });
 });
 
+/** A list of strings as one line of JSON: `["a", "b"]`. */
+function oneLineList(items: readonly string[]): string {
+  return `[${items.map((item) => JSON.stringify(item)).join(", ")}]`;
+}
+
+/**
+ * A repo config's text in its one-line form, as formatRepoConfig wrote it before it took oxfmt's
+ * layout: each repo kind's object on one line, whatever its width.
+ */
+function oneLineForm(config: RepoConfig, schemaPath: string): string {
+  const lines = [`  "$schema": ${JSON.stringify(schemaPath)}`];
+  if (config.plugin !== undefined) {
+    lines.push(`  "plugin": { "hosts": ${oneLineList(config.plugin.hosts)} }`);
+  }
+  if (config.library !== undefined) {
+    lines.push(`  "library": { "packages": ${oneLineList(config.library.packages)} }`);
+  }
+  return `{\n${lines.join(",\n")}\n}\n`;
+}
+
 describe("formatRepoConfig's output in a sample repo with the format preset", () => {
   beforeAll(async () => {
     // The first call builds @acmelabs/config, which can take longer than the default 5 s.
@@ -661,6 +681,59 @@ describe("formatRepoConfig's output in a sample repo with the format preset", ()
     expect(run.output).toContain(" on 11 files ");
     expect(run.output).not.toContain(realNodeLine);
     expect(run.exitCode).toBe(0);
+  });
+
+  test("bun run format turns each repo kind's one-line form into formatRepoConfig's text", async () => {
+    // oxfmt keeps an object open that was open in its input, so the check above passes at any
+    // width above the preset's. Only the one-line form shows where oxfmt breaks a line.
+    const schemaPath = "./node_modules/@acmelabs/cli/schema/acmelabs.schema.json";
+    const cases: Record<string, RepoConfig> = {
+      // On one line, 100 columns: a narrower width opens it.
+      "library-line-of-100-columns": {
+        library: {
+          packages: ["packages/alpha-core", "packages/beta-tools", "packages/gamma-engine"],
+        },
+      },
+      // On one line, 101 columns: a wider width keeps it on one line.
+      "library-line-of-101-columns": {
+        library: {
+          packages: ["packages/alpha-core", "packages/beta-tools", "packages/gamma-runtime"],
+        },
+      },
+      // The list does not fit on its own line either: one package per line.
+      "five-packages": {
+        library: {
+          packages: [
+            "packages/alpha-core",
+            "packages/beta-tools",
+            "packages/gamma-runtime",
+            "packages/delta-ui",
+            "packages/epsilon-cli",
+          ],
+        },
+      },
+    };
+    const files = Object.fromEntries(
+      Object.entries(cases).map(([name, config]) => [
+        `cases/${name}.json`,
+        oneLineForm(config, schemaPath),
+      ]),
+    );
+    const repo = await sampleRepo(work, {
+      files: { "oxfmt.config.ts": formatThinCaller, ...files },
+    });
+    const run = await repo.run("format");
+    expect(run.output).not.toContain(realNodeLine);
+    expect(run.exitCode).toBe(0);
+    const formatted: Record<string, string> = {};
+    for (const name of Object.keys(cases)) {
+      formatted[name] = await Bun.file(path.join(repo.root, "cases", `${name}.json`)).text();
+    }
+    expect(formatted).toEqual(
+      Object.fromEntries(
+        Object.entries(cases).map(([name, config]) => [name, formatRepoConfig(config, schemaPath)]),
+      ),
+    );
   });
 });
 
