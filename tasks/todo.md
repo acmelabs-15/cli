@@ -7,7 +7,7 @@ The task list for `tasks/plan.md`. Tick a task in the checklist, and each box in
 Phase 1 A command runs
 
 - [x] 1. World: realWorld and fakeWorld
-- [ ] 2. A command runs and ends with its exit code
+- [x] 2. A command runs and ends with its exit code
 - [ ] 3. Input errors named by flag and positional
 - [ ] Checkpoint: a command runs
 
@@ -43,13 +43,13 @@ Phase 2 The rest of the frame
 **Description:** A command is declared with `defineCommand`, and `runCommand` runs it and turns every ending into an `Outcome` with an exit code. The failure kinds and their throw helpers exist. This is the command seam.
 
 **Acceptance criteria:**
-- [ ] `Command`, `defineCommand`, `Context`, `Outcome`, the failure kinds with their exit codes (problem 1, input 2, outside 3, login 4, cancelled 130, bug 70), and the helpers `problem`, `inputError`, `outsideError` and `loginNeeded` exist, as the spec gives them.
-- [ ] A sample command run through `runCommand` with `fakeWorld` gives `ok: true`, exit 0, its result and a duration.
-- [ ] Each helper's throw gives its kind and exit code, and any other thrown error gives kind `bug` and exit 70, with a message that asks the user to report it.
+- [x] `Command`, `defineCommand`, `Context`, `Outcome`, the failure kinds with their exit codes (problem 1, input 2, outside 3, login 4, cancelled 130, bug 70), and the helpers `problem`, `inputError`, `outsideError` and `loginNeeded` exist, as the spec gives them.
+- [x] A sample command run through `runCommand` with `fakeWorld` gives `ok: true`, exit 0, its result and a duration.
+- [x] Each helper's throw gives its kind and exit code, and any other thrown error gives kind `bug` and exit 70, with a message that asks the user to report it.
 
 **Verification:**
-- [ ] Each test fails first, then passes: `bun test packages/cli/src/command`
-- [ ] `bun run check` is green.
+- [x] Each test fails first, then passes: `bun test packages/cli/src/command`
+- [x] `bun run check` is green.
 
 **Dependencies:** 1
 
