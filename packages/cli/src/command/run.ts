@@ -120,11 +120,11 @@ function isBoolean(schema: z.ZodType): boolean {
 
 /**
  * The input error for a question with no value: it names the flag, and shows how to give the value
- * on the command line. A boolean flag takes no value; any other flag takes one.
+ * as a flag. A boolean flag takes no value; any other flag takes one.
  */
 function noValue(question: Question): CommandError {
   const example = isBoolean(question.schema) ? question.flag : `${question.flag} <value>`;
-  const message = `${question.flag} has no value; give it on the command line, for example ${example}`;
+  const message = `${question.flag} has no value; give it as a flag, for example ${example}`;
   return inputError(message, [{ field: question.flag, message }]);
 }
 

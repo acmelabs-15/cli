@@ -62,7 +62,8 @@ export type Context<Input> = World & {
   /** Reports one progress update to the front-end. */
   progress: (update: ProgressUpdate) => void;
   /** The value of an optional input: given up front, asked in a terminal, or an input error. */
-  ask: <Field extends keyof Input & string>(field: Field) => Promise<NonNullable<Input[Field]>>;
+  /** Only the optional input fields: a required field always has a value once the input is checked. */
+  ask: <Field extends OptionalField<Input>>(field: Field) => Promise<NonNullable<Input[Field]>>;
   /** Aborted when the user cancels (Ctrl+C). */
   signal: AbortSignal;
 };

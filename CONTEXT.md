@@ -126,6 +126,10 @@ _Avoid_: headless, silent mode
 One reusable piece of the TUI, such as a text input or a list, in the look of Charm's Bubbles.
 _Avoid_: widget
 
+**Question**:
+An optional input that a command asks for mid-run, when the moment comes. A value given up front answers it; otherwise a terminal asks it, or the command ends with an input error that names its flag.
+_Avoid_: prompt (for the question itself; a prompt is how a terminal asks it)
+
 **Agent guide**:
 The skill and the MCP server that teach an agent how to use the CLI.
 _Avoid_: docs, manual
