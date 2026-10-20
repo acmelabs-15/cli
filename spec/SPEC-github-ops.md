@@ -1,6 +1,6 @@
 # Spec: github-ops
 
-Module `github-ops`, layer 1 of the capability map (`spec/README.md`). It builds on `command-core` for the command's context, the failure helpers and the World, and it changes the World at Peter's choice (open questions 21 and 22). Words follow `CONTEXT.md`. Status: draft for Peter's review.
+Module `github-ops`, layer 1 of the capability map (`spec/README.md`). It builds on `command-core` for the command's context, the failure helpers and the World, and it changes the World at Peter's choice (open questions 21 and 22). Words follow `CONTEXT.md`. Status: approved by Peter on 2026-10-20, with the agent's calls as written.
 
 ## Objective
 

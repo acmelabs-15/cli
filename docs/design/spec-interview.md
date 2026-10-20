@@ -333,3 +333,12 @@ Peter asked that everything from the interview be saved to Markdown in the layou
 
 - **Facts given** (`docs/research/10-outside-program-limits.md`): nothing limits a program's time or output, or a request's time; a 200 MB flood used 599 MB; on a cancel, a program's own child kept running 10 s; every call measured ended in under 3 s, the largest output was 44 KB; gh, git and Bun's fetch have no time limit of their own; other tools' limits (Claude Code 2 min, npm 5 min, Renovate 15 min and 10 MB, Node 1 MB).
 - **Recommended and answered:** both limits. Every program and request gets a time limit and an output limit that a call can raise or lower: 5 minutes per program, 1 minute per request, 10 MB per output. At a limit, acmelabs stops the program and every program it started, and the command ends with exit 3 and a message that names the limit.
+
+### The test seams for `github-ops` — settled 2026-10-20
+
+- **Facts given:** the command seam already runs sample commands that call gh through `fakeWorld`; the World's own tests run real `bun -e` programs in milliseconds; a fake clock lets a 30-minute wait pass at once; a real GitHub repo in a test needs the network and the login, and the login cannot delete a repo.
+- **Recommended and answered:** the GitHub steps at the command seam, through sample commands with scripted gh and git answers; the limits in the World's own tests, with real `bun -e` programs and a local web server. No test calls GitHub; `scaffold`'s acceptance run proves the real sequence.
+
+### The github-ops spec — approved 2026-10-20
+
+- **Approved:** `spec/SPEC-github-ops.md` as written (draft `0601f9b`), with the agent's calls: `clone` and `findTag` join the steps and `checkLogin` runs first; a new repo keeps GitHub's defaults for other settings; `watchRun` polls every 10 s, waits 2 min for the run to appear and 30 min for it to complete, and returns a failed run; an unexpected 404 or 409 is retried 3 times, 3 s apart; the exit-code table for GitHub's answers; the API version `2026-03-10`; `sleep` and process groups in the World, with SIGKILL 5 s after SIGTERM.
