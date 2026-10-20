@@ -24,6 +24,14 @@ Phase 3 The presets in use
 - [x] 6. This repo's gate uses its own presets
 - [x] 7. formatRepoConfig writes oxfmt's layout
 - [x] 8. The @acmelabs/config README and changeset
+
+Phase 4 Review fixes (Peter chose them on 2026-10-20; `docs/reviews/2026-10-20-config-presets.md`)
+
+- [ ] 9. The width-drift test fails for a wider or a narrower width
+- [ ] 10. The presets bundle Ultracite's presets
+- [ ] 11. The build uses the TypeScript preset, and each option has its own reason
+- [ ] 12. The tool pins, the root typecheck and the test tsconfig stay true to the preset
+- [ ] 13. Record fixes
 - [ ] Checkpoint: config-presets complete
 
 ## Task 1: The gate runs on Bun in this repo
@@ -188,6 +196,100 @@ Phase 3 The presets in use
 **Files likely touched:** `packages/config/README.md`, `packages/config/src/__tests__/readme.test.ts`, `.changeset/config-presets.md`, `README.md`, `packages/cli/README.md`
 
 **Estimated scope:** Medium
+
+## Task 9: The width-drift test fails for a wider or a narrower width
+
+**Description:** Review finding 1 (Required). The spec says "the sample-repo test catches a drift" of the format width, but a preset `printWidth` above 100 passes today, because oxfmt keeps an open object open. A sample-repo test runs oxfmt in write mode on the one-line form of the 101-column and five-package cases, then expects `formatRepoConfig`'s text.
+
+**Acceptance criteria:**
+- [ ] The new test passes, and oxfmt's output for each case equals `formatRepoConfig`'s text byte for byte.
+- [ ] With the format preset's `printWidth` set to 120 for one run, the test fails; with 90, it fails too. Both changes are undone before the commit.
+- [ ] The spec's sentence "the sample-repo test catches a drift" is true as written.
+
+**Verification:**
+- [ ] The mutation runs, with their output kept in the task's report.
+- [ ] `bun run check` is green.
+
+**Dependencies:** None
+
+**Files likely touched:** `packages/cli/src/repo/__tests__/config.test.ts`
+
+**Estimated scope:** Small
+
+## Task 10: The presets bundle Ultracite's presets
+
+**Description:** Review finding 3, ADR-0013. The build puts Ultracite's two presets into `dist/oxlint.js` and `dist/oxfmt.js`; `oxlint` and `oxfmt` stay imports. Ultracite becomes a devDependency. The package ships Ultracite's MIT notice. A sample repo has no Ultracite in its `node_modules`.
+
+**Acceptance criteria:**
+- [ ] `dist/oxlint.js` and `dist/oxfmt.js` import only `oxlint` and `oxfmt`; `package.json` lists `ultracite` under `devDependencies` only.
+- [ ] Every sample-repo test passes with no Ultracite in the sample repo, and a test proves that it is absent.
+- [ ] The shipped files hold Ultracite's copyright and permission notice, taken from Ultracite's own license, and a test checks it; the README's "Install" part says the package bundles Ultracite.
+
+**Verification:**
+- [ ] Each test fails first, then passes: `bun test packages/config`
+- [ ] `bun run check` is green, with the failing `node` too.
+
+**Dependencies:** None
+
+**Files likely touched:** `packages/config/package.json`, `packages/config/scripts/build.ts`, a notice file in `packages/config`, `packages/config/src/__tests__/oxlint.test.ts`, `packages/config/src/__tests__/oxfmt.test.ts`, `packages/config/README.md`, `bun.lock`
+
+**Estimated scope:** Medium
+
+## Task 11: The build uses the TypeScript preset, and each option has its own reason
+
+**Description:** Review findings 5 and 9. A build tsconfig in `packages/config` extends the preset and turns on the type-file output, so `scripts/build.ts` restates no option that the preset sets. The `module` and `moduleResolution` comments in the preset each give that option's own reason, and the README's and the spec's tables match.
+
+**Acceptance criteria:**
+- [ ] `scripts/build.ts` names no compiler option that the preset sets, and the built `.d.ts` files are byte-identical to the ones before the change.
+- [ ] The `module` and `moduleResolution` comments differ, each with its own reason; the README's and the spec's TypeScript tables say the same.
+- [ ] The build tsconfig does not ship: `files` is unchanged.
+
+**Verification:**
+- [ ] The before-and-after comparison of `dist/*.d.ts`, kept in the task's report.
+- [ ] `bun run check` is green.
+
+**Dependencies:** 10
+
+**Files likely touched:** `packages/config/scripts/build.ts`, `packages/config/tsconfig.build.json`, `packages/config/tsconfig.json`, `packages/config/README.md`, `spec/SPEC-config-presets.md`
+
+**Estimated scope:** Medium
+
+## Task 12: The tool pins, the root typecheck and the test tsconfig stay true to the preset
+
+**Description:** Review findings 4, 6 and 7. A test proves that the root's four tool versions equal the preset's peer dependencies. The root `tsconfig.json` skips `packages/*/dist`. The two test files share one helper for the tsconfig that type-checks only a sample repo's config file.
+
+**Acceptance criteria:**
+- [ ] The pins test fails when the root's `oxlint` version differs from the peer (one mutation run, undone).
+- [ ] With a local build in `packages/config/dist`, `bun run tsc --showConfig` lists no file under `dist`.
+- [ ] `oxlint.test.ts` and `oxfmt.test.ts` use one helper from `sample-repo.ts`, and no copy remains.
+
+**Verification:**
+- [ ] Each test fails first, then passes: `bun test packages/config`
+- [ ] `bun run check` is green.
+
+**Dependencies:** 10
+
+**Files likely touched:** `packages/config/__tests__/package.test.ts`, `tsconfig.json`, `packages/config/src/__tests__/sample-repo.ts`, `packages/config/src/__tests__/oxlint.test.ts`, `packages/config/src/__tests__/oxfmt.test.ts`
+
+**Estimated scope:** Medium
+
+## Task 13: Record fixes
+
+**Description:** Review findings 10, 11, 12 and 15. `.changeset/README.md` no longer says that `@acmelabs/config` is still to come. `AGENTS.md` lists the gate as the `check` script runs it. Note 07 names `AI_AGENT` beside `CLAUDECODE`. `spec/README.md` gets an open question for `cli-release`: each package folder needs a `LICENSE`. Finding 13 (the `env` sentence's source) is in `docs/design/spec-interview.md` already.
+
+**Acceptance criteria:**
+- [ ] Each of the four records says what is true today.
+- [ ] `AGENTS.md` is edited through the writing-for-agents skill, as `CLAUDE.md` asks.
+- [ ] Records that belong on `main` (`AGENTS.md`, note 07, `spec/README.md`) go to `main`; `.changeset/README.md` goes with the module branch.
+
+**Verification:**
+- [ ] `bun run check` is green.
+
+**Dependencies:** None
+
+**Files likely touched:** `.changeset/README.md`, `AGENTS.md`, `docs/research/07-oxc-without-node.md`, `spec/README.md`
+
+**Estimated scope:** Small
 
 ## Checkpoint: config-presets complete
 

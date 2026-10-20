@@ -42,7 +42,7 @@ Acceptance: see "Success criteria".
     "./tsconfig.json": "./tsconfig.json"
   },
   "files": ["dist", "tsconfig.json"],
-  "dependencies": { "ultracite": "7.12.0" },
+  "devDependencies": { "ultracite": "7.12.0" },
   "peerDependencies": {
     "oxlint": "1.83.0",
     "oxfmt": "0.68.0",
@@ -52,7 +52,7 @@ Acceptance: see "Success criteria".
 }
 ```
 
-- **Ultracite is a dependency of the package.** A repo stops listing it.
+- **Ultracite is bundled into the package** (ADR-0013, Peter, 2026-10-20, review finding 3). The build puts Ultracite's two presets into the built JavaScript, Ultracite is a devDependency, and the package ships Ultracite's MIT notice. A repo installs no Ultracite and stops listing it.
 - **The four tools are peer dependencies, and each repo lists them itself.** **Agent's call, from evidence:** with Bun's isolated linker, which Bun uses for a workspace, a dependency's own dependencies give the repo no `oxlint` or `oxfmt` command (note 08, section 2). oxlint and oxfmt are exact, because the deviations name the rules and options of those versions.
 - **Private at 0.0.0 until `cli-release`,** as `@acmelabs/cli` is. A changeset records the new package.
 - **A `README.md`** (the rule for every package): what the package is, how to install it, the thin callers below, and the table of deviations with their reasons.
@@ -334,4 +334,4 @@ Cases:
 
 1. After `changeset version`, `packages/cli/CHANGELOG.md` and `packages/config/CHANGELOG.md` sit under `packages`, which this repo's format check covers. Does the changelog that changesets writes pass `oxfmt --check`? If not, the gate fails on the Version Packages PR. Decide in `cli-release`.
 2. ~~Does `tsc` resolve `extends: "@acmelabs/config/tsconfig.json"` through the package's `exports`?~~ Answered by task 5 (`23b0fa4`), with tsc 5.9.3 in the hoisted layout: yes, through `exports` only. The thin caller works as written. The package needs both the `./tsconfig.json` entry in `exports` and the file in `files`: with the file on disk and no `exports` entry, tsc fails with `TS6053`.
-3. Ultracite's oxlint preset imports `defineConfig` from `oxlint` at run time, and lists oxlint as an optional peer. Does Bun's isolated linker give Ultracite the repo's oxlint through `@acmelabs/config`? The sample-repo tests answer it in the build.
+3. ~~Ultracite's oxlint preset imports `defineConfig` from `oxlint` at run time, and lists oxlint as an optional peer. Does Bun's isolated linker give Ultracite the repo's oxlint through `@acmelabs/config`?~~ Answered: yes in the hoisted layout (task 2) and through this repo's isolated install (task 6, `3ecbb09`). Since ADR-0013 the bundled presets import `oxlint` and `oxfmt` from the package itself, so the question no longer applies to a repo.

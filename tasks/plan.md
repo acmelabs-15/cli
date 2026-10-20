@@ -11,6 +11,7 @@ Status: **approved by Peter on 2026-10-20** through the three plan questions (si
 | 1. The gate on Bun, and a first preset end to end | 1–2 | Checkpoint: a sample repo lints with the built lint preset, and no check calls Node |
 | 2. The three presets | 3–5 | Checkpoint: every preset case in the spec's "Testing strategy" passes |
 | 3. The presets in use | 6–8 | Checkpoint: every success criterion in the spec passes; `/brain:review`; PR into `main` |
+| 4. Review fixes | 9–13 | The fixes Peter chose from the final-checkpoint review on 2026-10-20 (`docs/reviews/2026-10-20-config-presets.md`), then a re-check before the PR |
 
 ## Architecture decisions
 
