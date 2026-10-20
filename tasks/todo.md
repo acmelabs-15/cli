@@ -134,12 +134,12 @@ Phase 3 The other steps
 
 ## Task 6: checkLogin names the gh command that fixes the login
 
-**Description:** `loginNeeded(service, fix?)` gains an optional second argument, the command line that fixes the login. `checkLogin` runs `gh auth status --hostname github.com --json hosts` and checks the active account's state and, for a token that reports scopes, the asked scopes.
+**Description:** `checkLogin` runs `gh auth status --hostname github.com --json hosts` and checks the active account's state and, for a token that reports scopes, the asked scopes. It uses `loginNeeded(service, fix)`, whose second argument task 5 added (`95eb913`), and `ghLogin` from `gh.ts`.
 
 **Acceptance criteria:**
 - [ ] Through a sample command: logged in with `repo` and `workflow` gives a done step with the login and scopes; a token that reports no scopes passes.
 - [ ] No account, or a state of `error`, ends with exit 4 naming `gh auth login`; a missing `workflow` ends with exit 4 naming `gh auth refresh -h github.com -s workflow`.
-- [ ] `loginNeeded` with one argument keeps today's message.
+- [ ] `loginNeeded` with one argument keeps today's message (tested since task 5).
 
 **Verification:**
 - [ ] Each test fails first, then passes: `bun test packages/cli/src/github packages/cli/src/command`
@@ -147,7 +147,7 @@ Phase 3 The other steps
 
 **Dependencies:** 5
 
-**Files likely touched:** `packages/cli/src/github/login.ts`, `packages/cli/src/command/outcome.ts`, `packages/cli/src/github/__tests__/login.test.ts`, `packages/cli/src/command/__tests__/run.test.ts`
+**Files likely touched:** `packages/cli/src/github/login.ts`, `packages/cli/src/github/__tests__/login.test.ts`
 
 **Estimated scope:** Small
 
