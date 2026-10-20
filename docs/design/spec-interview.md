@@ -245,6 +245,12 @@ Peter asked that everything from the interview be saved to Markdown in the layou
 - **Recommended and answered:** create acmelabs-15/cli as a public repo and push main, set up like brain. npm adds provenance only when the repo and the package are both public.
 - **Done:** https://github.com/acmelabs-15/cli created and main pushed; Actions setting `default_workflow_permissions: read`, `can_approve_pull_request_reviews: true`; ruleset "Protect main" (`non_fast_forward`, `deletion` on the default branch, no bypass), id 25461155.
 
+### README and license — settled 2026-10-20
+
+- **Peter:** "Should also probably include a readme.md as should all plugins and packages that are created by the CLI." Effect: this repo's `README.md`, a rule for every repo, package and plugin, and `packages/cli/README.md` in task 1.
+- **License, recommended and answered:** MIT, the same as brain and jev-gate, with Peter Kloss as holder; MIT is also the default for new repos. `LICENSE` copied from brain.
+- **Peter:** "push frequently." Standing permission to push, recorded in `AGENTS.md`.
+
 ### Where `CLAUDE.md` lives — settled 2026-10-20
 
 - **Peter asked:** should `.claude/CLAUDE.md` be at the root instead?

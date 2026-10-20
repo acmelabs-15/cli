@@ -25,7 +25,7 @@ Phase 2 repo-model
 
 **Acceptance criteria:**
 - [ ] The root `package.json` is private, declares the workspace `packages/*`, and has the scripts `typecheck`, `test` and `check`.
-- [ ] `packages/cli/package.json` names `@acmelabs/cli`, version 0.0.0, `"private": true`, `"type": "module"`.
+- [ ] `packages/cli/package.json` names `@acmelabs/cli`, version 0.0.0, `"private": true`, `"type": "module"`, `"license": "MIT"`.
 - [ ] `hostIds` in `packages/cli/src/repo/hosts.ts` is `claude-code`, `codex`, `gemini-cli`, `antigravity-cli`, in that order, and `HostId` is its type.
 - [ ] `packages/cli/README.md` says what the package is, that it is not yet published, and points at the repo's README. (Added by Peter on 2026-10-20 after plan approval.)
 
