@@ -21,6 +21,6 @@ Nothing now. Peter approved the first commit, and the two global rules (research
 
 ## Next steps
 
-1. Build `repo-model` on branch `repo-model`, in `/brain:build auto` mode (Peter's choice, 2026-10-20): one fresh sub-agent per task, one commit each, pushed. Done: tasks 1–3 (`d4fcafd`, `cb34e01`, `e15afa8`), the foundation checkpoint, and task 4 (`60173a5`). Next: task 5, manifests and validators per host. The build stops at the final checkpoint for `/brain:review` and Peter's review, then one PR merges the branch into main.
+1. Build `repo-model` on branch `repo-model`, in `/brain:build auto` mode (Peter's choice, 2026-10-20): one fresh sub-agent per task, one commit each, pushed. Done: tasks 1–3 (`d4fcafd`, `cb34e01`, `e15afa8`), the foundation checkpoint, task 4 (`60173a5`) and task 5. Next: task 6, the canonical file text. The build stops at the final checkpoint for `/brain:review` and Peter's review, then one PR merges the branch into main.
 2. Then the other layer 1 specs in build order (`spec/README.md`): `command-core`, `config-presets`, `github-ops`, `npm-ops`. `tui-kit` waits for its prototype (open question 3).
 3. Each module spec goes to Peter for approval, then `/brain:plan` for that module.

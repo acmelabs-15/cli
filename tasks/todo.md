@@ -14,7 +14,7 @@ Phase 1 Foundation
 Phase 2 repo-model
 
 - [x] 4. Read and check `acmelabs.json`
-- [ ] 5. Manifests and validators per host
+- [x] 5. Manifests and validators per host
 - [ ] 6. Canonical file text, and this repo's own `acmelabs.json`
 - [ ] 7. The JSON schema for editors
 - [ ] Checkpoint: repo-model complete
@@ -108,13 +108,13 @@ Phase 2 repo-model
 **Description:** The host table gives each host's manifests (path and version field) and validators (command, and whether it is required), as `spec/SPEC-repo-model.md` lists them. `manifestsFor` and `validatorsFor` give a repo's list in host-table order.
 
 **Acceptance criteria:**
-- [ ] `manifestsFor` gives jev-gate's two manifests for `claude-code` alone.
-- [ ] For all four hosts, its versioned manifests are brain's five, in brain's order, and Antigravity's `plugin.json` has no version field.
-- [ ] `validatorsFor` keeps host-table order and the table's `required` values; a library-only config has no manifests and no validators.
+- [x] `manifestsFor` gives jev-gate's two manifests for `claude-code` alone.
+- [x] For all four hosts, its versioned manifests are brain's five, in brain's order, and Antigravity's `plugin.json` has no version field.
+- [x] `validatorsFor` keeps host-table order and the table's `required` values; a library-only config has no manifests and no validators.
 
 **Verification:**
-- [ ] The new tests fail first, then pass: `bun test packages/cli/src/repo`
-- [ ] `bun run check` is green.
+- [x] The new tests fail first, then pass: `bun test packages/cli/src/repo`
+- [x] `bun run check` is green.
 
 **Dependencies:** 4
 
