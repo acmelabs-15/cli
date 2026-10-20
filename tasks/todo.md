@@ -216,6 +216,6 @@ Phase 2 The rest of the frame
 
 ## Checkpoint: command-core complete
 
-- [ ] Every success criterion in `spec/SPEC-command-core.md` passes.
-- [ ] The Definition of Done holds for the module.
+- [x] Every success criterion in `spec/SPEC-command-core.md` passes.
+- [x] The Definition of Done holds for the module.
 - [ ] `/brain:review` on the module's commits, then Peter's choice on the PR into `main`.

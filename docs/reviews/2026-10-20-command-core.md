@@ -46,15 +46,15 @@ The final-checkpoint review of module `command-core` (`/brain:review`, the five-
    `run.ts` holds flag naming (`flagOf`, `fieldOf`), input and answer checks, the step tracker, the context, failure mapping and the abort race, in 383 lines; `run.test.ts` is 1,334 lines. `FrontEnd`, `Question` and `Answerer` live in `run.ts:11-36`, so `cli-frontend` and `tui-app` would import the runner file to implement them; a later move would break them.
    Fix: before any front-end imports them, move `FrontEnd`, `Question` and `Answerer` beside `Context` in `command.ts`; move flag naming and input checks to `input.ts`, and the step tracker to `steps.ts`; split the tests the same way.
 
-6. **The command list's rules sit with its type.** _Fixed in task 10._ `[judgement]` (architecture, readability)
+6. **The command list's rules sit with its type.** _Fixed in `0de40b6` (task 10)._ `[judgement]` (architecture, readability)
    `list.ts:118-140` (`light`, `heavyImports`, `Bun.Transpiler`) and `commandListProblems` are test-time rules; `CommandList` is the type every front-end reads.
    Fix: move the rules to `list-rules.ts`, so the published package does not carry a source scanner.
 
-7. **A description given before `.optional()` is not found.** _Fixed in task 10._ `[judgement]` (correctness)
+7. **A description given before `.optional()` is not found.** _Fixed in `0de40b6` (task 10)._ `[judgement]` (correctness)
    `list.ts:68-73` and `run.ts:256` read `schema.description`, so `z.string().describe("x").optional()` counts as undescribed, and its `Question` has no description; the MCP schema still shows it.
    Fix: read the description through the optional, nullable and default wrappers, in both places; test both orders.
 
-8. **`trackSteps.progress` nests a four-way branch.** _Fixed in task 10._ `[judgement]` (readability)
+8. **`trackSteps.progress` nests a four-way branch.** _Fixed in `0de40b6` (task 10)._ `[judgement]` (readability)
    `run.ts:166-183`. Fix: send a non-step update early, then one `if` for `started`.
 
 9. **Child programs inherit every environment variable.** _Deferred: open questions 21 and 22 in spec/README.md._ `[judgement]` (security)
@@ -67,14 +67,14 @@ The final-checkpoint review of module `command-core` (`/brain:review`, the five-
 
 ### Nit
 
-11. The spec's style rule "a one-line doc comment per export" reads as "at most one line", which the code of both modules does not follow. _Fixed in task 10._ `[judgement]` (readability) Fix: reword the rule to what it means: every export has a doc comment whose first line says what it is.
-12. `run.ts:372`: the reason a kept step defect wins over a later failure lives only in `trackSteps`; add one comment at the `catch`. _Fixed in task 10._ `[judgement]` (readability)
-13. `run.ts:245-269`: `ask` builds its question inline; extract `questionFor(schema, field)`. _Fixed in task 10._ `[judgement]` (readability)
-14. The glossary lacks World, Outcome, Failure kind and Progress update, and the code says both "defect" and "bug" for one concept. _Fixed in task 10._ `[judgement]` (readability) Fix: through the domain-modeling skill; pick one word.
-15. `list.ts:32-34`: an empty command path passes the rules. _Fixed in task 10._ `[judgement]` (correctness) Fix: a path has one word or more.
-16. `list.ts:79-81`: `mayLeaveOut` uses `safeParse`, which throws on an async schema. _Fixed in task 10._ `[judgement]` (correctness) Fix: `safeParseAsync`.
-17. The spec's first line says the module "depends on no other module", but it maps `RepoConfigError` from `repo-model`. _Fixed in task 10._ `[judgement]` (architecture) Fix: say it depends on `repo-model` for that one error.
-18. Two behaviours the build added are not in the spec: a step started again while open is a bug, and JSON mode's lines also escape DEL, the C1 controls, U+2028 and U+2029. _Fixed in task 10._ `[judgement]` (correctness, scope creep) Fix: keep both, because each protects a promise the spec makes (no step shown twice; one line per line), and record them in the spec.
+11. The spec's style rule "a one-line doc comment per export" reads as "at most one line", which the code of both modules does not follow. _Fixed in `0de40b6` (task 10)._ `[judgement]` (readability) Fix: reword the rule to what it means: every export has a doc comment whose first line says what it is.
+12. `run.ts:372`: the reason a kept step defect wins over a later failure lives only in `trackSteps`; add one comment at the `catch`. _Fixed in `0de40b6` (task 10)._ `[judgement]` (readability)
+13. `run.ts:245-269`: `ask` builds its question inline; extract `questionFor(schema, field)`. _Fixed in `0de40b6` (task 10)._ `[judgement]` (readability)
+14. The glossary lacks World, Outcome, Failure kind and Progress update, and the code says both "defect" and "bug" for one concept. _Fixed in `0de40b6` (task 10)._ `[judgement]` (readability) Fix: through the domain-modeling skill; pick one word.
+15. `list.ts:32-34`: an empty command path passes the rules. _Fixed in `0de40b6` (task 10)._ `[judgement]` (correctness) Fix: a path has one word or more.
+16. `list.ts:79-81`: `mayLeaveOut` uses `safeParse`, which throws on an async schema. _Fixed in `0de40b6` (task 10)._ `[judgement]` (correctness) Fix: `safeParseAsync`.
+17. The spec's first line says the module "depends on no other module", but it maps `RepoConfigError` from `repo-model`. _Fixed in `0de40b6` (task 10)._ `[judgement]` (architecture) Fix: say it depends on `repo-model` for that one error.
+18. Two behaviours the build added are not in the spec: a step started again while open is a bug, and JSON mode's lines also escape DEL, the C1 controls, U+2028 and U+2029. _Fixed in `0de40b6` (task 10)._ `[judgement]` (correctness, scope creep) Fix: keep both, because each protects a promise the spec makes (no step shown twice; one line per line), and record them in the spec.
 
 ### FYI
 
@@ -91,3 +91,13 @@ The final-checkpoint review of module `command-core` (`/brain:review`, the five-
 - Dependencies flow one way (`command` to `repo`, never back); no import cycle; `defineCommand` is the spec's typing seam, not speculative. (architecture)
 - Every success criterion and test case in the spec has code and a test; the recorded spec changes match the spec as it stands. (correctness)
 - No timers, no leaked listeners, no unbounded loop in the run path. (performance)
+
+## Re-check after tasks 8 to 10
+
+Run on 2026-10-20 by the orchestrator, after `fa1e36c` (task 8), `cadd635` (task 9) and `0de40b6` (task 10). `bun run check` is green by its own exit code, on the working copy and on a clean clone of the branch: 178 tests.
+
+All four Required findings are resolved, each with a test that failed first: secrets are removed from every text that leaves `runCommand`; a front-end whose progress throws cannot stop the outcome; a program that is not installed exits 3; one shared helper replaces the two copies. The structural findings are fixed: the front-end types live in `command.ts`, and `run.ts` (236 lines) holds only the run. Findings 9 and 10 are deferred to `github-ops` as open questions 21 and 22, by Peter's choice. Finding 19 stays open and blocks `repo-checks`.
+
+Noted, not a finding: redaction fails safe and can hide a value that is not a secret, such as a query field named `author`, which holds "auth".
+
+**Verdict after the re-check: approve.**
