@@ -112,7 +112,7 @@ The body is the one that made acmelabs-15/cli's ruleset (note 09, section 5). br
 
 ## The World's limits
 
-A change to `packages/cli/src/command/world.ts`, at Peter's choice (open questions 21 and 22).
+A change to the World, in `packages/cli/src/command/` (its files are under "Project structure"), at Peter's choice (open questions 21 and 22).
 
 ```ts
 /** The limits that every outside program and request gets unless the call changes them. */
@@ -182,11 +182,18 @@ packages/cli/src/github/push.ts             push, clone
 packages/cli/src/github/pull-request.ts     openPullRequest
 packages/cli/src/github/runs.ts             watchRun, findTag
 packages/cli/src/github/__tests__/          one test file per step file, at the command seam
-packages/cli/src/command/world.ts           the limits, env, process groups, sleep (changed)
+packages/cli/src/command/world.ts           World, its options and realWorld; sleep (changed)
+packages/cli/src/command/world-limits.ts    limits and the limits' outside failures (split from world.ts)
+packages/cli/src/command/world-spawn.ts     a program's environment, process group and limits (split from world.ts)
+packages/cli/src/command/world-fetch.ts     a request's limits (split from world.ts)
+packages/cli/src/command/fake-world.ts      fakeWorld: the limit answers and sleep (split from world.ts)
 packages/cli/src/command/run.ts             the context's sleep takes the run's signal (changed)
 packages/cli/src/command/outcome.ts         loginNeeded takes the fixing command line (changed)
 packages/cli/src/command/list-rules.ts      a command file may load ../github/names at its top (changed)
-packages/cli/src/command/__tests__/world.test.ts   the limits (changed)
+packages/cli/src/command/__tests__/world.test.ts         realWorld's root, env, clock and sleep (changed)
+packages/cli/src/command/__tests__/world-spawn.test.ts   a program's limits (split from world.test.ts)
+packages/cli/src/command/__tests__/world-fetch.test.ts   a request's limits (split from world.test.ts)
+packages/cli/src/command/__tests__/fake-world.test.ts    the fake's limit answers and sleep (split from world.test.ts)
 spec/SPEC-command-core.md                   the World section, kept current (changed)
 ```
 
@@ -249,7 +256,7 @@ Cases:
 - **`findTag`:** found; 404 gives `null`.
 - **Retries and answers:** a 404 that the step does not expect, then a 200, succeeds after one 3-second wait; a rate-limit answer is exit 3; a 5xx is exit 3; gh not installed is exit 3; an answer that is not JSON is exit 3 with gh's stderr.
 
-**The World's own tests, for the limits.** As `world.test.ts` does today: real `bun -e` programs and a local `Bun.serve` server, in milliseconds.
+**The World's own tests, for the limits.** As `world-spawn.test.ts` and `world-fetch.test.ts` do today: real `bun -e` programs and a local `Bun.serve` server, in milliseconds.
 
 - A program past its time limit is stopped and the call fails with exit 3 naming the limit; a call that raises the limit lets it finish.
 - A program that prints past its output limit is stopped, and the call fails with exit 3; a call that raises the limit keeps all of it.
@@ -317,7 +324,7 @@ Cases:
 ## Prior-art tests
 
 - `packages/cli/src/command/__tests__/run.test.ts`: the sample command `greet`, which calls `gh api user` through `fakeWorld` and checks the outcome and `world.calls`.
-- `packages/cli/src/command/__tests__/world.test.ts`: `realWorld` with real `bun -e` programs, a cancel that stops a program within 2 seconds, and a pid file that shows the program is gone.
+- `packages/cli/src/command/__tests__/world-spawn.test.ts`: `realWorld` with real `bun -e` programs, a cancel that stops a program within 2 seconds, and a pid file that shows the program is gone.
 - brain `scripts/version/__tests__/version-sync.test.ts`: real files in a temp folder, for the local-history check of `ensureRepo` where a test needs a real git repo.
 
 ## Success criteria

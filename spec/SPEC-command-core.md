@@ -104,7 +104,7 @@ export type Context<Input> = World & {
 - **An outside program runs under a time limit and an output limit.** The time limit is `limits.programMs`, 5 minutes, unless the call sets `timeoutMs`. The output limit is `limits.outputBytes`, 10 MB, unless the call sets `maxOutputBytes`: the World counts the bytes of stdout and of stderr, each on its own, as it reads them, and output up to the limit stays byte for byte as the program printed it. A limit rejects with an outside failure (exit 3) that names the program and the limit, such as `gh api ... ran longer than 5 minutes and was stopped` or `gh api ... printed more than 10 MB on stdout and was stopped`; a cancel rejects with the signal's reason (`spec/SPEC-github-ops.md`, "The World's limits"). A limit that is not a positive number is a bug in the caller.
 - **A request runs under a time limit and a body limit.** `fetch` is a plain function, not Bun's fetch type, so the World copies nothing such as `preconnect`. The time limit is `limits.requestMs`, 1 minute, unless the call sets `timeoutMs`: an `AbortSignal.timeout` beside the call's own signal, which covers the whole answer, its body included. The body limit is `limits.outputBytes`, 10 MB, unless the call sets `maxBodyBytes`: a body whose `Content-Length` is above it is never read, and any other body is counted as the caller reads it, after Bun decompresses it. An answer that HTTP gives no body (to HEAD, a 204 or a 304) passes, whatever its `Content-Length`. A time-out before the response rejects the call, and a time-out during the body, or a body past its limit, rejects the read of the body (`text()`, `json()` or the stream), each with an outside failure (exit 3) that names the method, the URL and the limit, such as `GET https://registry.npmjs.org/@acmelabs%2fcli got no whole answer within 1 minute and was stopped` or `... got a body of more than 10 MB and was stopped`. A cancel rejects with the signal's reason, and wins over the time limit. The message holds the whole URL: `runCommand` removes a secret query value from it, as from every message. The response keeps its status, headers, URL and redirect flag.
 - Files are not in `World`: commands use Bun's file APIs on paths under `root`, and tests use real files in a temp folder, as brain's tests do.
-- `realWorld(options)` builds the real one; its `graceMs` shortens the grace for a test. `fakeWorld(options)` builds a fake with scripted `spawn` and `fetch` answers and a log of every call, with every spawn option except the signal. A scripted spawn answer can be `missing`, `limit: "time"` or `limit: "output"` (on stdout), which reject with the same outside failures as the real World. A scripted fetch answer can be `limit: "time"`, which rejects the call, or `limit: "output"`, which gives the response and rejects the read of its body, each with the same outside failure as the real World. Both live in `packages/cli/src/command/world.ts`, so later modules' tests use the same fake.
+- `realWorld(options)` builds the real one; its `graceMs` shortens the grace for a test. `fakeWorld(options)` builds a fake with scripted `spawn` and `fetch` answers and a log of every call, with every spawn option except the signal. A scripted spawn answer can be `missing`, `limit: "time"` or `limit: "output"` (on stdout), which reject with the same outside failures as the real World. A scripted fetch answer can be `limit: "time"`, which rejects the call, or `limit: "output"`, which gives the response and rejects the read of its body, each with the same outside failure as the real World. `realWorld` lives in `packages/cli/src/command/world.ts`, and `fakeWorld` in `fake-world.ts` beside it, so later modules' tests use the same fake.
 
 ## Progress updates
 
@@ -205,7 +205,11 @@ The module adds no `acmelabs` command. Its checks run in the repo's gate: `bun r
 
 ```
 packages/cli/src/command/command.ts       Command, defineCommand, Context, and the front-end's types: FrontEnd, Question, Answerer
-packages/cli/src/command/world.ts         World, limits, realWorld, fakeWorld
+packages/cli/src/command/world.ts         World and its options' types, and realWorld, which joins spawn and fetch
+packages/cli/src/command/world-limits.ts  limits, the limits' outside failures, and the byte counter
+packages/cli/src/command/world-spawn.ts   realWorld's spawn: the program runner, its process group and the group's stop
+packages/cli/src/command/world-fetch.ts   realWorld's fetch: a request under its time limit and its body limit
+packages/cli/src/command/fake-world.ts    fakeWorld and its scripted answers
 packages/cli/src/command/outcome.ts       the failure kinds, exit codes, the throw helpers
 packages/cli/src/command/input.ts         flagOf, and the checks of the input and of an answer
 packages/cli/src/command/steps.ts         trackSteps: the open steps of one run
@@ -215,7 +219,7 @@ packages/cli/src/command/words.ts         sameWords: two word lists with the sam
 packages/cli/src/command/lines.ts         progressLine, resultLine
 packages/cli/src/command/list.ts          CommandList, the type every front-end reads
 packages/cli/src/command/list-rules.ts    the command list's rules and the import scan, for the tests only
-packages/cli/src/command/__tests__/       tests beside the code, at the seams the spec names; a file tested only through runCommand has no test file of its own
+packages/cli/src/command/__tests__/       tests beside the code, at the seams the spec names. A file tested only through runCommand or realWorld has no test file of its own, such as world-limits.ts. The spawn and fetch tests call realWorld.
 packages/cli/src/commands/index.ts        the command list
 packages/cli/src/commands/__tests__/index.test.ts   the list's rules
 ```

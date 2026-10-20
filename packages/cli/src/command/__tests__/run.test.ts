@@ -8,11 +8,12 @@ import { z } from "zod";
 import { readRepoConfig } from "../../repo/config";
 import type { ProgressUpdate, Question } from "../command";
 import { defineCommand } from "../command";
+import { fakeWorld } from "../fake-world";
 import type { Outcome } from "../outcome";
 import { exitCodes, inputError, loginNeeded, outsideError, problem } from "../outcome";
 import { runCommand } from "../run";
 import type { World } from "../world";
-import { fakeWorld, realWorld } from "../world";
+import { realWorld } from "../world";
 
 /** What a front-end gives runCommand: the world, a log of progress updates, and a live signal. */
 function frontEnd(world: World) {
