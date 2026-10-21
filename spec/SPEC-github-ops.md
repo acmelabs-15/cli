@@ -181,7 +181,7 @@ bun test packages/cli/src/command      # the World's limits, and the rest of com
 
 ```
 packages/cli/src/github/names.ts            ownerSchema, repoNameSchema, GitHubRepo, quoted: zod only
-packages/cli/src/github/gh.ts               ghApi: one REST call through gh api; StepContext and startStep, a step's one progress step; the answers-to-failure table
+packages/cli/src/github/gh.ts               ghApi: one REST call through gh api; StepContext and startStep, a step's one progress step; checkRepo, the names' check; the answers-to-failure table
 packages/cli/src/github/git.ts              git's command lines: gh's credential helper, no terminal prompt; the commit-sha and branch-name checks
 packages/cli/src/github/login.ts            checkLogin
 packages/cli/src/github/repo.ts             ensureRepo

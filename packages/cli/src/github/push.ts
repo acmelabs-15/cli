@@ -3,7 +3,7 @@ import { lstat } from "node:fs/promises";
 import type { CommandError } from "../command/outcome";
 import { inputError } from "../command/outcome";
 import type { StepContext } from "./gh";
-import { shownText, startStep } from "./gh";
+import { checkRepo, shownText, startStep } from "./gh";
 import type { CloneRequest, OriginUrl, RemoteBranchRequest } from "./git";
 import {
   addOrigin,
@@ -17,6 +17,7 @@ import {
   pushBranch,
   remoteCommit,
 } from "./git";
+import type { GitHubRepo } from "./names";
 import { fullName } from "./names";
 
 /** What `push` takes: the repo, the folder of the local git repo, and the branch to push. */
@@ -72,21 +73,22 @@ async function ensureOrigin(context: StepContext, { repo, cwd }: PushRequest): P
 }
 
 /**
- * The input failure, exit 2, for a rewrite in git's config that moves the repo's HTTPS URL `url`:
- * `rewritten` names what git rewrites, such as the remote origin of a folder, `moved` is the URL
- * that git would use instead, shown without its login part, and `only` says what acmelabs does
- * with the HTTPS URL alone, such as `pushes acmelabs-15/jev only to`. The message reads: git's
- * config rewrites <rewritten>, <url>, to <moved>; acmelabs <only> that HTTPS URL, with gh's login,
- * so remove the rewrite, and it names the command line that lists each rewrite.
+ * The input failure, exit 2, for a rewrite in git's config that moves the repo's HTTPS URL, for a
+ * push or a clone: `rewritten` names what git rewrites, such as the remote origin of a folder, and
+ * `moved` is the URL that git would use instead, shown without its login part. The message says
+ * that acmelabs pushes to, or clones from, that HTTPS URL alone, with gh's login, and names the
+ * command line that lists each rewrite.
  */
 function rewriteRefused(
+  verb: "push" | "clone",
+  repo: GitHubRepo,
   rewritten: string,
-  url: string,
   moved: OriginUrl,
-  only: string,
 ): CommandError {
+  const name = fullName(repo);
+  const only = verb === "push" ? `pushes ${name} only to` : `clones ${name} only from`;
   return inputError(
-    `git's config rewrites ${rewritten}, ${url}, to ${shownUrl(moved)}; acmelabs ${only} that HTTPS URL, with gh's login, so remove the rewrite (git config --show-origin --get-regexp '^url\\.' lists each one)`,
+    `git's config rewrites ${rewritten}, ${httpsUrl(repo)}, to ${shownUrl(moved)}; acmelabs ${only} that HTTPS URL, with gh's login, so remove the rewrite (git config --show-origin --get-regexp '^url\\.' lists each one)`,
   );
 }
 
@@ -102,8 +104,7 @@ async function refuseRewrites(context: StepContext, { repo, cwd }: PushRequest):
   const inUse = await originUrlsInUse(context, cwd);
   const moved = inUse.find(({ value }) => value !== url);
   if (moved !== undefined) {
-    const origin = `the remote origin of ${shownText(cwd)}`;
-    throw rewriteRefused(origin, url, moved, `pushes ${fullName(repo)} only to`);
+    throw rewriteRefused("push", repo, `the remote origin of ${shownText(cwd)}`, moved);
   }
 }
 
@@ -119,7 +120,7 @@ export async function push(context: StepContext, request: PushRequest): Promise<
   const { repo, cwd, branch } = request;
   // The names and the branch pass their checks before the step starts, so no title shows one that
   // fails.
-  httpsUrl(repo);
+  checkRepo(repo);
   checkBranchNames("the branch to push is not a branch name that git allows", { branch });
   const end = startStep(context, "github-push", `Push ${branch} to ${fullName(repo)}`);
   const sha = await localCommit(context, { cwd, branch });
@@ -175,11 +176,9 @@ async function checkNewFolder({ repo, into }: CloneRequest): Promise<void> {
  * reasons that `refuseRewrites` gives.
  */
 async function refuseCloneRewrite(context: StepContext, { repo }: CloneRequest): Promise<void> {
-  const url = httpsUrl(repo);
   const inUse = await cloneUrlInUse(context, repo);
-  if (inUse.value !== url) {
-    const name = fullName(repo);
-    throw rewriteRefused(`the URL of ${name}`, url, inUse, `clones ${name} only from`);
+  if (inUse.value !== httpsUrl(repo)) {
+    throw rewriteRefused("clone", repo, `the URL of ${fullName(repo)}`, inUse);
   }
 }
 
@@ -195,7 +194,7 @@ export async function clone(context: StepContext, request: CloneRequest): Promis
   const { repo, into } = request;
   // The names and the folder pass their checks before the step starts, so no title shows one that
   // fails.
-  httpsUrl(repo);
+  checkRepo(repo);
   if (into === "") {
     throw inputError(`the folder to clone ${fullName(repo)} into has no name`);
   }

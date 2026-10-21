@@ -4,7 +4,7 @@ import type { CommandError } from "../command/outcome";
 import { inputError, outsideError, problem } from "../command/outcome";
 import type { Spawned, World } from "../command/world";
 import type { StepContext } from "./gh";
-import { ghLoginNeeded, repoPath, retry, shownText, tokenVariablesIn } from "./gh";
+import { checkRepo, ghLoginNeeded, retry, shownText, tokenVariablesIn } from "./gh";
 import type { GitHubRepo } from "./names";
 import { fullName, quoted } from "./names";
 
@@ -115,12 +115,11 @@ export async function inLocalHistory(
 
 /**
  * The repo's HTTPS URL, `https://github.com/<owner>/<name>.git`: GitHub's clone_url, which works
- * for every repo with gh's login and needs no SSH key (note 09, section 4). The owner and the name
- * pass their check first (repoPath's), so no other text goes into the URL: one that fails is an
- * input failure, exit 2.
+ * for every repo with gh's login and needs no SSH key (note 09, section 4). The repo passes
+ * `checkRepo` first, so no other text goes into the URL.
  */
 export function httpsUrl(repo: GitHubRepo): string {
-  repoPath(repo);
+  checkRepo(repo);
   return `https://github.com/${fullName(repo)}.git`;
 }
 

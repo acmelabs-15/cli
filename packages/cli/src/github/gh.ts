@@ -586,13 +586,10 @@ export function readBody<Schema extends z.ZodType>(
 const repoSchema = z.object({ owner: ownerSchema, name: repoNameSchema });
 
 /**
- * The API path of one of a repo's resources: `repos/{owner}/{name}/{rest}`, or of the repo itself,
- * `repos/{owner}/{name}`, with no `rest`. The owner and the name go into the path, so each passes
- * its name check first: one that fails is an input failure, exit 2, before any call. `rest` is the
- * caller's own text, such as `actions/permissions/workflow`; a caller that puts a value in it, such
- * as a branch, encodes the value first.
+ * Checks the repo's owner and name, each against its name check, before they go into an API path,
+ * a URL or a step's title: one that fails is an input failure, exit 2, with one issue for each.
  */
-export function repoPath(repo: GitHubRepo, rest?: string): string {
+export function checkRepo(repo: GitHubRepo): void {
   const checked = repoSchema.safeParse(repo);
   if (!checked.success) {
     throw inputError(
@@ -603,5 +600,16 @@ export function repoPath(repo: GitHubRepo, rest?: string): string {
       })),
     );
   }
+}
+
+/**
+ * The API path of one of a repo's resources: `repos/{owner}/{name}/{rest}`, or of the repo itself,
+ * `repos/{owner}/{name}`, with no `rest`. The repo passes `checkRepo` first, so no call starts with
+ * an owner or a name that fails. `rest` is the caller's own text, such as
+ * `actions/permissions/workflow`; a caller that puts a value in it, such as a branch, encodes the
+ * value first.
+ */
+export function repoPath(repo: GitHubRepo, rest?: string): string {
+  checkRepo(repo);
   return rest === undefined ? `repos/${fullName(repo)}` : `repos/${fullName(repo)}/${rest}`;
 }
