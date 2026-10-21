@@ -10,7 +10,7 @@ The index of the spec. Peter approved this map on 2026-10-20 (`docs/design/spec-
 | 1 | `command-core` | The command list: each command's inputs, events, result, errors and exit codes | none | [built](SPEC-command-core.md); merged in PR #2 (`38888fa`), 2026-10-20 |
 | 1 | `tui-kit` | The theme, the vendored `@clack/ui` preview, and the Bubbles-style components with focus | none | not written; prototype first |
 | 1 | `config-presets` | `@acmelabs/config`: the oxlint, oxfmt and tsconfig presets, each deviation with its reason | none | [built](SPEC-config-presets.md); merged in PR #3 (`7fcb916`), 2026-10-20 |
-| 1 | `github-ops` | GitHub steps: check the gh login, create a repo with its visibility, the Actions setting and Protect main, push, clone, open a PR, watch a run, read a tag; the World's time and output limits | `command-core` | [built](SPEC-github-ops.md) on branch `github-ops`, 2026-10-20; review approved; PR pending |
+| 1 | `github-ops` | GitHub steps: check the gh login, create a repo with its visibility, the Actions setting and Protect main, push, clone, open a PR, watch a run, read a tag; the World's time and output limits | `command-core` | [built](SPEC-github-ops.md) on branch `github-ops`, 2026-10-20; review approved; PR #4 open |
 | 1 | `npm-ops` | npm steps: registry reads, web login, org creation, the placeholder version, the trusted publisher | none | not written |
 | 2 | `cli-frontend` | Direct calls: routing with `@bomb.sh/router`, help, CLI mode with themed clack prompts, JSON mode | `command-core`, `tui-kit` | not written |
 | 2 | `repo-checks` | `version sync`, `version check`, `release notes`, `validate` | `repo-model`, `command-core` | not written |

@@ -8,7 +8,7 @@ The one place for where the project stands. Every session reads it first and rew
 
 - **The spec:** the capability map of 16 modules is approved (`spec/README.md`). Every interview decision is recorded (`docs/design/spec-interview.md`, `docs/decisions/`).
 - **Done and merged into main:** `repo-model` (PR #1, `082abe4`), `command-core` (PR #2, `38888fa`) and `config-presets` (PR #3, `7fcb916`). Their plans are in `tasks/done/`.
-- **`github-ops` is built, on branch `github-ops`, pushed; the PR into `main` waits on Peter.** All 13 tasks and both earlier checkpoints are ticked (`tasks/todo.md`); the final checkpoint is ticked apart from opening the PR. The review (`docs/reviews/2026-10-20-github-ops.md`) approves after the re-check. `bun run check` is green on the working copy and on a clean clone: 653 tests at `7d47f89`.
+- **`github-ops` is built, on branch `github-ops`, pushed; PR #4 into `main` is open (https://github.com/acmelabs-15/cli/pull/4) and waits for Peter's review.** All 13 tasks and both earlier checkpoints are ticked (`tasks/todo.md`); the final checkpoint is ticked apart from opening the PR. The review (`docs/reviews/2026-10-20-github-ops.md`) approves after the re-check. `bun run check` is green on the working copy and on a clean clone: 653 tests at `7d47f89`.
 - **What `github-ops` holds:** the World's limits (5 minutes per program, 1 minute per request, 10 MB per output or body), a process group per program, network failures as exit 3, `sleep` with a fake clock, and git calls without the `GIT_` variables (ADR-0015, ADR-0016); the GitHub steps in `packages/cli/src/github/` (`checkLogin`, `ensureRepo`, `ensureActionsSetting`, `ensureProtectMain`, `push`, `clone`, `openPullRequest`, `watchRun`, `findTag`), each safe to run again. No command uses them yet: `scaffold` and `marketplace-add` will.
 - **Peter's choices during the build:** keep the repo's own command code (note 11); run tasks 6, 7, 10, 12 and 13 in parallel worktrees; git calls run without the `GIT_` variables, not by flags (note 12, ADR-0016); fix the review's groups A and B before the PR.
 - **The repo:** public at https://github.com/acmelabs-15/cli, main protected by "Protect main". Peter's standing permissions: commit at task and session ends, push after every commit, one branch per module merged through one PR; opening a PR and merging are asked.
@@ -27,9 +27,9 @@ The one place for where the project stands. Every session reads it first and rew
 
 ## Waiting on Peter
 
-Opening the `github-ops` PR into `main`, then its review and merge (a merge commit).
+The review of PR #4 (https://github.com/acmelabs-15/cli/pull/4), then the merge (a merge commit), asked first.
 
 ## Next steps
 
-1. Peter's go for the PR; then the merge; then, on `main`, the plan moves to `tasks/done/github-ops/` and the map row says merged.
+1. Peter's review of PR #4; then the merge, asked first; then, on `main`, the plan moves to `tasks/done/github-ops/` and the map row says merged.
 2. The other layer 1 spec: `npm-ops`. `tui-kit` waits for its prototype (open question 3).
