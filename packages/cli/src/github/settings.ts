@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { inputError, problem } from "../command/outcome";
 import type { StepContext } from "./gh";
-import { answerOrThrow, ghApi, readBody, repoPath } from "./gh";
+import { answerOrThrow, ghApi, readBody, repoPath, startStep } from "./gh";
 import type { GitHubRepo } from "./names";
 import { fullName } from "./names";
 
@@ -51,15 +51,11 @@ export async function ensureActionsSetting(
 ): Promise<"done" | "skipped"> {
   // The names pass their check before the step starts, so no title shows a name that fails it.
   const path = repoPath(repo, "actions/permissions/workflow");
-  const step = {
-    kind: "step",
-    step: "github-actions-setting",
-    title: `Set the Actions setting on ${fullName(repo)}`,
-  } as const;
-  context.progress({ ...step, status: "started" });
+  const title = `Set the Actions setting on ${fullName(repo)}`;
+  const end = startStep(context, "github-actions-setting", title);
   const current = readBody(await ghApi(context, { path }), repo, actionsSettingBody);
   if (hasActionsSetting(current)) {
-    context.progress({ ...step, status: "skipped", detail: "already set" });
+    end("skipped", "already set");
     return "skipped";
   }
   // A 409 here is the organization's answer, not a new repo's delay, so it comes back at once.
@@ -76,7 +72,7 @@ export async function ensureActionsSetting(
   }
   // A 204 has no body to read; any other answer that is not ok ends the step with its failure.
   answerOrThrow(written, repo);
-  context.progress({ ...step, status: "done" });
+  end("done");
   return "done";
 }
 
@@ -182,12 +178,7 @@ export async function ensureProtectMain(
 ): Promise<"done" | "skipped"> {
   // The names pass their check before the step starts, so no title shows a name that fails it.
   const rulesetsPath = repoPath(repo, "rulesets");
-  const step = {
-    kind: "step",
-    step: "github-protect-main",
-    title: `Set Protect main on ${fullName(repo)}`,
-  } as const;
-  context.progress({ ...step, status: "started" });
+  const end = startStep(context, "github-protect-main", `Set Protect main on ${fullName(repo)}`);
   // A repo holds at most 75 rulesets (note 09, section 2.6), so one page of 100 holds them all. The
   // organization's rulesets stay out of the list: the repo's own endpoints cannot change them.
   const list = await ghApi(context, {
@@ -208,16 +199,16 @@ export async function ensureProtectMain(
       await ghApi(context, { method: "POST", path: rulesetsPath, body: protectMain }),
       repo,
     );
-    context.progress({ ...step, status: "done", detail: "created" });
+    end("done", "created");
     return "done";
   }
   const path = repoPath(repo, `rulesets/${found.id}`);
   const current = readBody(await ghApi(context, { path }), repo, rulesetBody);
   if (isProtectMain(current)) {
-    context.progress({ ...step, status: "skipped", detail: "already set" });
+    end("skipped", "already set");
     return "skipped";
   }
   answerOrThrow(await ghApi(context, { method: "PUT", path, body: protectMain }), repo);
-  context.progress({ ...step, status: "done", detail: "updated" });
+  end("done", "updated");
   return "done";
 }

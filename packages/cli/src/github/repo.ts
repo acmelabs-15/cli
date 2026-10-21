@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { CommandError } from "../command/outcome";
 import { inputError } from "../command/outcome";
 import type { GhAnswer, StepContext } from "./gh";
-import { ghApi, readBody, repoPath, shownText } from "./gh";
+import { ghApi, readBody, repoPath, shownText, startStep } from "./gh";
 import { commitShaSchema, inLocalHistory } from "./git";
 import type { GitHubRepo } from "./names";
 import { fullName } from "./names";
@@ -166,21 +166,15 @@ export async function ensureRepo(context: StepContext, request: RepoRequest): Pr
   const { repo } = request;
   // The names pass their check before the step starts, so no title shows a name that fails it.
   const path = repoPath(repo);
-  const step = {
-    kind: "step",
-    step: "github-repo",
-    title: `Create the GitHub repo ${fullName(repo)}`,
-  } as const;
-  context.progress({ ...step, status: "started" });
+  const end = startStep(context, "github-repo", `Create the GitHub repo ${fullName(repo)}`);
   // A 404 is the step's own answer, no repo of that name, so it comes back at once.
   const read = await ghApi(context, { path, expected: [404] });
   if (notFound(read)) {
     const created = await createRepo(context, request);
-    context.progress({ ...step, status: "done" });
+    end("done");
     return { url: created.html_url, cloneUrl: created.clone_url, made: "created" };
   }
   const found = readBody(read, repo, repoBody);
-  const reason = await reuseReason(context, request, found);
-  context.progress({ ...step, status: "skipped", detail: reason });
+  end("skipped", await reuseReason(context, request, found));
   return { url: found.html_url, cloneUrl: found.clone_url, made: "reused" };
 }

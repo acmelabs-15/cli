@@ -181,7 +181,7 @@ bun test packages/cli/src/command      # the World's limits, and the rest of com
 
 ```
 packages/cli/src/github/names.ts            ownerSchema, repoNameSchema, GitHubRepo, quoted: zod only
-packages/cli/src/github/gh.ts               ghApi: one REST call through gh api; StepContext; the answers-to-failure table
+packages/cli/src/github/gh.ts               ghApi: one REST call through gh api; StepContext and startStep, a step's one progress step; the answers-to-failure table
 packages/cli/src/github/git.ts              git's command lines: gh's credential helper, no terminal prompt; the commit-sha and branch-name checks
 packages/cli/src/github/login.ts            checkLogin
 packages/cli/src/github/repo.ts             ensureRepo
@@ -221,16 +221,12 @@ export async function ensureActionsSetting(
   context: StepContext,
   repo: GitHubRepo,
 ): Promise<"done" | "skipped"> {
-  const step = {
-    kind: "step",
-    step: "github-actions-setting",
-    title: `Set the Actions setting on ${repo.owner}/${repo.name}`,
-  } as const;
-  context.progress({ ...step, status: "started" });
+  const title = `Set the Actions setting on ${repo.owner}/${repo.name}`;
+  const end = startStep(context, "github-actions-setting", title);
   const path = `repos/${repo.owner}/${repo.name}/actions/permissions/workflow`;
   const current = answerOrThrow(await ghApi(context, { path }), repo);
   if (sameSetting(current, actionsSetting)) {
-    context.progress({ ...step, status: "skipped", detail: "already set" });
+    end("skipped", "already set");
     return "skipped";
   }
   const written = await ghApi(context, { method: "PUT", path, body: actionsSetting });
@@ -240,7 +236,7 @@ export async function ensureActionsSetting(
     );
   }
   answerOrThrow(written, repo);
-  context.progress({ ...step, status: "done" });
+  end("done");
   return "done";
 }
 ```

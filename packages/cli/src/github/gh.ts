@@ -10,6 +10,23 @@ import { fullName, ownerSchema, quoted, repoNameSchema } from "./names";
 /** What a GitHub step runs in: the command's context without `ask`, because no step asks. */
 export type StepContext = Omit<Context<unknown>, "ask">;
 
+/**
+ * Starts a step's one progress step: it reports the step, with its stable id and its title, as
+ * started, and gives the function that ends it with a status and, when it has one, a detail. When
+ * the step throws instead, runCommand reports the open step as failed.
+ */
+export function startStep(
+  context: StepContext,
+  step: string,
+  title: string,
+): (status: "done" | "skipped" | "failed", detail?: string) => void {
+  context.progress({ kind: "step", step, title, status: "started" });
+  return (status, detail) => {
+    const end = { kind: "step", step, title, status } as const;
+    context.progress(detail === undefined ? end : { ...end, detail });
+  };
+}
+
 /** The HTTP methods the steps send. No step deletes. */
 export type Method = "GET" | "POST" | "PUT";
 

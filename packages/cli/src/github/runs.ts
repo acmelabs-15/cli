@@ -4,7 +4,7 @@ import type { ProgressUpdate } from "../command/command";
 import { inputError, outsideError } from "../command/outcome";
 import { durationOf } from "../command/world-limits";
 import type { StepContext } from "./gh";
-import { ghApi, readBody, repoPath, shownText } from "./gh";
+import { ghApi, readBody, repoPath, shownText, startStep } from "./gh";
 import { commitShaSchema } from "./git";
 import type { GitHubRepo } from "./names";
 import { fullName, quoted } from "./names";
@@ -214,18 +214,13 @@ export async function watchRun(context: StepContext, watch: RunWatch): Promise<R
     repo,
     `actions/runs?head_sha=${checkedSha(headSha)}&event=push&per_page=100`,
   );
-  const step = {
-    kind: "step",
-    step: "github-run",
-    title: `Wait for the ${shownText(workflow)} run on ${fullName(repo)}`,
-  } as const;
-  context.progress({ ...step, status: "started" });
+  const title = `Wait for the ${shownText(workflow)} run on ${fullName(repo)}`;
+  const end = startStep(context, "github-run", title);
   const appeared = await appearedRun(context, watch, listPath, waits);
   context.progress(statusMessage(appeared));
   const run = await completedRun(context, repo, appeared, waits);
   const status = run.conclusion === "success" ? "done" : "failed";
-  const detail = run.conclusion === null ? "no conclusion" : shownText(run.conclusion);
-  context.progress({ ...step, status, detail });
+  end(status, run.conclusion === null ? "no conclusion" : shownText(run.conclusion));
   return { id: run.id, url: run.html_url, conclusion: run.conclusion };
 }
 

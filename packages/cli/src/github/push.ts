@@ -3,7 +3,7 @@ import { lstat } from "node:fs/promises";
 import type { CommandError } from "../command/outcome";
 import { inputError } from "../command/outcome";
 import type { StepContext } from "./gh";
-import { shownText } from "./gh";
+import { shownText, startStep } from "./gh";
 import type { CloneRequest, OriginUrl, RemoteBranchRequest } from "./git";
 import {
   addOrigin,
@@ -121,12 +121,7 @@ export async function push(context: StepContext, request: PushRequest): Promise<
   // fails.
   httpsUrl(repo);
   checkBranchNames("the branch to push is not a branch name that git allows", { branch });
-  const step = {
-    kind: "step",
-    step: "github-push",
-    title: `Push ${branch} to ${fullName(repo)}`,
-  } as const;
-  context.progress({ ...step, status: "started" });
+  const end = startStep(context, "github-push", `Push ${branch} to ${fullName(repo)}`);
   const sha = await localCommit(context, { cwd, branch });
   if (sha === undefined) {
     throw inputError(`${shownText(cwd)} has no branch ${branch} to push`);
@@ -134,11 +129,11 @@ export async function push(context: StepContext, request: PushRequest): Promise<
   await ensureOrigin(context, request);
   await refuseRewrites(context, request);
   if ((await remoteCommit(context, request)) === sha) {
-    context.progress({ ...step, status: "skipped", detail: `already at ${shownText(sha)}` });
+    end("skipped", `already at ${shownText(sha)}`);
     return { sha, pushed: false };
   }
   await pushBranch(context, request);
-  context.progress({ ...step, status: "done" });
+  end("done");
   return { sha, pushed: true };
 }
 
@@ -204,15 +199,11 @@ export async function clone(context: StepContext, request: CloneRequest): Promis
   if (into === "") {
     throw inputError(`the folder to clone ${fullName(repo)} into has no name`);
   }
-  const step = {
-    kind: "step",
-    step: "github-clone",
-    title: `Clone ${fullName(repo)} into ${shownText(into)}`,
-  } as const;
-  context.progress({ ...step, status: "started" });
+  const title = `Clone ${fullName(repo)} into ${shownText(into)}`;
+  const end = startStep(context, "github-clone", title);
   await checkNewFolder(request);
   await refuseCloneRewrite(context, request);
   await cloneRepo(context, request);
-  context.progress({ ...step, status: "done" });
+  end("done");
   return { into };
 }

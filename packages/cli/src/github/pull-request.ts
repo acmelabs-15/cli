@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { outsideError } from "../command/outcome";
 import type { GhAnswer, StepContext } from "./gh";
-import { ghApi, readBody, repoPath, shownText } from "./gh";
+import { ghApi, readBody, repoPath, shownText, startStep } from "./gh";
 import { checkBranchNames } from "./git";
 import type { GitHubRepo } from "./names";
 import { fullName } from "./names";
@@ -116,12 +116,8 @@ export async function openPullRequest(
   // git's branch rules keep out a colon, which would make the head another owner's branch, and a
   // control or format character, which the title would show.
   checkBranchNames("the pull request's head or base is not a branch name", { head, base });
-  const step = {
-    kind: "step",
-    step: "github-pull-request",
-    title: `Open a pull request from ${head} into ${base} on ${fullName(repo)}`,
-  } as const;
-  context.progress({ ...step, status: "started" });
+  const stepTitle = `Open a pull request from ${head} into ${base} on ${fullName(repo)}`;
+  const end = startStep(context, "github-pull-request", stepTitle);
   let found = await openFromHead(context, asked);
   if (found === undefined) {
     const created = await ghApi(context, {
@@ -132,7 +128,7 @@ export async function openPullRequest(
     const alreadyOpen = alreadyExistsMessage(created);
     if (alreadyOpen === undefined) {
       const opened = readBody(created, repo, createdBody);
-      context.progress({ ...step, status: "done", detail: shownText(opened.html_url) });
+      end("done", shownText(opened.html_url));
       return { number: opened.number, url: opened.html_url, made: "created" };
     }
     found = await openFromHead(context, asked);
@@ -142,10 +138,6 @@ export async function openPullRequest(
       );
     }
   }
-  context.progress({
-    ...step,
-    status: "skipped",
-    detail: `already open: ${shownText(found.html_url)}`,
-  });
+  end("skipped", `already open: ${shownText(found.html_url)}`);
   return { number: found.number, url: found.html_url, made: "reused" };
 }

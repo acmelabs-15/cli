@@ -7,6 +7,7 @@ import {
   ghEnv,
   ghLoginNeeded,
   shownText,
+  startStep,
   tokenVariablesFrom,
   tokenVariablesIn,
   unreadableAnswer,
@@ -126,12 +127,7 @@ export async function checkLogin(
   context: StepContext,
   options: { scopes: readonly string[] },
 ): Promise<CheckedLogin> {
-  const step = {
-    kind: "step",
-    step: "github-login",
-    title: "Check the gh login for github.com",
-  } as const;
-  context.progress({ ...step, status: "started" });
+  const end = startStep(context, "github-login", "Check the gh login for github.com");
   const spawned = await context.spawn(statusCommandLine, { env: ghEnv });
   const status = readStatus(spawned, context.env);
   const account = status.hosts["github.com"]?.find((entry) => entry.active);
@@ -158,6 +154,6 @@ export async function checkLogin(
     throw ghLoginNeeded(tokenVariables, { scopes: missing });
   }
   const shown = scopes.length === 0 ? "a token that reports no scopes" : scopes.join(", ");
-  context.progress({ ...step, status: "done", detail: shownText(`${login}, with ${shown}`) });
+  end("done", shownText(`${login}, with ${shown}`));
   return { login, scopes };
 }
