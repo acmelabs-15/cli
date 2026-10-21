@@ -686,6 +686,27 @@ describe("ensureRepo: answers the step cannot use", () => {
     expect(world.calls).toEqual([ghLogged(calls.read)]);
   });
 
+  test("a default branch with a lone surrogate ends with exit 3, and goes into no path", async () => {
+    // Built: JSON can carry one half of a UTF-16 pair, which encodeURIComponent cannot encode.
+    const calls = repoCalls("acmelabs-15", "cli");
+    const world = fakeWorld({
+      spawn: [ghScripted(calls.read, cliWith({ default_branch: "ma\uD800in" }))],
+    });
+    const outcome = await runCommand(
+      repoCommand,
+      { owner: "acmelabs-15", name: "cli", visibility: "public", localRoot },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 3,
+      error: {
+        kind: "outside",
+        message: String.raw`gh api GET repos/acmelabs-15/cli gave an answer that acmelabs cannot read: default_branch: "ma\ud800in" holds a lone surrogate, one half of a UTF-16 pair, which a URL cannot encode`,
+      },
+    });
+    expect(world.calls).toEqual([ghLogged(calls.read)]);
+  });
+
   test("a main commit that is not a full sha ends with exit 3, and goes into no git command line", async () => {
     const calls = repoCalls("acmelabs-15", "cli");
     const world = fakeWorld({

@@ -6,7 +6,7 @@ import type { GhAnswer, StepContext } from "./gh";
 import { ghApi, readBody, repoPath, shownText, startStep } from "./gh";
 import { commitShaSchema, inLocalHistory } from "./git";
 import type { GitHubRepo } from "./names";
-import { fullName } from "./names";
+import { fullName, quoted } from "./names";
 
 /**
  * A repo's visibility on GitHub, as a run asks for it. acmelabs never changes a repo's visibility.
@@ -33,13 +33,19 @@ export type EnsuredRepo = { url: string; cloneUrl: string; made: "created" | "re
 
 /**
  * GitHub's answer to a read or a create of a repo: the fields the step reads (note 09, section
- * 2.3). `visibility` is text, not the two that a run asks for: GitHub also has "internal".
+ * 2.3). `visibility` is text, not the two that a run asks for: GitHub also has "internal". The
+ * default branch goes into an API path, encoded, so it holds no lone surrogate (one half of a
+ * UTF-16 pair), which encodeURIComponent cannot encode: a branch with one is an answer the step
+ * cannot read.
  */
 const repoBody = z.object({
   html_url: z.string(),
   clone_url: z.string(),
   visibility: z.string(),
-  default_branch: z.string(),
+  default_branch: z.string().regex(/^\P{Cs}*$/u, {
+    error: (issue) =>
+      `${quoted(String(issue.input))} holds a lone surrogate, one half of a UTF-16 pair, which a URL cannot encode`,
+  }),
 });
 
 /** A repo as the step reads it from GitHub's answer. */
