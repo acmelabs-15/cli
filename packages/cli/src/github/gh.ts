@@ -418,21 +418,16 @@ function rateLimited(answer: FailedAnswer): boolean {
 }
 
 /**
- * Whether GitHub's error body says that a repo of the name already exists: an item of its `errors`
- * whose message says "name already exists", as GitHub answers a create of a repo whose name is
- * taken in the organization (note 09, section 2.3).
+ * The items of GitHub's `errors` in an error body, as gh reads them (`parseErrorResponse` in
+ * `pkg/cmd/api/api.go` at v2.98.0): `errors` as one text, or each item of the `errors` list. None
+ * when the body has neither.
  */
-function nameTaken(body: Json): boolean {
+function errorItems(body: Json): readonly (Json | undefined)[] {
   const errors = isJsonObject(body) ? body.errors : undefined;
-  return (
-    Array.isArray(errors) &&
-    errors.some(
-      (item: Json) =>
-        isJsonObject(item) &&
-        typeof item.message === "string" &&
-        item.message.includes("name already exists"),
-    )
-  );
+  if (typeof errors === "string") {
+    return [errors];
+  }
+  return Array.isArray(errors) ? errors : [];
 }
 
 /** An item of GitHub's `errors`, as its text: a text itself, or an object's `message`. */
@@ -444,27 +439,26 @@ function errorText(item: Json | undefined): string | undefined {
 }
 
 /**
- * The first error with a text in GitHub's error body, as `shownText` gives it: `errors` as one
- * text, or the first item of the `errors` list that is a text or an object with a `message`, as gh
- * reads them (`parseErrorResponse` in `pkg/cmd/api/api.go` at v2.98.0). A 422 names its cause
- * there, such as "No commits between main and add-brain", while its message says only "Validation
- * Failed". Undefined when the body has none.
+ * Whether GitHub's error body says that a repo of the name already exists: an object of its
+ * `errors` whose message says "name already exists", as GitHub answers a create of a repo whose
+ * name is taken in the organization (note 09, section 2.3).
+ */
+function nameTaken(body: Json): boolean {
+  return errorItems(body).some(
+    (item) => isJsonObject(item) && errorText(item)?.includes("name already exists") === true,
+  );
+}
+
+/**
+ * The first error with a text in GitHub's error body, as `shownText` gives it: the first item of
+ * `errors` that is a text or an object with a `message`. A 422 names its cause there, such as "No
+ * commits between main and add-brain", while its message says only "Validation Failed". Undefined
+ * when the body has none.
  */
 function firstErrorOf(body: Json): string | undefined {
-  const errors = isJsonObject(body) ? body.errors : undefined;
-  let items: readonly (Json | undefined)[] = [];
-  if (typeof errors === "string") {
-    items = [errors];
-  } else if (Array.isArray(errors)) {
-    items = errors;
-  }
-  for (const item of items) {
-    const text = shownText(errorText(item) ?? "");
-    if (text !== "") {
-      return text;
-    }
-  }
-  return undefined;
+  return errorItems(body)
+    .map((item) => shownText(errorText(item) ?? ""))
+    .find((text) => text !== "");
 }
 
 /**
