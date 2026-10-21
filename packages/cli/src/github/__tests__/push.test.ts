@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -1051,6 +1051,31 @@ const loggedClone: WorldCall = {
   env: { GIT_TERMINAL_PROMPT: "0" },
 };
 
+/**
+ * git's command line that reads the URL that a clone of acmelabs-15/marketplace uses, after the
+ * rewrites in git's config. It reaches no remote, so it has no login words.
+ */
+const cloneUrlLine = [
+  "git",
+  "--git-dir=/dev/null",
+  "ls-remote",
+  "--get-url",
+  "https://github.com/acmelabs-15/marketplace.git",
+];
+
+/** git's answer when no rewrite moves the marketplace's HTTPS URL: the URL itself, on one line. */
+const cloneUrlKept: ScriptedSpawn = {
+  commandLine: cloneUrlLine,
+  answer: { stdout: "https://github.com/acmelabs-15/marketplace.git\n" },
+};
+
+/** fakeWorld's log entry for the read of the clone's URL: no folder, GIT_TERMINAL_PROMPT=0. */
+const loggedCloneUrl: WorldCall = {
+  kind: "spawn",
+  commandLine: cloneUrlLine,
+  env: { GIT_TERMINAL_PROMPT: "0" },
+};
+
 describe("clone", () => {
   let work: string;
 
@@ -1066,7 +1091,10 @@ describe("clone", () => {
   test("clones the HTTPS URL into a new folder through gh's login, with GIT_TERMINAL_PROMPT=0", async () => {
     const world = fakeWorld({
       env: { GIT_DIR: "/work/other/.git", GIT_INDEX_FILE: "/work/other/.git/index" },
-      spawn: [{ commandLine: cloneLine, answer: { stderr: `Cloning into '${newFolder}'...\n` } }],
+      spawn: [
+        cloneUrlKept,
+        { commandLine: cloneLine, answer: { stderr: `Cloning into '${newFolder}'...\n` } },
+      ],
     });
     const caller = frontEnd(world);
     const outcome = await runCommand(
@@ -1082,14 +1110,13 @@ describe("clone", () => {
       result: { into: newFolder },
     });
     expect(caller.updates).toEqual([cloneStep(newFolder, "started"), cloneStep(newFolder, "done")]);
-    // toStrictEqual: the clone runs in no folder of its own, and without the GIT_ variables, so an
-    // absolute GIT_INDEX_FILE cannot make it write into another repo's index (note 12, 1.4).
+    // toStrictEqual: the clone and the read of its URL run in no folder of their own, and without
+    // the GIT_ variables, so an absolute GIT_INDEX_FILE cannot make the clone write into another
+    // repo's index (note 12, 1.4).
+    const env = { GIT_DIR: undefined, GIT_INDEX_FILE: undefined, GIT_TERMINAL_PROMPT: "0" };
     expect(world.calls).toStrictEqual([
-      {
-        kind: "spawn",
-        commandLine: cloneLine,
-        env: { GIT_DIR: undefined, GIT_INDEX_FILE: undefined, GIT_TERMINAL_PROMPT: "0" },
-      },
+      { kind: "spawn", commandLine: cloneUrlLine, env },
+      { kind: "spawn", commandLine: cloneLine, env },
     ]);
   });
 
@@ -1183,6 +1210,7 @@ describe("clone", () => {
   test("Repository not found, then the clone, clones after one 3-second wait", async () => {
     const world = fakeWorld({
       spawn: [
+        cloneUrlKept,
         { commandLine: cloneLine, answer: gitAnswers.repoNotFound },
         { commandLine: cloneLine },
       ],
@@ -1193,11 +1221,18 @@ describe("clone", () => {
       frontEnd(world),
     );
     expect(outcome).toMatchObject({ ok: true, result: { into: newFolder } });
-    expect(world.calls).toEqual([loggedClone, { kind: "sleep", ms: 3000 }, loggedClone]);
+    expect(world.calls).toEqual([
+      loggedCloneUrl,
+      loggedClone,
+      { kind: "sleep", ms: 3000 },
+      loggedClone,
+    ]);
   });
 
   test("no gh login ends with exit 4, naming gh auth login", async () => {
-    const world = fakeWorld({ spawn: [{ commandLine: cloneLine, answer: gitAnswers.noLogin }] });
+    const world = fakeWorld({
+      spawn: [cloneUrlKept, { commandLine: cloneLine, answer: gitAnswers.noLogin }],
+    });
     const outcome = await runCommand(
       cloneCommand,
       { owner: "acmelabs-15", name: "marketplace", into: newFolder },
@@ -1217,7 +1252,7 @@ describe("clone", () => {
     // section 1.2).
     const world = fakeWorld({
       env: { GH_TOKEN: "not-a-real-token", GITHUB_TOKEN: "also-not-a-real-token" },
-      spawn: [{ commandLine: cloneLine, answer: gitAnswers.badToken }],
+      spawn: [cloneUrlKept, { commandLine: cloneLine, answer: gitAnswers.badToken }],
     });
     const outcome = await runCommand(
       cloneCommand,
@@ -1238,7 +1273,7 @@ describe("clone", () => {
     // A folder comes from the caller as given, and a terminal shows the step's title.
     const into = "/fake-world/market\r\nplace‮";
     const line = [...cloneLine.slice(0, -1), into];
-    const world = fakeWorld({ spawn: [{ commandLine: line }] });
+    const world = fakeWorld({ spawn: [cloneUrlKept, { commandLine: line }] });
     const caller = frontEnd(world);
     const outcome = await runCommand(
       cloneCommand,
@@ -1255,7 +1290,7 @@ describe("clone", () => {
   test("a folder that starts with - stays a folder: it comes after --", async () => {
     const into = "--upload-pack=touch /tmp/x";
     const line = [...cloneLine.slice(0, -1), into];
-    const world = fakeWorld({ spawn: [{ commandLine: line }] });
+    const world = fakeWorld({ spawn: [cloneUrlKept, { commandLine: line }] });
     const outcome = await runCommand(
       cloneCommand,
       { owner: "acmelabs-15", name: "marketplace", into },
@@ -1297,6 +1332,89 @@ describe("clone", () => {
     });
     expect(caller.updates).toEqual([]);
     expect(world.calls).toEqual([]);
+  });
+});
+
+/**
+ * The message for a rewrite of acmelabs-15/<name>'s HTTPS URL to `shown`, the URL that a clone
+ * would use.
+ */
+function cloneRewritten(name: string, shown: string): string {
+  const repo = `acmelabs-15/${name}`;
+  return `git's config rewrites the URL of ${repo}, https://github.com/${repo}.git, to ${shown}; acmelabs clones ${repo} only from that HTTPS URL, with gh's login, so remove the rewrite (git config --show-origin --get-regexp '^url\\.' lists each one)`;
+}
+
+describe("clone: a rewrite in git's config", () => {
+  // A clone reads the global and the system git config, and `url.<base>.insteadOf` there moves
+  // its URL (probes on git 2.54.0, note 09, section 4).
+  test.each([
+    [
+      "moves the URL to another host",
+      "https://evil.example/acmelabs-15/marketplace.git\n",
+      "https://evil.example/acmelabs-15/marketplace.git",
+    ],
+    [
+      "gives the SSH form, which would skip gh's login",
+      "git@github.com:acmelabs-15/marketplace.git\n",
+      "git@github.com:acmelabs-15/marketplace.git",
+    ],
+    [
+      "gives a URL with a login part, which the message leaves out",
+      "https://x-access-token:ghp_secret0@evil.example/acmelabs-15/marketplace.git\n",
+      "https://evil.example/acmelabs-15/marketplace.git",
+    ],
+  ])(
+    "a rewrite that %s ends with exit 2, naming the URL that git would use, and clones nothing",
+    async (_case, stdout, shown) => {
+      const world = fakeWorld({ spawn: [{ commandLine: cloneUrlLine, answer: { stdout } }] });
+      const caller = frontEnd(world);
+      const outcome = await runCommand(
+        cloneCommand,
+        { owner: "acmelabs-15", name: "marketplace", into: newFolder },
+        caller,
+      );
+      expect(JSON.stringify(outcome)).not.toContain("ghp_secret0");
+      expect(outcome).toEqual({
+        ok: false,
+        command: "sample clone",
+        exitCode: 2,
+        durationMs: expect.any(Number),
+        error: { kind: "input", message: cloneRewritten("marketplace", shown), issues: [] },
+      });
+      expect(caller.updates).toEqual([
+        cloneStep(newFolder, "started"),
+        cloneStep(newFolder, "failed"),
+      ]);
+      expect(world.calls).toEqual([loggedCloneUrl]);
+    },
+  );
+
+  test("a read of the clone's URL that fails ends with exit 3, naming the call and git's message", async () => {
+    const world = fakeWorld({
+      spawn: [
+        {
+          commandLine: cloneUrlLine,
+          answer: {
+            code: 128,
+            stderr: "fatal: bad config line 1 in file /Users/test/.gitconfig\n",
+          },
+        },
+      ],
+    });
+    const outcome = await runCommand(
+      cloneCommand,
+      { owner: "acmelabs-15", name: "marketplace", into: newFolder },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 3,
+      error: {
+        kind: "outside",
+        message:
+          "git --git-dir=/dev/null ls-remote --get-url https://github.com/acmelabs-15/marketplace.git failed with exit 128: fatal: bad config line 1 in file /Users/test/.gitconfig",
+      },
+    });
+    expect(world.calls).toEqual([loggedCloneUrl]);
   });
 });
 
@@ -1351,15 +1469,23 @@ function seed(folder: string, bare: string): string {
 describe("push and clone: real git, with a local bare repo in place of GitHub", () => {
   /** A temp folder that holds the bare repos, the home folder and the local repos. */
   let temp: string;
+  /** A real World whose home folder's git config sends each repo's HTTPS URL to its bare repo. */
+  let rewriting: World;
   /**
-   * A real World whose home folder's git config sends each repo's HTTPS URL to its bare repo. The
-   * push step refuses such a rewrite, so `git remote get-url`, the step's read of the URLs that git
-   * uses, runs with an empty home folder: it gives what a machine with no rewrite gives, while
-   * `git ls-remote` and `git push` still reach the bare repo.
+   * The same World, except that the steps' reads of the URLs that git uses (`git remote get-url`
+   * and `git ls-remote --get-url`) run with an empty home folder. The steps refuse the home
+   * folder's rewrites, so those reads give what a machine with no rewrite gives, while
+   * `git ls-remote`, `git push` and `git clone` still reach the bare repo.
    */
   let world: World;
   /** The repos, one for each test, each with a bare repo that stands in for it on GitHub. */
-  const names = ["probe-push", "probe-rejected", "probe-clone"] as const;
+  const names = [
+    "probe-push",
+    "probe-rejected",
+    "probe-clone",
+    "probe-clone-local",
+    "probe-clone-refused",
+  ] as const;
 
   /** The bare repo that stands in for acmelabs-15/<name> on GitHub. */
   function bare(name: (typeof names)[number]): string {
@@ -1379,15 +1505,15 @@ describe("push and clone: real git, with a local bare repo in place of GitHub", 
     const emptyHome = path.join(temp, "empty-home");
     await mkdir(emptyHome);
     // The World has its own env, so the test sets no variable in the test process.
-    const real = realWorld({ env: { ...Bun.env, HOME: home, XDG_CONFIG_HOME: home } });
+    rewriting = realWorld({ env: { ...Bun.env, HOME: home, XDG_CONFIG_HOME: home } });
     world = {
-      ...real,
+      ...rewriting,
       spawn(commandLine, options = {}) {
-        if (!commandLine.includes("get-url")) {
-          return real.spawn(commandLine, options);
+        if (!commandLine.includes("get-url") && !commandLine.includes("--get-url")) {
+          return rewriting.spawn(commandLine, options);
         }
         const env = { ...options.env, HOME: emptyHome, XDG_CONFIG_HOME: emptyHome };
-        return real.spawn(commandLine, { ...options, env });
+        return rewriting.spawn(commandLine, { ...options, env });
       },
     };
   });
@@ -1475,5 +1601,52 @@ describe("push and clone: real git, with a local bare repo in place of GitHub", 
     expect(setupGit(into, "config", "--get", "remote.origin.url")).toBe(
       "https://github.com/acmelabs-15/probe-clone.git",
     );
+  });
+
+  test("a rewrite in the home folder's git config ends with exit 2, and makes no folder", async () => {
+    // The World with the home folder's rewrites in every call: a clone would go to the bare repo.
+    seed(path.join(temp, "refused-theirs"), bare("probe-clone-refused"));
+    const into = path.join(temp, "refused-copy");
+    const outcome = await runCommand(
+      cloneCommand,
+      { owner: "acmelabs-15", name: "probe-clone-refused", into },
+      frontEnd(rewriting),
+    );
+    expect(outcome).toMatchObject({
+      ok: false,
+      exitCode: 2,
+      error: {
+        kind: "input",
+        message: cloneRewritten("probe-clone-refused", bare("probe-clone-refused")),
+      },
+    });
+    await expect(lstat(into)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test("a rewrite in the config of a repo around the working folder, which a clone does not read, does not stop the clone", async () => {
+    // The local repo's config sends every github.com URL to a folder. A clone that runs inside the
+    // repo does not read it, and neither does the step's read of the clone's URL (probe).
+    const around = path.join(temp, "around");
+    setupGit(temp, "init", "--quiet", "--initial-branch=main", around);
+    setupGit(
+      around,
+      "config",
+      `url.${path.join(temp, "elsewhere-local")}/.insteadOf`,
+      "https://github.com/",
+    );
+    const theirs = seed(path.join(temp, "local-theirs"), bare("probe-clone-local"));
+    const inside: World = {
+      ...world,
+      spawn: (commandLine, options = {}) =>
+        world.spawn(commandLine, { ...options, cwd: options.cwd ?? around }),
+    };
+    const into = path.join(temp, "local-copy");
+    const outcome = await runCommand(
+      cloneCommand,
+      { owner: "acmelabs-15", name: "probe-clone-local", into },
+      frontEnd(inside),
+    );
+    expect(outcome).toMatchObject({ ok: true, result: { into } });
+    expect(setupGit(into, "rev-parse", "HEAD")).toBe(theirs);
   });
 });

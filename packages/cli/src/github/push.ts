@@ -1,5 +1,6 @@
 import { lstat } from "node:fs/promises";
 
+import type { CommandError } from "../command/outcome";
 import { inputError } from "../command/outcome";
 import type { StepContext } from "./gh";
 import { shownText } from "./gh";
@@ -8,6 +9,7 @@ import {
   addOrigin,
   checkBranchNames,
   cloneRepo,
+  cloneUrlInUse,
   httpsUrl,
   localCommit,
   originUrls,
@@ -70,6 +72,25 @@ async function ensureOrigin(context: StepContext, { repo, cwd }: PushRequest): P
 }
 
 /**
+ * The input failure, exit 2, for a rewrite in git's config that moves the repo's HTTPS URL `url`:
+ * `rewritten` names what git rewrites, such as the remote origin of a folder, `moved` is the URL
+ * that git would use instead, shown without its login part, and `only` says what acmelabs does
+ * with the HTTPS URL alone, such as `pushes acmelabs-15/jev only to`. The message reads: git's
+ * config rewrites <rewritten>, <url>, to <moved>; acmelabs <only> that HTTPS URL, with gh's login,
+ * so remove the rewrite, and it names the command line that lists each rewrite.
+ */
+function rewriteRefused(
+  rewritten: string,
+  url: string,
+  moved: OriginUrl,
+  only: string,
+): CommandError {
+  return inputError(
+    `git's config rewrites ${rewritten}, ${url}, to ${shownUrl(moved)}; acmelabs ${only} that HTTPS URL, with gh's login, so remove the rewrite (git config --show-origin --get-regexp '^url\\.' lists each one)`,
+  );
+}
+
+/**
  * Makes sure that git's config moves no URL of the remote origin: each URL that `git ls-remote`
  * and `git push` use, after the rewrites (url.<base>.insteadOf and pushInsteadOf), must be the
  * repo's HTTPS URL. A rewrite that moves one is an input failure, exit 2, that names the URL git
@@ -81,9 +102,8 @@ async function refuseRewrites(context: StepContext, { repo, cwd }: PushRequest):
   const inUse = await originUrlsInUse(context, cwd);
   const moved = inUse.find(({ value }) => value !== url);
   if (moved !== undefined) {
-    throw inputError(
-      `git's config rewrites the remote origin of ${shownText(cwd)}, ${url}, to ${shownUrl(moved)}; acmelabs pushes ${fullName(repo)} only to that HTTPS URL, with gh's login, so remove the rewrite (git config --show-origin --get-regexp '^url\\.' lists each one)`,
-    );
+    const origin = `the remote origin of ${shownText(cwd)}`;
+    throw rewriteRefused(origin, url, moved, `pushes ${fullName(repo)} only to`);
   }
 }
 
@@ -154,9 +174,25 @@ async function checkNewFolder({ repo, into }: CloneRequest): Promise<void> {
 }
 
 /**
+ * Makes sure that git's config does not move the URL that the clone uses: after the rewrites
+ * (url.<base>.insteadOf), it must be the repo's HTTPS URL. A rewrite that moves it is an input
+ * failure, exit 2, that names the URL git would use, before the clone reaches a remote, for the
+ * reasons that `refuseRewrites` gives.
+ */
+async function refuseCloneRewrite(context: StepContext, { repo }: CloneRequest): Promise<void> {
+  const url = httpsUrl(repo);
+  const inUse = await cloneUrlInUse(context, repo);
+  if (inUse.value !== url) {
+    const name = fullName(repo);
+    throw rewriteRefused(`the URL of ${name}`, url, inUse, `clones ${name} only from`);
+  }
+}
+
+/**
  * Clones the repo from its HTTPS URL into a new folder, through gh's login. The folder must not
  * exist yet: an existing one is an input failure, exit 2, before any git call, and so is a folder
- * with no name. A relative folder is relative to the working folder, for the check and for git
+ * with no name. A rewrite in git's config that moves the URL is an input failure, exit 2, before
+ * the clone. A relative folder is relative to the working folder, for the check and for git
  * alike. git gets the folder as given; the step's title and its messages show it as `shownText`
  * gives it, so a control character in it cannot reach the terminal.
  */
@@ -175,6 +211,7 @@ export async function clone(context: StepContext, request: CloneRequest): Promis
   } as const;
   context.progress({ ...step, status: "started" });
   await checkNewFolder(request);
+  await refuseCloneRewrite(context, request);
   await cloneRepo(context, request);
   context.progress({ ...step, status: "done" });
   return { into };

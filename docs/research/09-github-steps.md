@@ -431,6 +431,12 @@ https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api
   - A `git clone` that runs inside another repo does not read that repo's local config: a local `insteadOf` there did not move the clone, which went to github.com and asked for a login (the one probe that reached GitHub; no login, nothing read).
   - A program that Bun starts with `detached: true`, as the World starts each one, has no controlling terminal (`tpgid` 0, tty `??`, a probe under `script`). Without `detached`, the same program had the terminal. So ssh in a git call of acmelabs cannot ask for a passphrase or a new host key.
   - This machine has no `url.` rule in any git config scope (`git config --show-origin --get-regexp '^url\.'` exits 1), and gh's `git_protocol` is `https`.
+- **Probes of a clone's URL** (the clone fix of github-ops, 2026-10-20, git 2.54.0, a temp home, URLs on `host.invalid`, local bare repos; no network, because `.invalid` never resolves):
+  - `git ls-remote --get-url <url>` prints the URL after `url.<base>.insteadOf`, on one line that ends in a newline, exits 0, and reaches no remote. With no rule, it prints the URL as given. git's own help: "Expand the URL of the given remote repository taking into account any "url.<base>.insteadOf" config setting ... and exit without talking to the remote."
+  - `pushInsteadOf` does not move it. A global SSH rewrite gives `git@host.invalid:acmelabs-15/x.git`; a longer rule back to the HTTPS URL beside it keeps the HTTPS URL.
+  - Inside a repo, the read applies that repo's local `insteadOf`, also from a subfolder. A `git clone` run in the same folder does not: it went to the URL as given. `--git-dir=/dev/null` makes the read skip the local config and keep the global one, with exit 0 and no message. `GIT_DIR=/dev/null` and `-C /` do the same; `GIT_CEILING_DIRECTORIES` does not.
+  - A rewrite in a file that `includeIf "gitdir:<folder>/"` loads moved a clone into that folder, and one that `includeIf "hasconfig:remote.*.url:https://host.invalid/**"` loads moved a clone of a matching URL. The read before the clone saw neither: the conditions hold only once the clone's repo exists.
+  - A global `[remote "<url>"]` section with its own `url` changes what `ls-remote --get-url <url>` prints, and a clone of that URL did not use it. So the read can name a URL that the clone would not use; the step then refuses, which is the safe side.
 
 ## 5. Prior art: how acmelabs-15/cli was created on 2026-10-20
 

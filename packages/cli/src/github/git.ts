@@ -418,6 +418,23 @@ export async function pushBranch(
 export type CloneRequest = { repo: GitHubRepo; into: string };
 
 /**
+ * The URL that a clone of the repo uses, the `url` of the clone's remote origin, after the
+ * rewrites in git's config: `git --git-dir=/dev/null ls-remote --get-url <https url>`, which
+ * applies url.<base>.insteadOf, prints one line, and reaches no remote. --git-dir=/dev/null names
+ * no repo, so the read skips the config of a repo around the working folder, as the clone does
+ * (probes on git 2.54.0, note 09, section 4). Any exit other than 0 is an outside failure that
+ * names the call and git's message.
+ */
+export async function cloneUrlInUse(context: StepContext, repo: GitHubRepo): Promise<OriginUrl> {
+  const call = { words: ["--git-dir=/dev/null", "ls-remote", "--get-url", httpsUrl(repo)] };
+  const spawned = await runGit(context, call);
+  if (spawned.code !== 0) {
+    throw gitFailed(call, spawned);
+  }
+  return { key: "url", value: spawned.stdout.replace(/\n$/u, "") };
+}
+
+/**
  * Clones the repo from its HTTPS URL into the folder, with gh's login: `git clone -- <url>
  * <into>`. "--" ends git's options, so a folder whose name starts with "-" stays a folder. The call
  * runs in no folder of its own: without the GIT_ variables, no other repo can take the clone.
