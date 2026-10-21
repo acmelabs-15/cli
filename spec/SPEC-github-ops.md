@@ -18,7 +18,7 @@ Acceptance: see "Success criteria".
 |---|---|
 | Every GitHub REST call runs `gh api`; push and clone run git with gh's credential helper. One login, gh's; acmelabs never holds a token | Peter, 2026-10-20; ADR-0014 |
 | A step reads before it writes and reports itself as skipped when its result is already there. An existing repo is reused only when it is empty or its main commit is in the local history; any other existing repo, or one with the other visibility, ends the command with exit 2 | Peter, 2026-10-20 |
-| Outside programs get the whole environment, as today (open question 21) | Peter, 2026-10-20; ADR-0015 |
+| Outside programs get the whole environment, as today (open question 21), except that git's calls run without the `GIT_` variables | Peter, 2026-10-20; ADR-0015; ADR-0016 |
 | Every program and request has a time limit and an output limit that a call can change: 5 minutes per program, 1 minute per request, 10 MB per output. At a limit, acmelabs stops the program and every program it started, and the command ends with exit 3 (open question 22) | Peter, 2026-10-20; ADR-0015 |
 | Protect main is brain's ruleset; the Actions setting is brain's: read-only tokens, and workflows may create and approve pull requests | interview Q5; `docs/research/09-github-steps.md`, sections 2.5 and 2.6 |
 | An entry's source and every remote use the HTTPS URL, never the `owner/repo` SSH form | the marketplace's README; note 01 |
@@ -41,7 +41,7 @@ Each step is a function that a command calls inside `run`. Each one reports one 
 | `ensureActionsSetting(context, repo)` | `github-actions-setting` | `GET`, then `PUT repos/{owner}/{name}/actions/permissions/workflow` | `"done" \| "skipped"` |
 | `ensureProtectMain(context, repo)` | `github-protect-main` | `GET repos/{owner}/{name}/rulesets`, the one named "Protect main", then `POST` or `PUT` | `"done" \| "skipped"` |
 | `push(context, { repo, cwd, branch })` | `github-push` | `git ls-remote`, then `git push --set-upstream origin <branch>` | `{ sha, pushed: boolean }` |
-| `clone(context, { repo, into })` | `github-clone` | `git clone <https url> <into>` | `{ into }` |
+| `clone(context, { repo, into })` | `github-clone` | `git --git-dir=/dev/null ls-remote --get-url <https url>`, then `git clone -- <https url> <into>` | `{ into }` |
 | `openPullRequest(context, { repo, head, base, title, body })` | `github-pull-request` | `GET repos/{owner}/{name}/pulls?head=...&base=...&state=open`, then `POST` | `{ number, url, made: "created" \| "reused" }` |
 | `watchRun(context, { repo, headSha, workflow })` | `github-run` | `GET repos/{owner}/{name}/actions/runs?head_sha=...&event=push`, then `GET .../runs/{id}` until it completes | `{ id, url, conclusion }` |
 | `findTag(context, repo, tag)` | none: a read | `GET repos/{owner}/{name}/git/ref/tags/{tag}` | `{ sha } \| null` |
@@ -50,19 +50,25 @@ Each step is a function that a command calls inside `run`. Each one reports one 
 
 ### What each step does
 
-- **`checkLogin`** reads gh's account for github.com. No account, or a state other than `success`, is a login failure that names `gh auth login`. When the token reports scopes (a `gho_` or `ghp_` token) and one of the asked scopes is missing, it is a login failure that names `gh auth refresh -h github.com -s <scope>`. A token that reports no scopes (a fine-grained or app token) skips the scope check, as gh does. `scaffold` asks for `repo` and `workflow`: pushing a file under `.github/workflows/` needs `workflow` (note 09, section 4).
-- **`ensureRepo`** creates the repo in the organization with `name`, `description` and `visibility`, and GitHub's defaults for everything else, as brain, jev-gate, the marketplace and this repo have (read on 2026-10-20). When the repo exists, the step checks it, in order: the same visibility, else exit 2; then `GET .../git/ref/heads/{default branch}`: 409 "Git Repository is empty" means it is this run's repo; a commit for which `git merge-base --is-ancestor <sha> HEAD` succeeds in `localRoot` means it is this run's repo; anything else is exit 2 that names the repo. acmelabs never changes a repo's visibility: private to public makes the Actions logs public and erases stars (GitHub's docs).
+- **`checkLogin`** reads gh's active account for github.com, the one that every gh call uses, also when its token comes from `GH_TOKEN`. No account, or a state other than `success` and `timeout`, is a login failure that names `gh auth login`; a state of `error` adds gh's own error text, because it covers a rejected token and a network failure alike (gh's `buildEntry`). A state of `timeout` means that gh's request to GitHub timed out (gh's `status.go`): an outside failure, exit 3, with gh's error. When the token reports scopes (a `gho_` or `ghp_` token) and asked scopes are missing, it is a login failure that names `gh auth refresh -h github.com -s <scope>`, with every missing scope in one comma list. For a token from `GH_TOKEN` or `GITHUB_TOKEN` (gh's `tokenSource`), the message names the variable, because `gh auth login` and `gh auth refresh` refuse to run while it is set (note 09, section 1.4): replace that token or give it the missing scopes, or clear the variable and then run the gh command. A scope that another includes counts as held: `repo` includes `public_repo`, not the other way. A token that reports no scopes (a fine-grained or app token) skips the scope check, as gh does. `scaffold` asks for `repo` and `workflow`: pushing a file under `.github/workflows/` needs `workflow` (note 09, section 4).
+- **`ensureRepo`** creates the repo in the organization with `name`, `description` and `visibility`, and GitHub's defaults for everything else, as brain, jev-gate, the marketplace and this repo have (read on 2026-10-20). When the repo exists, the step checks it, in order: the same visibility, else exit 2; then `GET .../git/ref/heads/{default branch}`: 409 "Git Repository is empty" means it is this run's repo; a commit for which `git merge-base --is-ancestor <sha> HEAD` succeeds in `localRoot` means it is this run's repo; any other commit, a commit that git does not know (exit 128), or no ref for the default branch after the retries, is exit 2 that names the repo, and any other answer goes by the table below. A 404 on the create names the owner: GitHub finds no organization of that name in which the login may create a repo. acmelabs never changes a repo's visibility: private to public makes the Actions logs public and erases stars (GitHub's docs).
 - **`ensureActionsSetting`** reads the setting and writes it only when it differs. A 409 means the organization forbids it: a problem (exit 1) whose message names the organization's Actions settings page.
-- **`ensureProtectMain`** finds the ruleset named "Protect main". It compares the name, target, enforcement, the included and excluded refs, the rule types and the bypass list with the body below. Equal: skipped. Different: `PUT` with the body. Missing: `POST`.
-- **`push`** makes sure the remote `origin` is the repo's HTTPS URL: it adds `origin` when missing, and a different `origin` is exit 2. When `git ls-remote` shows the branch at the local commit, the step is skipped. A push is never forced. GitHub's rejection of a push is a problem (exit 1) with git's message.
-- **`clone`** clones into a folder that must not exist yet; an existing folder is exit 2.
-- **`openPullRequest`** reuses an open PR from the same head into the same base, else opens one. The head is a branch of the same repo.
-- **`watchRun`** waits for the push run whose `path` is the given workflow file, such as `.github/workflows/release.yml`, then polls it until its status is `completed`. It reports each status change as an info message. The step ends as done for the conclusion `success` and as failed for any other, and it returns the conclusion in either case: the caller decides what a failed run means (`scaffold` then prints `acmelabs marketplace add` for later, interview Q5).
-- **`findTag`** returns the tag's commit, or `null` when GitHub answers 404.
+- **`ensureProtectMain`** finds the ruleset named "Protect main". It compares the name, target, enforcement, the included and excluded refs, the rule types and the bypass list with the body below. Equal: skipped. Different: `PUT` with the body. Missing: `POST`. Two rulesets named "Protect main" end with exit 2 and no write, because the step cannot tell which one to keep.
+- **`push`** reads the local commit (`git rev-parse --verify --quiet refs/heads/<branch>`; no such branch is exit 2), then makes sure the remote `origin` is the repo's HTTPS URL as the local git config holds it (`git config --null --get-regexp ^remote\.origin\.(url|pushurl)$`): it adds `origin` when missing, and a different `origin`, a second URL beside it, or a push URL (`pushurl`) other than that URL is exit 2. The message shows each URL without its login part, so a token in a URL never reaches the output. When `git ls-remote origin refs/heads/<branch>` shows the branch at the local commit, the step is skipped; else `git push --set-upstream origin refs/heads/<branch>`. A push is never forced. The branch passes git's own branch-name rules (`git check-ref-format --branch`) before any call, and has no format character, such as a bidi mark, and no line or paragraph separator, which git allows but a terminal would show reordered or broken in the step's title, and goes into each command line as `refs/heads/<branch>`, so it is never an option, a forced push (`+`), a refspec (`:`, `*`) or a revision (`main~1`). GitHub's rejection of a push (`[rejected]`, `[remote rejected]`) is a problem (exit 1) with git's message. The missing `workflow` scope is a login failure that names `gh auth refresh -h github.com -s workflow`; no gh login or a rejected token ("could not read Username", "terminal prompts disabled", "Authentication failed") is a login failure that names `gh auth login`; when gh's helper serves a token from `GH_TOKEN` or `GITHUB_TOKEN`, each of these login failures names the token's variable too, as `checkLogin` does; HTTP 403 is exit 2; any other failure, such as the network, is exit 3 with git's message. GitHub's "Repository not found" on `ls-remote`, `push` or `clone` is tried again as an unexpected 404 is, then exit 2 that names the repo: GitHub gives it before git sends anything, and a failed clone removes its folder (probes, task 11). **Agent's call, small and reversible:** the origin check reads the config, not `git remote get-url`, so that a re-run reads the URL that the first run added, and a message can tell another origin from a rewrite.
+  - **Rewrites in git's config** (review finding 1, 2026-10-20): before `ls-remote`, the step reads the URLs that git really uses. `git remote get-url --all origin` gives the fetch URL that `ls-remote` reads (`url.<base>.insteadOf` applied); `git remote get-url --push --all origin` gives the URL that the push writes to (`url.<base>.pushInsteadOf`, else `insteadOf`). A rewrite can move one and keep the other (note 09, section 4). A URL that is not the repo's HTTPS URL is exit 2: the message names it, without its login part, and says that a rewrite in git's config changed it. On another host, git would send that host a login from the user's own credential helper.
+  - **Agent's call, from evidence: the SSH form is refused too.** A global SSH rewrite (`url."git@github.com:".insteadOf = https://github.com/`) names the same repo, but it pushes with the user's SSH key, not gh's login (ADR-0014). ADR-0016 removes `GIT_SSH_COMMAND`, so the push would not use a key that the user picks there. A program that the World starts has no terminal (`detached: true`, probe), so ssh cannot ask for a passphrase or a new host key. ssh's failures are outside the failure table. A user who keeps such a rewrite adds a longer one, which wins: `git config --global url.https://github.com/acmelabs-15/.insteadOf https://github.com/acmelabs-15/` keeps the acmelabs-15 repos on HTTPS (probe).
+- **`clone`** runs `git clone -- <https url> <into>` into a folder that must not exist yet: anything at that path, found with `lstat` before any git call, is exit 2. `--` keeps a folder that starts with `-` a folder. git's answers map as for `push`.
+  - **Rewrites in git's config** (2026-10-20): before the clone, the URL read gives the URL that the clone will use: `git --git-dir=/dev/null ls-remote --get-url <https url>`. The URL read applies `url.<base>.insteadOf` from the global and the system config, as the clone does, and reaches no remote. `--git-dir=/dev/null` names no repo, so the URL read skips the config of a repo around the working folder, which the clone does not read either (probe). A URL other than the repo's HTTPS URL, the SSH form too, is exit 2, as for `push`: the message names it, without its login part, and says that a rewrite in git's config changed it. A URL read that fails is exit 3, with git's message.
+  - **Known limit** (probe): a conditional include can hide a rewrite from the URL read. Examples are `includeIf "gitdir:~/work/"` and `includeIf "hasconfig:remote.*.url:https://github.com/**"`. Such a condition holds only once the clone's own repo exists, so the URL read does not see the rewrite in the file it loads, and the clone follows that rewrite.
+- **`openPullRequest`** reuses an open PR from the same head into the same base, else opens one. The head is a branch of the same repo. The step checks each listed PR's head, head repo and base itself, because GitHub ignores a head filter that it cannot read. A 422 "A pull request already exists" on the POST means that a PR opened between the read and the POST: the step reads the list again and reuses it. When the list still has none, the step ends with exit 3.
+- **`watchRun`** waits for the push run whose `path` is the given workflow file, such as `.github/workflows/release.yml` (the newest such run, when the commit has several), then polls it until its status is `completed`. It reports each status change as an info message. The step ends as done for the conclusion `success` and as failed for any other, and it returns the conclusion in either case: the caller decides what a failed run means (`scaffold` then prints `acmelabs marketplace add` for later, interview Q5).
+- **`findTag`** returns the tag's commit, or `null` when GitHub answers 404. An annotated tag points at a tag object, and the step reads `GET .../git/tags/{sha}` to reach the commit: changesets makes annotated tags, and brain's `latest` is lightweight. A tag that ends at a tree or a blob is exit 3.
 
-**Agent's calls for `watchRun`, small and reversible:** one poll every 10 seconds; the run must appear within 2 minutes and complete within 30 minutes. Each is an option of the step. Reasons: gh's own 3-second watch costs about 2,400 requests per hour of the 5,000 limit, and 10 seconds with one GET costs 360. brain's runs appeared 1 to 3 seconds after a push, and the runs list carries `Cache-Control: max-age=60`, so 2 minutes covers a stale list. At either limit the step ends with exit 3 and the run's URL; the run goes on in GitHub.
+**Agent's calls for `watchRun`, small and reversible:** one poll every 10 seconds; the run must appear within 2 minutes of the step's start and complete within 30 minutes of its appearance, and the last poll comes at the limit. Each is an option of the step (`pollMs`, `appearWithinMs`, `completeWithinMs`). Reasons: gh's own 3-second watch costs about 2,400 requests per hour of the 5,000 limit, and 10 seconds with one GET costs 360. brain's runs appeared 1 to 3 seconds after a push, and the runs list carries `Cache-Control: max-age=60`, so 2 minutes covers a stale list. At either limit the step ends with exit 3 and the run's URL; the run goes on in GitHub.
 
-**Agent's call, from reports:** right after a create, GitHub can answer 404 or 409 for a few seconds (note 09, section 3.1: go-github's doc comment, gh's own clone retry). A step retries such an answer, when the step does not expect it, up to 3 times, 3 seconds apart, before it treats the answer as final. The retry is UNVERIFIED against these endpoints; `scaffold`'s acceptance run proves the sequence.
+**Agent's call, from reports:** right after a create, GitHub can answer 404 or 409 for a few seconds (note 09, section 3.1: go-github's doc comment, gh's own clone retry). A step retries such an answer, when the step does not expect it, up to 3 times, 3 seconds apart, before it treats the answer as final. Only a GET or a PUT is retried: both are idempotent, so a second one leaves GitHub as one does. A POST is never sent again, because GitHub may have applied it, and a second POST could create twice. The retry is UNVERIFIED against these endpoints; `scaffold`'s acceptance run proves the sequence.
+
+**Known limit** (review finding 16, 2026-10-20): the rulesets, the open PRs and the push runs are each read as one page of 100 (`per_page=100`), with no paging. Real repos stay far below 100: a repo holds at most 75 rulesets (note 09, section 2.6), GitHub keeps at most one open PR from one head into one base (reported, note 09, section 2.7), and the runs list holds one commit's push runs, one for each workflow that a push starts.
 
 ### Protect main and the Actions setting
 
@@ -90,8 +96,8 @@ The body is the one that made acmelabs-15/cli's ruleset (note 09, section 5). br
 ### How a step calls gh and git
 
 - **`gh api`:** `["gh", "api", "--hostname", "github.com", "--method", <method>, "-H", "Accept: application/vnd.github+json", "-H", "X-GitHub-Api-Version: 2026-03-10", <path>]`, plus `["--input", "-"]` with the JSON body on stdin for a write. The call adds `GH_PROMPT_DISABLED=1` and `GH_NO_UPDATE_NOTIFIER=1` to the environment. On exit 0, stdout is the JSON answer, or empty for a 204. On exit 1, stdout is GitHub's JSON error body, with `status` as a string (note 09, section 1.2).
-- **git:** every call that reaches GitHub starts with `-c credential.https://github.com.helper= -c "credential.https://github.com.helper=!gh auth git-credential"`, the arguments gh itself gives git for a clone (note 09, section 1.5). The first clears any other helper for github.com, so gh's login is the one login. The call adds `GIT_TERMINAL_PROMPT=0`, so git never asks for a password on the terminal: a command asks only through `context.ask` (ADR-0007).
-- **Names:** an owner and a repo name pass a check before any call, because they go into an API path: an owner is 1 to 39 letters, digits or hyphens and starts with a letter or digit; a name is 1 to 100 letters, digits, `.`, `_` or `-`, and not `.` or `..`. A branch in a query is URL-encoded.
+- **git:** every call that reaches GitHub starts with `-c credential.https://github.com.helper= -c "credential.https://github.com.helper=!gh auth git-credential"`, the arguments gh itself gives git for a clone (note 09, section 1.5), then `-c core.askPass=`. The first clears any other helper for github.com, so gh's login is the one login. `core.askPass=` stops git from starting `SSH_ASKPASS` or a configured askpass program, which asks for a password in a window (note 09, section 4). Each git call runs without the `GIT_` variables, then adds `GIT_TERMINAL_PROMPT=0` (ADR-0016; `gitEnv` in `git.ts` gives that `env`). Without the `GIT_` variables, a git hook's `GIT_DIR` cannot move the call to another repo. With `GIT_TERMINAL_PROMPT=0`, git never asks for a password on the terminal: a command asks only through `context.ask` (ADR-0007).
+- **Names:** an owner and a repo name pass a check before any call, because they go into an API path: an owner is 1 to 39 letters, digits or hyphens and starts with a letter or digit; a name is 1 to 100 letters, digits, `.`, `_` or `-`, and not `.` or `..`. A branch in a query is URL-encoded. A pull request's head and base each pass the push's branch rule (`branchNameSchema` in `git.ts`): git's own rules, which keep out a control character and a colon, and beyond them no format character, no line or paragraph separator, and no lone surrogate (one half of a UTF-16 pair), which URL encoding cannot take. A colon in the head would name another owner's branch. A head or base that fails is exit 2 before any call. A tag in an API path is URL-encoded too: an empty tag, `.`, `..` or a tag with a lone surrogate is exit 2 before any call. GitHub's default branch, which `ensureRepo` puts into a path, holds no lone surrogate either: one is an answer that acmelabs cannot read, exit 3.
 
 ### GitHub's answers and the failure kinds
 
@@ -101,18 +107,20 @@ The body is the one that made acmelabs-15/cli's ruleset (note 09, section 5). br
 |---|---|---|---|
 | gh is not on PATH | `outside` | 3 | gh (the World does this today) |
 | gh exits 4 (no login), or GitHub answers 401 | `login` | 4 | `gh auth login` |
-| The login lacks an asked scope | `login` | 4 | `gh auth refresh -h github.com -s <scope>` |
+| The login lacks an asked scope, or gh names a scope that a call lacks (a plain scope only) | `login` | 4 | `gh auth refresh -h github.com -s <scope>` |
 | 404 for the owner; 403 or 404 for a repo the login cannot change; 422 "name already exists" | `input` | 2 | the owner or repo, and the login |
-| An existing repo that holds other work, or has the other visibility; another `origin`; an existing clone folder | `input` | 2 | the repo or folder |
+| An existing repo that holds other work, or has the other visibility; another `origin`, or a rewrite in git's config that moves the URL of a push or a clone; an existing clone folder | `input` | 2 | the repo, the folder or the URL |
 | 409 on the Actions setting; a push that GitHub rejects | `problem` | 1 | the organization's settings page; git's message |
 | A rate-limit answer (403 or 429 with "rate limit" in the message), any 5xx, a network failure, a time or output limit, a run that does not appear or complete in time | `outside` | 3 | GitHub's message, the limit, or the run's URL |
 | Any other answer | `outside` | 3 | the method, the path and GitHub's message |
 
-`loginNeeded(service)` gains an optional second argument, the command line that fixes the login, so the message can name `gh auth refresh ...`.
+`loginNeeded(service)` gains an optional second argument: the command line that fixes the login, so the message can name `gh auth refresh ...`; or a `LoginFix`, with several ways to fix the login and a reason, so the message can name a token's variable and gh's own error text. Every login failure, from `checkLogin`, `ghApi` and git's calls alike, takes its words from one helper (`ghLoginNeeded` in `gh.ts`), so they cannot drift: for a token from `GH_TOKEN` or `GITHUB_TOKEN`, the message names the variable as `checkLogin` does, and names both when the World's env sets both, because gh reads `GITHUB_TOKEN` once `GH_TOKEN` is cleared. `checkLogin` takes the variable from gh's `tokenSource`; `ghApi` and git's calls take it from the World's env by gh's rule: `GH_TOKEN` when it has text, else `GITHUB_TOKEN` (note 09, section 1.2).
+
+A message that names GitHub's message adds the error body's first error in brackets, such as `Validation Failed (No commits between main and add-brain)`. Each text from gh, GitHub or git shows on one line and stops at 300 characters (`shownText` in `gh.ts`). Control, format and line-separator characters show as spaces. A cut inside a word drops the whole word, so no part of a token escapes the redaction of secrets. The rule covers every place in the GitHub steps where such a text reaches a failure message, an issue, a step's title or detail, or an info message. A folder, a workflow file or a tag that a caller gives follows the same rule wherever a title or a message shows it. The outside program still gets each text as given, and a step's result keeps GitHub's texts as they are. The one exception is a value that a check refuses: it shows quoted, as JSON writes it (`quoted` in `names.ts`), and each control, format, line-separator or paragraph-separator character that JSON leaves raw, such as a C1 control or a bidi mark, shows as a `\uXXXX` escape too. A value with none of them shows exactly as JSON writes it.
 
 ## The World's limits
 
-A change to `packages/cli/src/command/world.ts`, at Peter's choice (open questions 21 and 22).
+A change to the World, in `packages/cli/src/command/` (its files are under "Project structure"), at Peter's choice (open questions 21 and 22).
 
 ```ts
 /** The limits that every outside program and request gets unless the call changes them. */
@@ -129,8 +137,8 @@ export type SpawnOptions = {
   cwd?: string;
   stdin?: string;
   signal?: AbortSignal;
-  /** Variables added to the environment the program gets, such as GIT_TERMINAL_PROMPT=0. */
-  env?: Readonly<Record<string, string>>;
+  /** Variables added to the environment the program gets, such as GIT_TERMINAL_PROMPT=0. A variable given as undefined is removed. */
+  env?: Readonly<Record<string, string | undefined>>;
   timeoutMs?: number;
   maxOutputBytes?: number;
 };
@@ -149,15 +157,15 @@ export type World = {
 };
 ```
 
-- **The environment:** a program gets the whole environment, as today, plus the call's `env`. No variable is removed (ADR-0015).
-- **A program runs in its own process group** (`detached: true`). At its time limit, at its output limit, or on a cancel, acmelabs sends SIGTERM to the whole group, then SIGKILL after a grace of 5 seconds, so no program that it started keeps acmelabs waiting (note 10, section 2). A group that is already gone is not an error.
+- **The environment:** a program gets the whole environment, as today, plus the call's `env` (ADR-0015). A call can remove a variable: a variable that its `env` gives as `undefined` does not reach the program. git's calls run without the `GIT_` variables (ADR-0016); every other program gets the whole environment.
+- **A program runs in its own process group** (`detached: true`). At its time limit, at its output limit, or on a cancel, acmelabs sends SIGTERM to the whole group, then SIGKILL after a grace of 5 seconds, so no program that it started keeps acmelabs waiting (note 10, section 2). A group that is already gone, or whose programs have all ended, is not an error, and the SIGKILL is then dropped, so acmelabs exits at once (fix `586c53b`).
 - **The output limit** counts the bytes of stdout and of stderr, each on its own, with a stream reader. Bun's `maxBuffer` is not used: it overshoots, and it cannot tell its stop from another SIGTERM (note 10, section 2).
 - **A limit is an outside failure** (exit 3) whose message names the program and the limit, such as `gh api ... ran longer than 5 minutes and was stopped`. A cancel still rejects with the signal's reason, as today.
-- **A request** gets `AbortSignal.timeout(timeoutMs)` beside its own signal, to the end of its body. A `Content-Length` above the limit fails before the body is read; a counting reader stops any other body at the limit. `TimeoutError` and an over-limit body are outside failures; a cancel stays a cancel.
+- **A request** gets `AbortSignal.timeout(timeoutMs)` beside its own signal, to the end of its body. A `Content-Length` above the limit fails before the body is read, except on an answer that HTTP gives no body (to HEAD, a 204 or a 304); a counting reader stops any other body at the limit. `TimeoutError` and an over-limit body are outside failures; a cancel stays a cancel. A request that fails on the network, such as a refused connection, a reset, or a DNS or TLS failure, is an outside failure too, exit 3. `spec/SPEC-command-core.md` gives the whole rule (since `c52a4df`).
 - **`fetch` becomes a plain function type**, so the World no longer copies Bun's `preconnect`.
 - **`sleep`** joins the World, so `watchRun` waits through it and a test passes 30 minutes in no time. The context passes the run's signal to `sleep`, as it does to `spawn` and `fetch`.
 - **`fakeWorld`** scripts the two limits: a scripted spawn or fetch answer can be `limit: "time"` or `limit: "output"`, which rejects with the same outside failure as the real one. Its `sleep` moves its clock and logs `{ kind: "sleep", ms }`. Its log keeps every spawn option except `signal`, as today.
-- **Agent's call, small and reversible:** `realWorld` takes an optional grace for SIGKILL, so a test of a program that ignores SIGTERM takes 0.2 seconds, not 5.
+- **Agent's call, small and reversible:** `realWorld` takes an optional grace for SIGKILL, so a test of a program that ignores SIGTERM takes 0.2 seconds, not 5. It also takes an optional `env`: the World's env, which its spawn passes on, so a test of the `GIT_` variables sets none in the test process (ADR-0016).
 
 ## Commands
 
@@ -172,9 +180,9 @@ bun test packages/cli/src/command      # the World's limits, and the rest of com
 ## Project structure
 
 ```
-packages/cli/src/github/names.ts            ownerSchema, repoNameSchema, GitHubRepo: zod only
-packages/cli/src/github/gh.ts               ghApi: one REST call through gh api; StepContext; the answers-to-failure table
-packages/cli/src/github/git.ts              git's command lines: gh's credential helper, no terminal prompt
+packages/cli/src/github/names.ts            ownerSchema, repoNameSchema, GitHubRepo, quoted: zod only
+packages/cli/src/github/gh.ts               ghApi: one REST call through gh api; StepContext and startStep, a step's one progress step; checkRepo, the names' check; the answers-to-failure table
+packages/cli/src/github/git.ts              git's command lines: gh's credential helper, no terminal prompt; the commit-sha and branch-name checks
 packages/cli/src/github/login.ts            checkLogin
 packages/cli/src/github/repo.ts             ensureRepo
 packages/cli/src/github/settings.ts         actionsSetting, protectMain, ensureActionsSetting, ensureProtectMain
@@ -182,11 +190,19 @@ packages/cli/src/github/push.ts             push, clone
 packages/cli/src/github/pull-request.ts     openPullRequest
 packages/cli/src/github/runs.ts             watchRun, findTag
 packages/cli/src/github/__tests__/          one test file per step file, at the command seam
-packages/cli/src/command/world.ts           the limits, env, process groups, sleep (changed)
+packages/cli/src/command/world.ts           World, its options and realWorld; sleep (changed)
+packages/cli/src/command/world-limits.ts    limits and the limits' outside failures (split from world.ts)
+packages/cli/src/command/words.ts           durationOf and sizeOf: a time and a size in words, for the World's and watchRun's messages (changed)
+packages/cli/src/command/world-spawn.ts     a program's environment, process group and limits (split from world.ts)
+packages/cli/src/command/world-fetch.ts     a request's limits (split from world.ts)
+packages/cli/src/command/fake-world.ts      fakeWorld: the limit answers and sleep (split from world.ts)
 packages/cli/src/command/run.ts             the context's sleep takes the run's signal (changed)
-packages/cli/src/command/outcome.ts         loginNeeded takes the fixing command line (changed)
+packages/cli/src/command/outcome.ts         loginNeeded takes the fixing command line, or a LoginFix (changed)
 packages/cli/src/command/list-rules.ts      a command file may load ../github/names at its top (changed)
-packages/cli/src/command/__tests__/world.test.ts   the limits (changed)
+packages/cli/src/command/__tests__/world.test.ts         realWorld's root, env, clock and sleep (changed)
+packages/cli/src/command/__tests__/world-spawn.test.ts   a program's limits (split from world.test.ts)
+packages/cli/src/command/__tests__/world-fetch.test.ts   a request's limits (split from world.test.ts)
+packages/cli/src/command/__tests__/fake-world.test.ts    the fake's limit answers and sleep (split from world.test.ts)
 spec/SPEC-command-core.md                   the World section, kept current (changed)
 ```
 
@@ -206,16 +222,12 @@ export async function ensureActionsSetting(
   context: StepContext,
   repo: GitHubRepo,
 ): Promise<"done" | "skipped"> {
-  const step = {
-    kind: "step",
-    step: "github-actions-setting",
-    title: `Set the Actions setting on ${repo.owner}/${repo.name}`,
-  } as const;
-  context.progress({ ...step, status: "started" });
+  const title = `Set the Actions setting on ${repo.owner}/${repo.name}`;
+  const end = startStep(context, "github-actions-setting", title);
   const path = `repos/${repo.owner}/${repo.name}/actions/permissions/workflow`;
   const current = answerOrThrow(await ghApi(context, { path }), repo);
   if (sameSetting(current, actionsSetting)) {
-    context.progress({ ...step, status: "skipped", detail: "already set" });
+    end("skipped", "already set");
     return "skipped";
   }
   const written = await ghApi(context, { method: "PUT", path, body: actionsSetting });
@@ -225,7 +237,7 @@ export async function ensureActionsSetting(
     );
   }
   answerOrThrow(written, repo);
-  context.progress({ ...step, status: "done" });
+  end("done");
   return "done";
 }
 ```
@@ -238,30 +250,30 @@ Two seams, both existing (Peter, 2026-10-20). No test calls GitHub.
 
 Cases:
 
-- **`checkLogin`:** logged in with `repo` and `workflow`; no account (exit 4, `gh auth login`); a state of `error`; `workflow` missing (exit 4, `gh auth refresh -h github.com -s workflow`); a token with no scopes passes.
+- **`checkLogin`:** logged in with `repo` and `workflow`; no account (exit 4, `gh auth login`); a state of `error` (exit 4, with gh's error text); `workflow` missing (exit 4, `gh auth refresh -h github.com -s workflow`); a token from `GH_TOKEN` or `GITHUB_TOKEN` (the message names the variable); a token with no scopes passes.
 - **`ensureRepo`:** a new repo is created with the asked visibility and description; an empty existing repo is reused; an existing repo whose main commit is in the local history is reused; an existing repo with other work is exit 2 and no write is made; an existing repo with the other visibility is exit 2; an unknown owner is exit 2; a 422 "name already exists" is exit 2; an owner or name that fails the name check is exit 2 before any call.
 - **`ensureActionsSetting`:** set already (skipped, no `PUT`); different (`PUT` with the body); 409 (exit 1, names the settings page).
 - **`ensureProtectMain`:** brain's ruleset (skipped); none (`POST` with the body); one with a missing rule (`PUT`); other rulesets beside it are left as they are.
-- **`push`:** no `origin` (added); another `origin` (exit 2); the branch already at the local commit (skipped); a new push with gh's helper and `GIT_TERMINAL_PROMPT=0`; a push rejected (exit 1).
-- **`clone`:** a clone with gh's helper; an existing folder (exit 2).
-- **`openPullRequest`:** an open PR reused; a new PR opened; the head branch URL-encoded in the query.
+- **`push`:** no `origin` (added); another `origin` (exit 2); the branch already at the local commit (skipped); a new push with gh's helper and `GIT_TERMINAL_PROMPT=0`, without the `GIT_` variables; a push rejected (exit 1); the `workflow` scope missing and no login (exit 4); "Repository not found" tried again; a branch that git refuses, or one with a bidi mark (exit 2, no call); an origin URL with a token, shown without it; a rewrite in git's config that moves the fetch URL, the push URL or both, to another host or to the SSH form (exit 2, no `ls-remote`). Against real git, with a local bare repo in place of GitHub through `url.<bare>.insteadOf` in a temp home: a push, its re-run skipped, a rejected push, a clone; the step's `git remote get-url` reads run without the temp home's config, which the step would refuse; and a rewrite in the local repo's config (exit 2, the rewrite's repo gets nothing).
+- **`clone`:** a clone with gh's helper; an existing folder or file, or a folder with no name (exit 2, no git call); a rewrite in git's config to another host or to the SSH form, shown without a login part (exit 2, no clone). Against real git: a rewrite in a temp home (exit 2, no folder), and a rewrite in the config of a repo around the working folder, which the clone does not read (the clone goes on).
+- **`openPullRequest`:** an open PR reused; a new PR opened; the head branch URL-encoded in the query; a head or base that git refuses, or one with a bidi mark (exit 2, no call).
 - **`watchRun`:** the run appears on the second poll and succeeds (done); it fails (the step fails, the conclusion is returned, the command decides); it never appears (exit 3 after 2 minutes of fake time); it does not complete in 30 minutes (exit 3, the run's URL); the polls are 10 seconds apart in `world.calls`.
 - **`findTag`:** found; 404 gives `null`.
 - **Retries and answers:** a 404 that the step does not expect, then a 200, succeeds after one 3-second wait; a rate-limit answer is exit 3; a 5xx is exit 3; gh not installed is exit 3; an answer that is not JSON is exit 3 with gh's stderr.
 
-**The World's own tests, for the limits.** As `world.test.ts` does today: real `bun -e` programs and a local `Bun.serve` server, in milliseconds.
+**The World's own tests, for the limits.** As `world-spawn.test.ts` and `world-fetch.test.ts` do today: real `bun -e` programs and a local `Bun.serve` server, in milliseconds.
 
 - A program past its time limit is stopped and the call fails with exit 3 naming the limit; a call that raises the limit lets it finish.
 - A program that prints past its output limit is stopped, and the call fails with exit 3; a call that raises the limit keeps all of it.
 - A program that starts its own child (`bash -c "(sleep 2; echo late) & sleep 10"`) ends with its child at a time limit and on a cancel, in well under 2 seconds.
 - A program that ignores SIGTERM is killed after the grace.
-- The call's `env` reaches the program beside the whole environment.
+- The call's `env` reaches the program beside the whole environment, and a variable that the call gives as `undefined` does not.
 - A request with slow headers, and one with a slow body, fail at the time limit with exit 3; a cancel stays a cancel; a body past the limit fails, by its `Content-Length` and by counting.
 - `fakeWorld`'s `limit` answers and its `sleep` behave as above.
 
 ## Boundaries
 
-- **Always:** every GitHub call goes through `ghApi` or a command line from `git.ts`.
+- **Always:** every GitHub call goes through `ghApi` or a command line from `git.ts`, except `checkLogin`'s `gh auth status`: gh reads its own login and checks its token with GitHub (note 09, section 1.4).
 - **Always:** a step reads before it writes, and reports one progress step with a stable id.
 - **Always:** an owner and a repo name pass the name check before any call.
 - **Always:** a remote is the HTTPS URL.
@@ -310,14 +322,14 @@ Cases:
 - Organization settings: they need the `admin:org` scope, which the login lacks.
 - Repos owned by a user, not an organization, and GitHub Enterprise Server.
 - Deleting a repo or a branch.
-- A filter of environment variables for outside programs: Peter chose none (open question 21).
+- A filter of environment variables for programs other than git: Peter chose none (open question 21; ADR-0016).
 - Proving the process groups and the limits on Linux: `shared-workflows`, in CI.
 - Webhooks instead of polling.
 
 ## Prior-art tests
 
 - `packages/cli/src/command/__tests__/run.test.ts`: the sample command `greet`, which calls `gh api user` through `fakeWorld` and checks the outcome and `world.calls`.
-- `packages/cli/src/command/__tests__/world.test.ts`: `realWorld` with real `bun -e` programs, a cancel that stops a program within 2 seconds, and a pid file that shows the program is gone.
+- `packages/cli/src/command/__tests__/world-spawn.test.ts`: `realWorld` with real `bun -e` programs, a cancel that stops a program within 2 seconds, and a pid file that shows the program is gone.
 - brain `scripts/version/__tests__/version-sync.test.ts`: real files in a temp folder, for the local-history check of `ensureRepo` where a test needs a real git repo.
 
 ## Success criteria

@@ -1,113 +1,28 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { describe, expect, expectTypeOf, test } from "bun:test";
 
+import { fakeWorld } from "../fake-world";
 import { CommandError } from "../outcome";
-import { fakeWorld, realWorld } from "../world";
-
-let work: string;
-
-beforeAll(async () => {
-  // The real path, because macOS reaches the temp folder through a symlink.
-  work = await realpath(await mkdtemp(path.join(tmpdir(), "acmelabs-world-")));
-});
-
-afterAll(async () => {
-  await rm(work, { recursive: true, force: true });
-});
+import type { FetchInit, World } from "../world";
+import { realWorld } from "../world";
 
 describe("realWorld", () => {
-  test("spawn runs bun --version: code 0 and Bun's version on stdout", async () => {
-    const spawned = await realWorld().spawn(["bun", "--version"]);
-    expect(spawned).toEqual({ code: 0, stdout: `${Bun.version}\n`, stderr: "" });
-  });
-
-  test("spawn collects a failing program's exit code and stderr", async () => {
-    const spawned = await realWorld().spawn([
-      "bun",
-      "-e",
-      "process.stdout.write('half'); console.error('it broke'); process.exit(3)",
-    ]);
-    expect(spawned).toEqual({ code: 3, stdout: "half", stderr: "it broke\n" });
-  });
-
-  test("spawn runs the program in the working folder given as cwd", async () => {
-    const spawned = await realWorld().spawn(["bun", "-e", "process.stdout.write(process.cwd())"], {
-      cwd: work,
-    });
-    expect(spawned).toEqual({ code: 0, stdout: work, stderr: "" });
-  });
-
-  test("spawn gives the program the stdin text", async () => {
-    const spawned = await realWorld().spawn(
-      ["bun", "-e", "process.stdout.write(await Bun.stdin.text())"],
-      { stdin: "line one\nline two\n" },
-    );
-    expect(spawned).toEqual({ code: 0, stdout: "line one\nline two\n", stderr: "" });
-  });
-
-  test("spawn stops the program soon after its signal aborts, and rejects with the reason", async () => {
-    const pidFile = path.join(work, "sleeper.pid");
-    const controller = new AbortController();
-    const started = performance.now();
-    const spawned = realWorld().spawn(
-      [
-        "bun",
-        "-e",
-        `await Bun.write(${JSON.stringify(pidFile)}, String(process.pid)); await Bun.sleep(10000)`,
-      ],
-      { signal: controller.signal },
-    );
-    // The program writes its process id first, so the abort comes while it runs.
-    while (!(await Bun.file(pidFile).exists())) {
-      await Bun.sleep(10);
-    }
-    const reason = new Error("the user pressed Ctrl+C");
-    controller.abort(reason);
-    await expect(spawned).rejects.toBe(reason);
-    expect(performance.now() - started).toBeLessThan(2000);
-    // Signal 0 checks that a process exists: the program no longer runs.
-    const pid = Number(await Bun.file(pidFile).text());
-    expect(() => process.kill(pid, 0)).toThrow();
-  });
-
-  test("spawn with a signal already aborted rejects with the reason, and starts nothing", async () => {
-    const marker = path.join(work, "started");
-    const reason = new Error("cancelled before the start");
-    const spawned = realWorld().spawn(
-      ["bun", "-e", `await Bun.write(${JSON.stringify(marker)}, "started")`],
-      { signal: AbortSignal.abort(reason) },
-    );
-    await expect(spawned).rejects.toBe(reason);
-    expect(await Bun.file(marker).exists()).toBe(false);
-  });
-
-  test("spawn of a program that is not on PATH rejects with an outside failure that names it", async () => {
-    const spawned = realWorld().spawn(["acmelabs-no-such-program-4f2b9c", "--version"]);
-    await expect(spawned).rejects.toBeInstanceOf(CommandError);
-    await expect(spawned).rejects.toMatchObject({
-      kind: "outside",
-      message: "acmelabs-no-such-program-4f2b9c is not installed or not on PATH",
-      issues: [],
-    });
-  });
-
-  test("any other spawn error stays as Bun gives it: a working folder that does not exist", async () => {
-    // Bun gives this error code ENOENT and the program's name too, so only its syscall tells it
-    // apart from a program that is not on PATH.
-    const spawned = realWorld().spawn(["bun", "--version"], {
-      cwd: path.join(work, "no-such-folder"),
-    });
-    await expect(spawned).rejects.toMatchObject({ code: "ENOENT", syscall: "posix_spawn" });
-    await expect(spawned).rejects.not.toBeInstanceOf(CommandError);
-  });
-
-  test("root is the working folder, env the process environment, fetch the global fetch", () => {
+  test("root is the working folder, and env the process environment", () => {
     const world = realWorld();
     expect(world.root).toBe(process.cwd());
     expect(world.env).toBe(process.env);
-    expect(world.fetch).toBe(globalThis.fetch);
+  });
+
+  test("an env given to realWorld is the World's env", () => {
+    const env = { ACMELABS_WORLD_TEST: "the World's own" };
+    expect(realWorld({ env }).env).toBe(env);
+  });
+
+  test("fetch is a plain function that takes a request and its limits", () => {
+    // A type test: tsc checks it in `bun run typecheck`. Bun's own fetch type carries more, such
+    // as `preconnect`, which the World does not copy.
+    expectTypeOf<World["fetch"]>().toEqualTypeOf<
+      (input: string | URL | Request, init?: FetchInit) => Promise<Response>
+    >();
   });
 
   test("now is the current time", () => {
@@ -118,218 +33,67 @@ describe("realWorld", () => {
   });
 });
 
-describe("fakeWorld", () => {
-  test("root, env and now come from the options", () => {
-    const world = fakeWorld({
-      root: work,
-      env: { GH_TOKEN: "token" },
-      now: new Date("2026-10-20T12:00:00.000Z"),
-    });
-    expect(world.root).toBe(work);
-    expect(world.env).toEqual({ GH_TOKEN: "token" });
-    expect(world.now()).toEqual(new Date("2026-10-20T12:00:00.000Z"));
+describe("realWorld: a wait", () => {
+  test("sleep waits about the time it is given", async () => {
+    const started = performance.now();
+    await realWorld().sleep(200);
+    const waited = performance.now() - started;
+    expect(waited).toBeGreaterThanOrEqual(150);
+    expect(waited).toBeLessThan(2000);
   });
 
-  test("with no options: a root that does not exist, an empty env and a fixed time", () => {
-    const world = fakeWorld();
-    expect(world.root).toBe("/fake-world/repo");
-    expect(world.env).toEqual({});
-    expect(world.now()).toEqual(new Date("2026-01-01T00:00:00.000Z"));
+  test("a sleep of 0 milliseconds ends at once", async () => {
+    const started = performance.now();
+    await realWorld().sleep(0);
+    expect(performance.now() - started).toBeLessThan(2000);
   });
 
-  test("an unscripted spawn call fails with an error that names the call", async () => {
-    const world = fakeWorld();
-    await expect(world.spawn(["gh", "auth", "status"])).rejects.toThrow(
-      'fakeWorld has no scripted answer for spawn ["gh","auth","status"]; add one to its spawn list',
-    );
-  });
-
-  test("spawn returns the scripted answer; an unset field is code 0 or no output", async () => {
-    const world = fakeWorld({
-      spawn: [
-        { commandLine: ["gh", "auth", "status"], answer: { code: 1, stderr: "not logged in\n" } },
-        { commandLine: ["git", "status", "--short"] },
-      ],
-    });
-    expect(await world.spawn(["git", "status", "--short"])).toEqual({
-      code: 0,
-      stdout: "",
-      stderr: "",
-    });
-    expect(await world.spawn(["gh", "auth", "status"])).toEqual({
-      code: 1,
-      stdout: "",
-      stderr: "not logged in\n",
-    });
-  });
-
-  test("spawn matches a scripted command line word for word", async () => {
-    const world = fakeWorld({ spawn: [{ commandLine: ["gh", "auth", "status"] }] });
-    await expect(world.spawn(["gh", "auth"])).rejects.toThrow(
-      'fakeWorld has no scripted answer for spawn ["gh","auth"]',
-    );
-    await expect(world.spawn(["gh", "auth", "status", "--active"])).rejects.toThrow(
-      'fakeWorld has no scripted answer for spawn ["gh","auth","status","--active"]',
-    );
-    expect(await world.spawn(["gh", "auth", "status"])).toEqual({
-      code: 0,
-      stdout: "",
-      stderr: "",
-    });
-  });
-
-  test("a scripted missing program rejects as realWorld's spawn does, and is logged", async () => {
-    const world = fakeWorld({
-      spawn: [{ commandLine: ["claude", "plugin", "validate", "."], missing: true }],
-    });
-    const spawned = world.spawn(["claude", "plugin", "validate", "."]);
-    await expect(spawned).rejects.toBeInstanceOf(CommandError);
-    await expect(spawned).rejects.toMatchObject({
-      kind: "outside",
-      message: "claude is not installed or not on PATH",
-      issues: [],
-    });
-    expect(world.calls).toEqual([
-      { kind: "spawn", commandLine: ["claude", "plugin", "validate", "."] },
-    ]);
-  });
-
-  test("an unscripted fetch call fails with an error that names the method and URL", async () => {
-    const world = fakeWorld();
-    await expect(
-      world.fetch("https://registry.npmjs.org/@acmelabs/cli", { method: "PUT" }),
-    ).rejects.toThrow(
-      "fakeWorld has no scripted answer for fetch PUT https://registry.npmjs.org/@acmelabs/cli; add one to its fetch list",
-    );
-  });
-
-  test("fetch returns the scripted response; an unset field is status 200 or no body", async () => {
-    const world = fakeWorld({
-      fetch: [
-        {
-          url: "https://registry.npmjs.org/@acmelabs/cli",
-          answer: {
-            status: 404,
-            body: '{"error":"Not found"}',
-            headers: { "content-type": "application/json" },
-          },
-        },
-        { method: "PUT", url: "https://registry.npmjs.org/@acmelabs/cli" },
-      ],
-    });
-    const missing = await world.fetch("https://registry.npmjs.org/@acmelabs/cli");
-    expect(missing.status).toBe(404);
-    expect(missing.headers.get("content-type")).toBe("application/json");
-    expect(await missing.json()).toEqual({ error: "Not found" });
-    const published = await world.fetch(new URL("https://registry.npmjs.org/@acmelabs/cli"), {
-      method: "PUT",
-    });
-    expect(published.status).toBe(200);
-    expect(await published.text()).toBe("");
-  });
-
-  test("fetch matches the method, GET by default, and the URL in normal form", async () => {
-    const world = fakeWorld({
-      fetch: [{ url: "https://api.github.com" }, { method: "put", url: "https://api.github.com" }],
-    });
-    await expect(world.fetch("https://api.github.com/", { method: "POST" })).rejects.toThrow(
-      "fakeWorld has no scripted answer for fetch POST https://api.github.com/",
-    );
-    const read = await world.fetch("https://api.github.com/");
-    expect(read.status).toBe(200);
-    const written = await world.fetch("https://api.github.com/", { method: "PUT" });
-    expect(written.status).toBe(200);
-  });
-
-  test("logs every spawn and fetch call in order, the unscripted ones too", async () => {
-    const ruleset = '{"name":"Protect main"}';
-    const world = fakeWorld({
-      spawn: [
-        { commandLine: ["gh", "auth", "status"] },
-        { commandLine: ["gh", "api", "repos/acmelabs-15/cli/rulesets", "--input", "-"] },
-      ],
-      fetch: [{ url: "https://registry.npmjs.org/@acmelabs/cli" }],
-    });
-    await world.spawn(["gh", "auth", "status"], { cwd: work });
-    await world.fetch("https://registry.npmjs.org/@acmelabs/cli");
-    await world.spawn(["gh", "api", "repos/acmelabs-15/cli/rulesets", "--input", "-"], {
-      stdin: ruleset,
-    });
-    await expect(world.spawn(["git", "push"])).rejects.toThrow("no scripted answer");
-    await expect(world.fetch("https://example.com/", { method: "DELETE" })).rejects.toThrow(
-      "no scripted answer",
-    );
-    expect(world.calls).toEqual([
-      { kind: "spawn", commandLine: ["gh", "auth", "status"], cwd: work },
-      { kind: "fetch", method: "GET", url: "https://registry.npmjs.org/@acmelabs/cli" },
-      {
-        kind: "spawn",
-        commandLine: ["gh", "api", "repos/acmelabs-15/cli/rulesets", "--input", "-"],
-        stdin: ruleset,
-      },
-      { kind: "spawn", commandLine: ["git", "push"] },
-      { kind: "fetch", method: "DELETE", url: "https://example.com/" },
-    ]);
-  });
-
-  test("a spawn or fetch whose signal is aborted rejects with the reason, and is logged", async () => {
-    const world = fakeWorld({
-      spawn: [{ commandLine: ["git", "push"] }],
-      fetch: [{ url: "https://api.github.com/" }],
-    });
+  test("sleep stops soon after its signal aborts, and rejects with the signal's reason", async () => {
+    const controller = new AbortController();
+    const started = performance.now();
+    const slept = realWorld().sleep(10_000, { signal: controller.signal });
+    await Bun.sleep(50);
     const reason = new Error("the user pressed Ctrl+C");
-    const signal = AbortSignal.abort(reason);
-    await expect(world.spawn(["git", "push"], { cwd: work, signal })).rejects.toBe(reason);
-    await expect(world.fetch("https://api.github.com/", { signal })).rejects.toBe(reason);
-    await expect(world.fetch(new Request("https://api.github.com/", { signal }))).rejects.toBe(
+    controller.abort(reason);
+    // The reason itself, not the AbortError of node:timers/promises that holds it as its cause.
+    await expect(slept).rejects.toBe(reason);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  test("sleep with a signal already aborted rejects with the reason, and does not wait", async () => {
+    const reason = new Error("cancelled before the wait");
+    const started = performance.now();
+    await expect(realWorld().sleep(10_000, { signal: AbortSignal.abort(reason) })).rejects.toBe(
       reason,
     );
-    // A cancelled call uses up no scripted answer, so a call that is not cancelled still gets it.
-    expect(await world.spawn(["git", "push"])).toEqual({ code: 0, stdout: "", stderr: "" });
-    expect(world.calls).toEqual([
-      { kind: "spawn", commandLine: ["git", "push"], cwd: work },
-      { kind: "fetch", method: "GET", url: "https://api.github.com/" },
-      { kind: "fetch", method: "GET", url: "https://api.github.com/" },
-      { kind: "spawn", commandLine: ["git", "push"] },
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  test("a wait longer than a timer can hold does not end at once", async () => {
+    // setTimeout fires at once for a delay past 2^31 - 1 ms; the World must not.
+    const controller = new AbortController();
+    const slept = realWorld().sleep(2 ** 31, { signal: controller.signal });
+    const first = await Promise.race([
+      slept.then(() => "the wait ended"),
+      Bun.sleep(300).then(() => "still waiting"),
     ]);
+    expect(first).toBe("still waiting");
+    // The cancel ends the wait, so no timer of about 24 days keeps the test running.
+    const reason = new Error("the test is done");
+    controller.abort(reason);
+    await expect(slept).rejects.toBe(reason);
   });
 
-  test("each scripted spawn answers one call, in list order, so a retry can succeed", async () => {
-    const world = fakeWorld({
-      spawn: [
-        { commandLine: ["gh", "api", "user"], answer: { code: 1, stderr: "HTTP 502\n" } },
-        { commandLine: ["gh", "api", "user"], answer: { stdout: '{"login":"octocat"}' } },
-      ],
-    });
-    expect(await world.spawn(["gh", "api", "user"])).toEqual({
-      code: 1,
-      stdout: "",
-      stderr: "HTTP 502\n",
-    });
-    expect(await world.spawn(["gh", "api", "user"])).toEqual({
-      code: 0,
-      stdout: '{"login":"octocat"}',
-      stderr: "",
-    });
-    await expect(world.spawn(["gh", "api", "user"])).rejects.toThrow(
-      'fakeWorld has no scripted answer for spawn ["gh","api","user"]',
-    );
-  });
-
-  test("each scripted fetch answers one call, in list order, so a retry can succeed", async () => {
-    const url = "https://registry.npmjs.org/@acmelabs/cli";
-    const world = fakeWorld({
-      fetch: [
-        { url, answer: { status: 503 } },
-        { url, answer: { status: 200 } },
-      ],
-    });
-    const first = await world.fetch(url);
-    expect(first.status).toBe(503);
-    const retry = await world.fetch(url);
-    expect(retry.status).toBe(200);
-    await expect(world.fetch(url)).rejects.toThrow(
-      `fakeWorld has no scripted answer for fetch GET ${url}`,
-    );
+  test("a wait that is not a finite number of 0 or more is a bug in the caller", async () => {
+    for (const ms of [Number.NaN, -1, Number.POSITIVE_INFINITY]) {
+      const message = `a wait is a finite number of milliseconds, 0 or more, not ${ms}`;
+      const slept = realWorld().sleep(ms);
+      await expect(slept).rejects.toThrow(message);
+      await expect(slept).rejects.not.toBeInstanceOf(CommandError);
+      const fake = fakeWorld();
+      await expect(fake.sleep(ms)).rejects.toThrow(message);
+      // The fake's clock does not move for a wait that is a bug.
+      expect(fake.now()).toEqual(fakeWorld().now());
+    }
   });
 });

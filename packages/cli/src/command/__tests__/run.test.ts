@@ -8,11 +8,12 @@ import { z } from "zod";
 import { readRepoConfig } from "../../repo/config";
 import type { ProgressUpdate, Question } from "../command";
 import { defineCommand } from "../command";
+import { fakeWorld } from "../fake-world";
 import type { Outcome } from "../outcome";
 import { exitCodes, inputError, loginNeeded, outsideError, problem } from "../outcome";
 import { runCommand } from "../run";
 import type { World } from "../world";
-import { fakeWorld, realWorld } from "../world";
+import { realWorld } from "../world";
 
 /** What a front-end gives runCommand: the world, a log of progress updates, and a live signal. */
 function frontEnd(world: World) {
@@ -267,6 +268,76 @@ describe("runCommand: a command that throws a failure helper", () => {
       error: {
         kind: "login",
         message: "gh needs a login; log in to gh, then run the command again",
+        issues: [],
+      },
+    });
+  });
+
+  test("loginNeeded with the command line that fixes the login names that command line", async () => {
+    const scopes = defineCommand({
+      path: ["sample", "scopes"],
+      summary: "Check that the gh login may push workflow files.",
+      input: z.object({}),
+      async run(_input, context) {
+        const spawned = await context.spawn(["gh", "auth", "status", "--json", "hosts"]);
+        if (!spawned.stdout.includes("workflow")) {
+          throw loginNeeded("gh", "gh auth refresh -h github.com -s workflow");
+        }
+        return "may push workflow files";
+      },
+    });
+    const world = fakeWorld({
+      spawn: [
+        {
+          commandLine: ["gh", "auth", "status", "--json", "hosts"],
+          answer: { stdout: '{"hosts":{"github.com":[{"scopes":"repo"}]}}' },
+        },
+      ],
+    });
+    const outcome = await runCommand(scopes, {}, frontEnd(world));
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample scopes",
+      exitCode: 4,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "login",
+        message:
+          "gh needs a login; run gh auth refresh -h github.com -s workflow, then run the command again",
+        issues: [],
+      },
+    });
+  });
+
+  test("loginNeeded with several ways to fix the login and a reason names each way, then the reason", async () => {
+    const tokenCheck = defineCommand({
+      path: ["sample", "token-check"],
+      summary: "Check the token that gh reads from GH_TOKEN.",
+      input: z.object({}),
+      async run(_input, context) {
+        const spawned = await context.spawn(["gh", "auth", "status", "--json", "hosts"]);
+        if (spawned.code === 0) {
+          throw loginNeeded("gh", {
+            ways: ["replace the token in GH_TOKEN", "clear GH_TOKEN and run gh auth login"],
+            reason: "HTTP 401: Bad credentials",
+          });
+        }
+        return "the token works";
+      },
+    });
+    const world = fakeWorld({
+      spawn: [{ commandLine: ["gh", "auth", "status", "--json", "hosts"], answer: {} }],
+    });
+    const outcome = await runCommand(tokenCheck, {}, frontEnd(world));
+    expect(outcome).toEqual({
+      ok: false,
+      command: "sample token-check",
+      exitCode: 4,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "login",
+        message:
+          "gh needs a login; replace the token in GH_TOKEN, or clear GH_TOKEN and run gh auth login, then run the command again: HTTP 401: Bad credentials",
         issues: [],
       },
     });
@@ -1283,17 +1354,18 @@ function endOf(settled: PromiseSettledResult<unknown>): unknown {
 }
 
 describe("runCommand: cancel reaches outside programs", () => {
-  test("context.spawn and context.fetch take the run's signal, so a cancel stops them", async () => {
+  test("context.spawn, context.fetch and context.sleep take the run's signal, so a cancel stops them", async () => {
     const finished = Promise.withResolvers<unknown[]>();
     const publish = defineCommand({
       path: ["sample", "publish"],
-      summary: "Publish the package, and check the registry.",
+      summary: "Publish the package, check the registry, and wait for the registry to update.",
       input: z.object({}),
       async run(_input, context) {
         context.progress({ kind: "message", level: "info", text: "publishing" });
         const ends = await Promise.allSettled([
           context.spawn(["npm", "publish"]),
           context.fetch("https://registry.npmjs.org/-/ping"),
+          context.sleep(60_000),
         ]);
         finished.resolve(ends.map(endOf));
         return "published";
@@ -1314,7 +1386,7 @@ describe("runCommand: cancel reaches outside programs", () => {
       },
     };
     expect(await runCommand(publish, {}, caller)).toEqual(cancelled("sample publish"));
-    expect(await finished.promise).toEqual([reason, reason]);
+    expect(await finished.promise).toEqual([reason, reason, reason]);
   });
 
   test("a signal the command passes itself wins over the run's signal", async () => {
@@ -1322,7 +1394,7 @@ describe("runCommand: cancel reaches outside programs", () => {
     const timeout = new Error("the command's own time limit");
     const check = defineCommand({
       path: ["sample", "check"],
-      summary: "Check the gh login and the GitHub API, each with its own signal.",
+      summary: "Check the gh login and the GitHub API, and wait, each with its own signal.",
       input: z.object({}),
       async run(_input, context) {
         // While the run is live, the command's aborted signal rejects the calls.
@@ -1330,6 +1402,7 @@ describe("runCommand: cancel reaches outside programs", () => {
         const before = await Promise.allSettled([
           context.spawn(["gh", "auth", "status"], { signal: timedOut }),
           context.fetch("https://api.github.com/", { signal: timedOut }),
+          context.sleep(10_000, { signal: timedOut }),
         ]);
         context.progress({ kind: "message", level: "info", text: "checked" });
         // After the cancel, the command's live signal lets the calls through.
@@ -1337,6 +1410,7 @@ describe("runCommand: cancel reaches outside programs", () => {
         const after = await Promise.allSettled([
           context.spawn(["gh", "auth", "status"], { signal: live }),
           context.fetch("https://api.github.com/", { signal: live }),
+          context.sleep(10_000, { signal: live }),
         ]);
         finished.resolve([...before, ...after].map(endOf));
         return "checked";
@@ -1354,7 +1428,14 @@ describe("runCommand: cancel reaches outside programs", () => {
       },
     };
     expect(await runCommand(check, {}, caller)).toEqual(cancelled("sample check"));
-    expect(await finished.promise).toEqual([timeout, timeout, "answered", "answered"]);
+    expect(await finished.promise).toEqual([
+      timeout,
+      timeout,
+      timeout,
+      "answered",
+      "answered",
+      "answered",
+    ]);
   });
 
   test("a Request keeps its own signal, and takes the run's signal too", async () => {
@@ -1388,6 +1469,148 @@ describe("runCommand: cancel reaches outside programs", () => {
     };
     expect(await runCommand(read, {}, caller)).toEqual(cancelled("sample read"));
     expect(await finished.promise).toEqual([timeout, reason]);
+  });
+});
+
+describe("runCommand: a request's limits", () => {
+  test("a request past the time limit that the command sets ends with exit 3, naming the limit", async () => {
+    const ping = defineCommand({
+      path: ["sample", "ping"],
+      summary: "Ping the npm registry, with a short time limit.",
+      input: z.object({}),
+      async run(_input, context) {
+        const response = await context.fetch("https://registry.npmjs.org/-/ping", {
+          timeoutMs: 300,
+        });
+        return response.status;
+      },
+    });
+    const world = fakeWorld({
+      fetch: [{ url: "https://registry.npmjs.org/-/ping", limit: "time" }],
+    });
+    expect(await runCommand(ping, {}, frontEnd(world))).toEqual({
+      ok: false,
+      command: "sample ping",
+      exitCode: 3,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "outside",
+        message:
+          "GET https://registry.npmjs.org/-/ping got no whole answer within 300 milliseconds and was stopped",
+        issues: [],
+      },
+    });
+  });
+
+  test("a body past the body limit that the command sets ends with exit 3 when the command reads it", async () => {
+    const packument = defineCommand({
+      path: ["sample", "packument"],
+      summary: "Read the npm registry's document for @acmelabs/cli, up to 64 KB.",
+      input: z.object({}),
+      async run(_input, context) {
+        const response = await context.fetch("https://registry.npmjs.org/@acmelabs%2fcli", {
+          maxBodyBytes: 64 * 1024,
+        });
+        const document: unknown = await response.json();
+        return typeof document;
+      },
+    });
+    const world = fakeWorld({
+      fetch: [{ url: "https://registry.npmjs.org/@acmelabs%2fcli", limit: "output" }],
+    });
+    expect(await runCommand(packument, {}, frontEnd(world))).toEqual({
+      ok: false,
+      command: "sample packument",
+      exitCode: 3,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "outside",
+        message:
+          "GET https://registry.npmjs.org/@acmelabs%2fcli got a body of more than 64 KB and was stopped",
+        issues: [],
+      },
+    });
+  });
+
+  test("a request's limit failure keeps no secret from the URL's query", async () => {
+    const read = defineCommand({
+      path: ["sample", "read"],
+      summary: "Read the API with a token in the URL.",
+      input: z.object({}),
+      async run(_input, context) {
+        const response = await context.fetch("https://x.example/api?token=abc123def&page=2");
+        return response.status;
+      },
+    });
+    const world = fakeWorld({
+      fetch: [{ url: "https://x.example/api?token=abc123def&page=2", limit: "time" }],
+    });
+    const outcome = await runCommand(read, {}, frontEnd(world));
+    expect(outcome).toMatchObject({
+      exitCode: 3,
+      error: {
+        kind: "outside",
+        message:
+          "GET https://x.example/api?token=[redacted]&page=2 got no whole answer within 1 minute and was stopped",
+      },
+    });
+    expect(JSON.stringify(outcome)).not.toContain("abc123def");
+  });
+});
+
+describe("runCommand: a wait", () => {
+  test("a command that sleeps 30 minutes through fakeWorld ends at once, and now then reads 30 minutes later", async () => {
+    const wait = defineCommand({
+      path: ["sample", "wait"],
+      summary: "Wait 30 minutes, and report the time before and after.",
+      input: z.object({}),
+      async run(_input, context) {
+        const before = context.now().toISOString();
+        await context.sleep(30 * 60 * 1000);
+        return { before, after: context.now().toISOString() };
+      },
+    });
+    const world = fakeWorld({ now: new Date("2026-10-20T12:00:00.000Z") });
+    const outcome = await runCommand(wait, {}, frontEnd(world));
+    expect(outcome).toEqual({
+      ok: true,
+      command: "sample wait",
+      exitCode: 0,
+      durationMs: expect.any(Number),
+      result: { before: "2026-10-20T12:00:00.000Z", after: "2026-10-20T12:30:00.000Z" },
+    });
+    expect(outcome.durationMs).toBeLessThan(2000);
+    expect(world.calls).toEqual([{ kind: "sleep", ms: 1_800_000 }]);
+  });
+
+  test("a cancel during a sleep ends the wait at once, and the command with exit 130", async () => {
+    // The wait the command starts, and how that wait ends.
+    const sleeping = Promise.withResolvers<number>();
+    const finished = Promise.withResolvers<unknown>();
+    const poll = defineCommand({
+      path: ["sample", "poll"],
+      summary: "Wait 10 seconds before the next poll of the release run.",
+      input: z.object({}),
+      async run(_input, context) {
+        const slept = context.sleep(10_000);
+        sleeping.resolve(10_000);
+        const [end] = await Promise.allSettled([slept]);
+        finished.resolve(endOf(end));
+        return "polled";
+      },
+    });
+    const controller = new AbortController();
+    const reason = new Error("the user pressed Ctrl+C");
+    // The real World, so the wait runs on a real timer when the cancel comes.
+    const caller = { ...frontEnd(realWorld()), signal: controller.signal };
+    const started = performance.now();
+    const outcome = runCommand(poll, {}, caller);
+    await sleeping.promise;
+    controller.abort(reason);
+    expect(await outcome).toEqual(cancelled("sample poll"));
+    // The wait itself ends with the cancel's reason, not 10 seconds later.
+    expect(await finished.promise).toBe(reason);
+    expect(performance.now() - started).toBeLessThan(2000);
   });
 });
 
@@ -1456,6 +1679,35 @@ describe("runCommand: a program that is not installed", () => {
       exitCode: 3,
       durationMs: expect.any(Number),
       error: { kind: "outside", message: "claude is not installed or not on PATH", issues: [] },
+    });
+  });
+});
+
+describe("runCommand: a request that fails in the network", () => {
+  test("a real refused connection ends as an outside failure, exit 3, not as a bug", async () => {
+    // A port that had a server a moment ago, and has none now.
+    const gone = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
+    const url = `http://127.0.0.1:${gone.port}/-/ping`;
+    gone.stop(true);
+    const ping = defineCommand({
+      path: ["sample", "ping"],
+      summary: "Ping a registry.",
+      input: z.object({}),
+      async run(_input, context) {
+        const response = await context.fetch(url);
+        return response.status;
+      },
+    });
+    expect(await runCommand(ping, {}, frontEnd(realWorld()))).toEqual({
+      ok: false,
+      command: "sample ping",
+      exitCode: 3,
+      durationMs: expect.any(Number),
+      error: {
+        kind: "outside",
+        message: `GET ${url} failed: the connection was refused (ConnectionRefused)`,
+        issues: [],
+      },
     });
   });
 });

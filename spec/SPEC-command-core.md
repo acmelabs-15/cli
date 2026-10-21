@@ -49,13 +49,45 @@ export function defineCommand<Input extends z.ZodObject, Result extends Json>(
 ## The context a command runs in
 
 ```ts
+/** The limits that every outside program and request gets unless the call changes them. */
+export const limits = {
+  programMs: 5 * 60 * 1000,
+  requestMs: 60 * 1000,
+  outputBytes: 10 * 1024 * 1024,
+} as const;
+
+export type SpawnOptions = {
+  cwd?: string;
+  stdin?: string;
+  signal?: AbortSignal;
+  /** Variables added to the environment the program gets. One here replaces one of the same name. One given as undefined is removed. */
+  env?: Readonly<Record<string, string | undefined>>;
+  /** The program's time limit in milliseconds: `limits.programMs` when unset. */
+  timeoutMs?: number;
+  /** The program's output limit in bytes, for stdout and stderr each: `limits.outputBytes` when unset. */
+  maxOutputBytes?: number;
+};
+
+/** A request's options: fetch's own, and its limits. */
+export type FetchInit = RequestInit & {
+  /** The request's time limit in milliseconds, to the end of its body: `limits.requestMs` when unset. */
+  timeoutMs?: number;
+  /** The most bytes of the response body: `limits.outputBytes` when unset. */
+  maxBodyBytes?: number;
+};
+
+/** How to wait: the signal that ends the wait early. */
+export type SleepOptions = { signal?: AbortSignal };
+
 export type World = {
   /** The repo folder the command acts on; the working folder by default. */
   root: string;
   env: Readonly<Record<string, string | undefined>>;
-  spawn: (commandLine: readonly string[], options?: { cwd?: string; stdin?: string }) => Promise<Spawned>;
-  fetch: typeof globalThis.fetch;
+  spawn: (commandLine: readonly string[], options?: SpawnOptions) => Promise<Spawned>;
+  fetch: (input: string | URL | Request, init?: FetchInit) => Promise<Response>;
   now: () => Date;
+  /** Waits, unless the signal aborts first. A fake World moves its clock instead of waiting. */
+  sleep: (ms: number, options?: SleepOptions) => Promise<void>;
 };
 export type Spawned = { code: number; stdout: string; stderr: string };
 
@@ -71,9 +103,14 @@ export type Context<Input> = World & {
 ```
 
 - **Commands reach the outside world only through `World`.** No command calls `Bun.spawn`, `fetch` or `process.env` itself. That makes the outside world one fake in tests (the command seam), and it keeps every outside call visible.
-- **`spawn` and `fetch` take the run's signal.** `spawn`'s options take a `signal`, as `fetch`'s do. `context.spawn` and `context.fetch` pass the context's `signal` unless the command passes its own, so a cancel also stops an outside program or request.
+- **`spawn`, `fetch` and `sleep` take the run's signal.** `spawn`'s and `sleep`'s options take a `signal`, as `fetch`'s do. `context.spawn`, `context.fetch` and `context.sleep` pass the context's `signal` unless the command passes its own, so a cancel also stops an outside program, a request or a wait.
+- **A wait goes through `sleep`**, so a test of a long wait, such as the 10-second polls of a release run, takes no time with `fakeWorld`. `realWorld` waits with `setTimeout` from `node:timers/promises`, which takes the signal. On a cancel it rejects with the signal's reason itself: on Bun 1.4.0 that `setTimeout` rejects with its own `AbortError` and holds the reason only as its `cause`. A wait of 0 ends at once. A time that is not a finite number of 0 or more is a bug in the caller. A wait past about 24 days, the longest a timer holds, ends after about 24 days: that `setTimeout` fires at once, with a warning on stderr, for a longer delay.
+- **An outside program gets the whole environment**, plus the call's `env` (ADR-0015). A call can remove a variable: a variable that its `env` gives as `undefined` does not reach the program. Bun 1.4.0 starts a program without a variable whose value is `undefined`. git's calls remove every `GIT_` variable (ADR-0016); every other program gets the whole environment. The World's `env` is the environment that `spawn` passes on, so a caller finds there every variable to remove.
+- **An outside program runs in its own process group.** At a limit and on a cancel, the World sends SIGTERM to the whole group, then SIGKILL after a grace of 5 seconds, so no program that the outside program started keeps the command waiting. A group that is already gone, or whose programs have all ended, is not an error. Once nothing in the group is left to stop, the World cancels the SIGKILL, so acmelabs can exit at once.
+- **An outside program runs under a time limit and an output limit.** The time limit is `limits.programMs`, 5 minutes, unless the call sets `timeoutMs`. The output limit is `limits.outputBytes`, 10 MB, unless the call sets `maxOutputBytes`: the World counts the bytes of stdout and of stderr, each on its own, as it reads them, and output up to the limit stays byte for byte as the program printed it. A limit rejects with an outside failure (exit 3) that names the program and the limit, such as `gh api ... ran longer than 5 minutes and was stopped` or `gh api ... printed more than 10 MB on stdout and was stopped`; a cancel rejects with the signal's reason (`spec/SPEC-github-ops.md`, "The World's limits"). A limit that is not a positive number is a bug in the caller.
+- **A request runs under a time limit and a body limit.** `fetch` is a plain function, not Bun's fetch type, so the World copies nothing such as `preconnect`. The time limit is `limits.requestMs`, 1 minute, unless the call sets `timeoutMs`: an `AbortSignal.timeout` beside the call's own signal, which covers the whole answer, its body included. The body limit is `limits.outputBytes`, 10 MB, unless the call sets `maxBodyBytes`: a body whose `Content-Length` is above it is never read, and any other body is counted as the caller reads it, after Bun decompresses it. An answer that HTTP gives no body (to HEAD, a 204 or a 304) passes, whatever its `Content-Length`. A time-out before the response rejects the call, and a time-out during the body, or a body past its limit, rejects the read of the body (`text()`, `json()` or the stream), each with an outside failure (exit 3) that names the method, the URL and the limit, such as `GET https://registry.npmjs.org/@acmelabs%2fcli got no whole answer within 1 minute and was stopped` or `... got a body of more than 10 MB and was stopped`. A network failure is an outside failure (exit 3) too. It is a refused connection, a reset, a DNS or TLS failure, a redirect without end, or a body that cannot be decompressed. It rejects the call, or the read of the body when it comes during the body. Its message names the method, the URL, what failed and Bun's code, such as `GET https://registry.npmjs.org/-/ping failed: the connection was refused (ConnectionRefused)`. On Bun 1.4.0, a network failure is a `TypeError` with a string `code` and the URL as `path`. A caller's bug, such as an invalid URL or header, lacks one of the two. It stays as fetch gives it, and ends as a bug (exit 70). Bun gives three codes the network failure's shape for an outside cause and for the call's own choice alike, so they stay outside failures: `FailedToOpenSocket` (a broadcast address, or port 0), `UnsupportedProxyProtocol` (a proxy from the environment, or the call's) and `UnexpectedRedirect` (a redirect that the call forbids). A cancel rejects with the signal's reason, and wins over the time limit. The message holds the whole URL: `runCommand` removes a secret query value from it, as from every message. The response keeps its status, headers, URL and redirect flag.
 - Files are not in `World`: commands use Bun's file APIs on paths under `root`, and tests use real files in a temp folder, as brain's tests do.
-- `realWorld()` builds the real one; `fakeWorld(options)` builds a fake with scripted `spawn` and `fetch` answers and a log of every call. Both live in `packages/cli/src/command/world.ts`, so later modules' tests use the same fake.
+- `realWorld(options)` builds the real one; its `graceMs` shortens the grace for a test, and its `env` gives the World its own environment, which `spawn` passes on, so a test sets no variable in the test process. `fakeWorld(options)` builds a fake with scripted `spawn` and `fetch` answers and a log of every call, with every spawn option except the signal. Its clock stands still until a `sleep`: each sleep moves it at once, on from the last, by as long as the real wait lasts (so at most about 24 days), and logs `{ kind: "sleep", ms }`; an aborted signal rejects with the reason and moves nothing. A scripted spawn answer can be `missing`, `limit: "time"` or `limit: "output"` (on stdout), which reject with the same outside failures as the real World. A scripted fetch answer can be `limit: "time"`, which rejects the call, or `limit: "output"`, which gives the response and rejects the read of its body, each with the same outside failure as the real World. `realWorld` lives in `packages/cli/src/command/world.ts`, and `fakeWorld` in `fake-world.ts` beside it, so later modules' tests use the same fake.
 
 ## Progress updates
 
@@ -162,7 +199,7 @@ Rules, each checked by a test over the real list:
 - Every path has one word or more and is unique, and no command's path is the start of another command's path.
 - Every summary is one line, and every input field has a description, given before or after its optional, nullable or default wrapper.
 - Every positional names a required field of the input.
-- A command file loads only zod, Node built-ins (`node:`), `command-core` and `repo-model` at its top. Anything heavier (gh, npm, the TUI) loads inside `run` with `await import(...)`, so a quick command in CI stays quick. Node built-ins are allowed because they load faster than zod (measured on Bun 1.4.0 during the build: `node:path` 8 ms, `node:fs/promises` 11 ms, zod 20 ms, median of 15 starts). A type-only import loads nothing and is allowed. Known gap: an `await import(...)` at the file's top level, outside `run`, is not caught.
+- A command file loads only zod, Node built-ins (`node:`), `command-core`, `repo-model` and github-ops's names file (`../github/names`, which loads only zod) at its top. Anything heavier (gh, npm, the TUI) loads inside `run` with `await import(...)`, so a quick command in CI stays quick. Node built-ins are allowed because they load faster than zod (measured on Bun 1.4.0 during the build: `node:path` 8 ms, `node:fs/promises` 11 ms, zod 20 ms, median of 15 starts). A type-only import loads nothing and is allowed. Known gap: an `await import(...)` at the file's top level, outside `run`, is not caught.
 
 The list is empty until `repo-checks` adds the first real commands; this module's tests use sample commands.
 
@@ -174,17 +211,21 @@ The module adds no `acmelabs` command. Its checks run in the repo's gate: `bun r
 
 ```
 packages/cli/src/command/command.ts       Command, defineCommand, Context, and the front-end's types: FrontEnd, Question, Answerer
-packages/cli/src/command/world.ts         World, realWorld, fakeWorld
+packages/cli/src/command/world.ts         World and its options' types, and realWorld, which joins spawn, fetch and its timer's sleep
+packages/cli/src/command/world-limits.ts  limits, the limits' outside failures, the byte counter, and the check of a wait's time
+packages/cli/src/command/world-spawn.ts   realWorld's spawn: the program runner, its process group and the group's stop
+packages/cli/src/command/world-fetch.ts   realWorld's fetch: a request under its time limit and its body limit
+packages/cli/src/command/fake-world.ts    fakeWorld and its scripted answers
 packages/cli/src/command/outcome.ts       the failure kinds, exit codes, the throw helpers
 packages/cli/src/command/input.ts         flagOf, and the checks of the input and of an answer
 packages/cli/src/command/steps.ts         trackSteps: the open steps of one run
 packages/cli/src/command/run.ts           runCommand
 packages/cli/src/command/redact.ts        redactorFor: the secrets removed from each text that leaves runCommand
-packages/cli/src/command/words.ts         sameWords: two word lists with the same words in the same order
+packages/cli/src/command/words.ts         sameWords: two word lists with the same words in the same order; durationOf and sizeOf: a time and a size in words
 packages/cli/src/command/lines.ts         progressLine, resultLine
 packages/cli/src/command/list.ts          CommandList, the type every front-end reads
 packages/cli/src/command/list-rules.ts    the command list's rules and the import scan, for the tests only
-packages/cli/src/command/__tests__/       tests beside the code, at the seams the spec names; a file tested only through runCommand has no test file of its own
+packages/cli/src/command/__tests__/       tests beside the code, at the seams the spec names. A file tested only through runCommand or realWorld has no test file of its own, such as world-limits.ts. The spawn and fetch tests call realWorld.
 packages/cli/src/commands/index.ts        the command list
 packages/cli/src/commands/__tests__/index.test.ts   the list's rules
 ```
@@ -212,7 +253,7 @@ export const versionCheck = defineCommand({
 
 The command seam (`spec/README.md`): tests call `runCommand` with a sample command, typed input, a temp folder as `root`, and `fakeWorld`, then check the `Outcome` and the progress updates. Prior-art tests: brain's `version-sync.test.ts` (temp folders, real files) and this repo's `config.test.ts` (exact issue lists).
 
-Cases: a success; each failure kind with its exit code; zod input errors named by flag and by positional; a `RepoConfigError` mapped to kind `input` with its issues; an `ask` answered up front, answered by an `answer` function, and unanswered with no `answer` (exit 2, naming the flag); cancel through the signal (130); an open step closed as failed on a throw; a thrown non-command error (70); `progressLine` and `resultLine` shapes; `fakeWorld` records spawn and fetch calls and returns scripted answers; the command list's rules on sample lists that break each rule.
+Cases: a success; each failure kind with its exit code; zod input errors named by flag and by positional; a `RepoConfigError` mapped to kind `input` with its issues; an `ask` answered up front, answered by an `answer` function, and unanswered with no `answer` (exit 2, naming the flag); cancel through the signal (130); an open step closed as failed on a throw; a thrown non-command error (70); `progressLine` and `resultLine` shapes; `fakeWorld` records spawn, fetch and sleep calls, returns scripted answers, and moves its clock with each sleep; the command list's rules on sample lists that break each rule.
 
 ## Boundaries
 

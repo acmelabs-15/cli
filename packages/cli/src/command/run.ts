@@ -18,18 +18,14 @@ function millisecondsSince(started: number): number {
 
 /**
  * The world's fetch, with the run's signal unless the command passes its own in the options. A
- * Request keeps its own signal, and takes the run's signal too.
+ * Request keeps its own signal, and takes the run's signal too. The call's limits pass on as they
+ * are.
  */
 function fetchWithSignal(world: World, signal: AbortSignal): World["fetch"] {
-  function signalled(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+  return (input, init) => {
     const fallback = input instanceof Request ? AbortSignal.any([input.signal, signal]) : signal;
     return world.fetch(input, { ...init, signal: init?.signal ?? fallback });
-  }
-  return Object.assign(signalled, {
-    preconnect(...args: Parameters<World["fetch"]["preconnect"]>) {
-      world.fetch.preconnect(...args);
-    },
-  });
+  };
 }
 
 /** The question for one optional input field: its flag, its description and its schema. */
@@ -45,8 +41,8 @@ function questionFor(schema: z.ZodObject, field: string): Question {
 
 /**
  * The context a command runs in: the front-end's world and signal, the run's progress, and `ask`.
- * `spawn` and `fetch` take the run's signal, so a cancel stops an outside program or request; a
- * signal the command passes itself wins.
+ * `spawn`, `fetch` and `sleep` take the run's signal, so a cancel stops an outside program, a
+ * request or a wait; a signal the command passes itself wins.
  * `ask` returns the value given up front; with none, it asks the front-end's `answer` and checks
  * the answer with the field's schema; with no answer either, it is an input error. After a cancel,
  * `ask` rejects with the signal's reason, before the question and after a late answer.
@@ -66,6 +62,9 @@ function contextFor<Input>(
     },
     fetch: fetchWithSignal(world, frontEnd.signal),
     now: world.now,
+    sleep(ms, options) {
+      return world.sleep(ms, { ...options, signal: options?.signal ?? frontEnd.signal });
+    },
     progress,
     async ask(field) {
       // A cancelled run asks nothing, so no prompt shows after the outcome.

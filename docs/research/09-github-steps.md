@@ -16,6 +16,7 @@ What this is: research for the `github-ops` module spec: the gh CLI, the REST en
 ### 1.2 `gh api`
 
 - **Token order:** `GH_TOKEN`, then `GITHUB_TOKEN`, then `oauth_token` in `hosts.yml`, then the system keyring for the active account. For a GitHub Enterprise Server host the variables are `GH_ENTERPRISE_TOKEN`, then `GITHUB_ENTERPRISE_TOKEN`. https://github.com/cli/go-gh/blob/v2.13.0/pkg/auth/auth.go (`tokenForHost`) · https://github.com/cli/cli/blob/v2.98.0/internal/config/config.go (`ActiveToken`) · `gh help environment`
+- **An empty variable counts as unset:** go-gh reads `GH_TOKEN`, then `GITHUB_TOKEN`, only when the variable has text (`os.Getenv(...) != ""` in `tokenForHost`, `pkg/auth/auth.go` at v2.13.0). gh's git helper reads the token the same way (`cfg.ActiveToken` in `pkg/cmd/auth/gitcredential/helper.go` at v2.98.0). gh auth login and gh auth refresh refuse while the active token's source ends in `_TOKEN` (`AuthTokenWriteable` in `pkg/cmd/auth/shared/writeable.go`), so with both variables set, clearing `GH_TOKEN` alone leaves gh on `GITHUB_TOKEN`, and the refusal stays. (Read from source by the github-ops last slice, 2026-10-20; not probed.)
 - gh 2.98.0 pins go-gh v2.13.0. (`go.mod` at `v2.98.0`)
 - **Header:** gh sends `Authorization: token <token>`. A `-H "Authorization: ..."` from the caller wins, because gh sets the header only when it is empty. https://github.com/cli/cli/blob/v2.98.0/api/http_client.go (`AddAuthTokenHeader`)
 - **An HTTP error (status 300 or more):**
@@ -25,6 +26,7 @@ What this is: research for the `github-ops` module spec: the gh CLI, the REST en
   - The exit code is 1.
   - https://github.com/cli/cli/blob/v2.98.0/pkg/cmd/api/api.go (`processResponse`, `parseErrorResponse`, lines 473-569 and 651-719)
 - **The error body carries `status` as a string**, for example `"status":"404"`. (All probes in section 2.)
+- **A 422's cause is only in the body.** With a `message`, gh's stderr line leaves out a list of `errors`, so a 422 shows `gh: Validation Failed (HTTP 422)`, and its cause, such as `No commits between main and add-brain`, is only in `errors[].message`. gh reads `errors` as one text, or as a list of texts and of objects with a `message` (`parseErrorResponse` in api.go at v2.98.0). (Added by the github-ops login-message slice, 2026-10-20.)
 - **A 401 from a bad token:** `gh api user` with `GH_TOKEN=not-a-real-token` printed the body `{"message":"Bad credentials",...,"status":"401"}` to stdout and `gh: Bad credentials (HTTP 401)` to stderr, exit 1. (Probe, 2026-10-20.)
 - **A 304:** a conditional GET that returns `304 Not Modified` makes `gh api` exit 1 with `gh: HTTP 304` on stderr. The caller must read the status line (`-i`) to tell "unchanged" from a failure. (Probe on `repos/acmelabs-15/cli/actions/runs?per_page=2` with `-H "If-None-Match: <etag>"`.)
 - **`-i, --include`:** prints the status line (for example `HTTP/2.0 403 Forbidden`), then the headers sorted by name, each ending in CRLF, then a blank CRLF line, then the body. All of it goes to stdout. (`gh api --help`; api.go `printHeaders`)
@@ -62,6 +64,12 @@ From the source, https://github.com/cli/cli/blob/v2.98.0/internal/ghcmd/cmd.go (
 - **`--json hosts`:** present in 2.98.0. With `--json`, the command always exits 0 unless a fatal error occurs. Logged out, it printed `{"hosts":{}}`. (`gh auth status --help`; status.go lines 149-150, 206-223)
 - **JSON fields per account:** `active`, `gitProtocol`, `host`, `login`, `scopes`, `state` (`success`, `timeout` or `error`), `tokenSource`, and `error` when the state is `error`. The `token` field appears only with `--show-token`. https://github.com/cli/cli/blob/v2.98.0/pkg/cmd/auth/status/status.go (lines 25-38)
 - **This machine** (`gh auth status --json hosts`, token removed): `{"active":true,"gitProtocol":"https","host":"github.com","login":"loriensleafs","scopes":"admin:public_key, gist, read:org, repo, workflow","state":"success","tokenSource":"keyring"}`. In text mode the token line shows only `gho_` and asterisks.
+- **The answer's shape:** `{"hosts":{"<host>":[account, ...]}}`, the active account first. `scopes` and `error` are left out when empty, and the token is dropped without `--show-token` (`authEntry` and `statusRun` in status.go at v2.98.0). (Added by github-ops task 6, 2026-10-20.)
+- **The states:** `timeout` only when gh's request to GitHub times out (`net.Error.Timeout()`); `error` for every other failure, a 401 and a DNS failure alike (`buildEntry` in status.go).
+- **The `error` text** (from source; not probed for a keyring token): for a keyring token, go-gh's `HTTPError` text for gh's GET of the API root, such as `HTTP 401: Bad credentials (https://api.github.com/)`, which can hold a second line (`GetScopes` in oauth_scopes.go; `errors.go` at go-gh v2.13.0). For a token from a variable, the text of gh's query for the login name, such as the probe's `non-200 OK status code: 401 Unauthorized body: "..."` (181 characters). Neither holds the token, which gh sends in a header.
+- **Logged out, with `--json`** (probe, 2026-10-20, empty `GH_CONFIG_DIR`): stdout `{"hosts":{}}`, stderr `You are not logged into any GitHub hosts. To log in, run: gh auth login`, exit 0.
+- **A rejected `GH_TOKEN` beside a keyring login** (probe, 2026-10-20): two accounts, exit 0. The active one is `{"state":"error","error":"non-200 OK status code: 401 Unauthorized body: ...","active":true,"host":"github.com","login":"","tokenSource":"GH_TOKEN","gitProtocol":"https"}`; the keyring account follows with `"active":false` and `"state":"success"`.
+- **`gh auth login` and `gh auth refresh` refuse to run** while `GH_TOKEN` or `GITHUB_TOKEN` is set. They print `The value of the GH_TOKEN environment variable is being used for authentication.` and exit 1 (`login.go` line 189 and `refresh.go` line 169 at v2.98.0).
 - **How scopes show:** the text line `Token scopes: 'admin:public_key', 'gist', ...` appears only for tokens that start with `ghp_` (classic PAT) or `gho_` (OAuth app token). gh reads the scopes from the `X-OAuth-Scopes` header of a GET to the API root. When it is missing `repo` or `read:org`, the text adds `Missing required token scopes`. https://github.com/cli/cli/blob/v2.98.0/pkg/cmd/auth/status/status.go (lines 73-83, 358-360) · https://github.com/cli/cli/blob/v2.98.0/pkg/cmd/auth/shared/oauth_scopes.go (lines 36-110)
 - **Reading scopes another way:** `gh api -i user` returns `X-Oauth-Scopes: admin:public_key, gist, read:org, repo, workflow` and `X-Accepted-Oauth-Scopes:` (empty for that endpoint). `X-OAuth-Scopes` lists the scopes the token has; `X-Accepted-OAuth-Scopes` lists the scopes the action checks for. https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps
 - **Fine-grained PATs and GitHub App tokens:** these have permissions, not scopes. gh's code treats an empty scopes header as an integration token and skips the scope check ("if the token reports no scopes, assume that it's an integration token"). That such tokens return no `X-OAuth-Scopes` header is UNVERIFIED by a probe. For them, GitHub returns `X-Accepted-GitHub-Permissions`, for example `contents=read`, to name what an endpoint needs. https://docs.github.com/en/rest/using-the-rest-api/troubleshooting-the-rest-api#resource-not-accessible
@@ -288,6 +296,11 @@ https://docs.github.com/en/rest/repos/rules
 
 - The two are the same apart from `id`, `node_id`, `source`, the dates and `_links`. (`diff` of both with those keys removed.)
 - `GET repos/acmelabs-15/cli/rulesets` lists exactly one ruleset, 25461155.
+- **Probes under `2026-03-10`** (github-ops task 8, 2026-10-20, with the spec's two headers):
+  - `repos/acmelabs-15/brain/rulesets?includes_parents=false&per_page=100` returned `[{"id":25457893,"name":"Protect main","target":"branch","source_type":"Repository","source":"acmelabs-15/brain","enforcement":"active","node_id":"RRS_lACqUmVwb3NpdG9yec5GCidjzgGEdOU","_links":{"self":{"href":"https://api.github.com/repos/acmelabs-15/brain/rulesets/25457893"},"html":{"href":"https://github.com/acmelabs-15/brain/rules/25457893"}},"created_at":"2026-10-19T23:50:57.764-07:00","updated_at":"2026-10-19T23:50:57.801-07:00"}]`. Without `includes_parents=false`, the list was the same: acmelabs-15 has no organization rulesets.
+  - `repos/acmelabs-15/brain/rulesets/25457893` returned the same fields and values as the read above under `2022-11-28`.
+  - `repos/acmelabs-15/jev-gate/rulesets?includes_parents=false&per_page=100` returned `[]`.
+- **Names:** a second ruleset with the same name in one repo gets `422 Validation Failed`, "Name must be unique". Reported, not probed: https://github.com/integrations/terraform-provider-github/issues/3214 (2026-02-20).
 
 ### 2.7 Create a pull request
 
@@ -298,6 +311,12 @@ https://docs.github.com/en/rest/pulls/pulls#create-a-pull-request
 - "For organization-owned repositories, you must be a member of the organization that owns the repository to open or update a pull request."
 - "This endpoint triggers notifications. Creating content too quickly using this endpoint may result in secondary rate limiting."
 - **An open PR for the same head and base:** 422 with `{"message":"Validation Failed","errors":[{"resource":"PullRequest","code":"custom","message":"A pull request already exists for <owner>:<branch>."}],...}`. Reported; not probed. https://github.com/crowdin/github-action/issues/287 · https://github.com/google/go-github/issues/1441
+- **Probes under `2026-03-10`** (github-ops task 12, 2026-10-20, read-only GETs through `gh api` with the spec's two headers):
+  - `repos/acmelabs-15/brain/pulls?head=acmelabs-15%3Achangeset-release%2Fmain&base=main&state=all&per_page=100` returned exactly the 5 PRs from that head (#1, #2, #3, #4, #6). An encoded colon and slash pass through `gh api`, and GitHub decodes them.
+  - The same query with `head=changeset-release%2Fmain` (no owner) returned all 7 PRs of brain: GitHub ignores a head filter with no owner.
+  - `head=acmelabs-15%3Achangeset-release` (cut at the slash) returned `[]`.
+  - The encoded head with `state=open` returned `[]`.
+  - A list item carries `number`, `html_url`, `state`, `head.ref`, `head.label`, `head.repo.full_name` and `base.ref`, among about 35 fields; one item is about 16 KB.
 
 ### 2.8 Workflow runs
 
@@ -311,6 +330,11 @@ https://docs.github.com/en/rest/actions/workflow-runs
 - **Probe:** `repos/acmelabs-15/brain/actions/runs?head_sha=<sha>&event=push` returned exactly the two push runs (CI and Release) of that commit. acmelabs-15/cli has `total_count: 0` runs, because it has no `.github/workflows/` yet.
 - **Probe:** the runs list response carried `Cache-Control: private, max-age=60, s-maxage=60` and an `Etag`, and no `X-Poll-Interval`.
 - **Push events and runs:** "Events will not be created for tags when more than three tags are pushed at once." https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#push
+- **Probes under `2026-03-10`** (github-ops task 13, 2026-10-20, with the spec's two headers, read-only):
+  - `repos/acmelabs-15/brain/actions/runs?head_sha=7dee2ef38b7fadfa963ea14c76193457a2f19f91&event=push&per_page=100` returned `total_count: 2`: the CI run 39382027375 (`path` `.github/workflows/ci.yml`) and the Release run 39382027513 (`path` `.github/workflows/release.yml`), both created at `2026-10-20T06:43:16Z`, CI listed first. A run's `path` is its workflow file.
+  - `repos/acmelabs-15/brain/actions/runs/39382027513` returned the same fields and values as that run's item in the list.
+  - A `head_sha` with no runs returned `{"total_count":0,"workflow_runs":[]}`.
+  - Of brain's 25 push runs, 24 concluded `success` and one `failure` (35457136418, the first Release run, 2026-09-19). Every `run_attempt` is 1. A run carries `run_attempt` and `previous_attempt_url`.
 
 ### 2.9 Get a git ref
 
@@ -321,6 +345,11 @@ https://docs.github.com/en/rest/git/refs#get-a-reference
   - `repos/acmelabs-15/brain/git/ref/tags/latest`: 200, `{"ref":"refs/tags/latest",...,"object":{"sha":"7dee2ef38b7fadfa963ea14c76193457a2f19f91","type":"commit",...}}`.
   - `repos/acmelabs-15/cli/git/ref/tags/latest` (no such tag): stdout `{"message":"Not Found","documentation_url":"https://docs.github.com/rest/git/refs#get-a-reference","status":"404"}`, stderr `gh: Not Found (HTTP 404)`, exit 1.
   - `repos/acmelabs-15/pinky/git/ref/tags/latest` (an empty repo): `{"message":"Git Repository is empty.",...,"status":"409"}`, stderr `gh: Git Repository is empty. (HTTP 409)`, exit 1.
+- **Probes under `2026-03-10`** (github-ops task 10, 2026-10-20, with the spec's two headers): `repos/acmelabs-15/cli/git/ref/heads/main` returned `{"ref":"refs/heads/main",...,"object":{"sha":"bb0c949064ca21a2a00beff42fea6d4c2d24c27e","type":"commit",...}}`; `repos/acmelabs-15/pinky/git/ref/heads/main` (an empty repo) returned the same 409 body as its `tags/latest`; `repos/acmelabs-15/pinky` returned `"visibility":"private","default_branch":"main","size":0`; `repos/acmelabs-no-such-org-4f2b9c/cli` returned 404 `{"message":"Not Found","documentation_url":"https://docs.github.com/rest/repos/repos#get-a-repository","status":"404"}`.
+- **Probes under `2026-03-10`** (github-ops task 13, 2026-10-20, read-only):
+  - Every tag of acmelabs-15/brain is lightweight (`object.type` `commit`): `latest`, and `v0.2.0` to `v0.6.0` (`git/matching-refs/tags/`).
+  - `repos/changesets/changesets/git/ref/tags/%40changesets%2Fcli%402.27.1` returned `refs/tags/@changesets/cli@2.27.1` with `object.type` `tag`. GitHub reads an encoded `/` and `@` in a tag, and changesets' release tags are annotated (message: the tag's name; tagger: github-actions[bot]).
+  - `repos/changesets/changesets/git/tags/5f4a8bc561ec41be9ca7844c8cf2da99e2413e80` returned the tag object, whose `object` is `{"sha":"c11391bc43be1b1c1afcad15b4abb6cf8ad6e354","type":"commit",...}`.
 - A 404 can also mean "no access" for a private repo: "GitHub uses a 404 Not Found response instead of a 403 Forbidden response to avoid confirming the existence of private repositories." https://docs.github.com/en/rest/using-the-rest-api/troubleshooting-the-rest-api
 
 ## 3. Timing and limits
@@ -386,6 +415,28 @@ https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api
 - **HTTPS fits gh's login:** gh's credential helper serves HTTPS only (patterns start `https://`, 1.5), and this machine's gh `git_protocol` is `https`. So with HTTPS, one gh login covers the API calls and the push.
 - **This machine also has SSH working:** `ssh -T git@github.com` answered "Hi loriensleafs! You've successfully authenticated". Another maintainer's machine may not.
 - **Checking a push without credentials:** `git ls-remote https://github.com/acmelabs-15/cli.git refs/heads/main` returned `fccb32af385e718a558b4cc5738c393fab216059` (a public repo). A private repo needs credentials.
+- **Probes** (github-ops task 11, 2026-10-20, git 2.54.0, read-only `git ls-remote` and one `git clone` of a repo that does not exist, each with no `GIT_` variables, `GIT_TERMINAL_PROMPT=0` and the words `-c credential.https://github.com.helper= -c credential.https://github.com.helper=!gh auth git-credential -c core.askPass=`):
+  - gh's login, a repo that does not exist: stderr `remote: Repository not found.` and `fatal: repository 'https://github.com/acmelabs-15/<name>.git/' not found`, exit 128. A clone gets the same, and removes the folder it made.
+  - No credential helper at all, for a private repo and for one that does not exist: `fatal: could not read Username for 'https://github.com': terminal prompts disabled`, exit 128. GitHub asks for a login before it says whether the repo exists.
+  - `GH_TOKEN=not-a-real-token`: `remote: Invalid username or token. Password authentication is not supported for Git operations.` and `fatal: Authentication failed for '<url>'`, exit 128.
+  - An empty `GH_CONFIG_DIR` did not take gh's login away: gh's helper still served a token, and `ls-remote` of the private acmelabs-15/pinky exited 0.
+  - Without `-c core.askPass=`, `SSH_ASKPASS=/usr/bin/false` ran: `error: unable to read askpass response from '/usr/bin/false'`, before "terminal prompts disabled".
+  - With a local bare repo: a push that is not a fast-forward prints ` ! [rejected]        main -> main (fetch first)`, exit 1; `git push --set-upstream origin refs/heads/main` sets `branch.main.merge` to `refs/heads/main`; `git remote get-url origin` applies a `url.<base>.insteadOf` rewrite, and `git config --get-all remote.origin.url` does not.
+- **Probes of URL rewrites** (the review fix of github-ops, 2026-10-20, git 2.54.0, a temp home, and a local repo whose origin is `https://github.com/acmelabs-15/jev.git`; local bare repos, no network unless a bullet says so):
+  - `git remote get-url --all origin` applies `url.<base>.insteadOf`. `git remote get-url --push --all origin` applies `url.<base>.pushInsteadOf`, else `insteadOf`. Each prints one URL a line. With no origin, each exits 2 with `error: No such remote 'origin'`.
+  - `git ls-remote origin` reads the fetch URL, and `git push origin` writes to the push URL: with `insteadOf` to one bare repo and `pushInsteadOf` to another, `ls-remote` listed the first one's refs, and the push landed in the second.
+  - A `pushInsteadOf` back to `https://github.com/` beside an `insteadOf` to another host keeps the push URL and moves the fetch URL. So a check of the push URL alone misses `ls-remote`, which would send that host a login from the user's own credential helper.
+  - A configured `pushurl` is moved by `insteadOf`, not by `pushInsteadOf`.
+  - A global `url."git@github.com:".insteadOf = https://github.com/` gives `git@github.com:acmelabs-15/jev.git` for both reads, and the `ssh://git@github.com/` form gives `ssh://git@github.com/acmelabs-15/jev.git`. A longer rule beside it, `url.https://github.com/acmelabs-15/.insteadOf = https://github.com/acmelabs-15/`, keeps the acmelabs-15 URLs on HTTPS, because the longest match wins; another owner's URL still gets the SSH form.
+  - A `git clone` that runs inside another repo does not read that repo's local config: a local `insteadOf` there did not move the clone, which went to github.com and asked for a login (the one probe that reached GitHub; no login, nothing read).
+  - A program that Bun starts with `detached: true`, as the World starts each one, has no controlling terminal (`tpgid` 0, tty `??`, a probe under `script`). Without `detached`, the same program had the terminal. So ssh in a git call of acmelabs cannot ask for a passphrase or a new host key.
+  - This machine has no `url.` rule in any git config scope (`git config --show-origin --get-regexp '^url\.'` exits 1), and gh's `git_protocol` is `https`.
+- **Probes of a clone's URL** (the clone fix of github-ops, 2026-10-20, git 2.54.0, a temp home, URLs on `host.invalid`, local bare repos; no network, because `.invalid` never resolves):
+  - `git ls-remote --get-url <url>` prints the URL after `url.<base>.insteadOf`, on one line that ends in a newline, exits 0, and reaches no remote. With no rule, it prints the URL as given. git's own help: "Expand the URL of the given remote repository taking into account any "url.<base>.insteadOf" config setting ... and exit without talking to the remote."
+  - `pushInsteadOf` does not move it. A global SSH rewrite gives `git@host.invalid:acmelabs-15/x.git`; a longer rule back to the HTTPS URL beside it keeps the HTTPS URL.
+  - Inside a repo, the read applies that repo's local `insteadOf`, also from a subfolder. A `git clone` run in the same folder does not: it went to the URL as given. `--git-dir=/dev/null` makes the read skip the local config and keep the global one, with exit 0 and no message. `GIT_DIR=/dev/null` and `-C /` do the same; `GIT_CEILING_DIRECTORIES` does not.
+  - A rewrite in a file that `includeIf "gitdir:<folder>/"` loads moved a clone into that folder, and one that `includeIf "hasconfig:remote.*.url:https://host.invalid/**"` loads moved a clone of a matching URL. The read before the clone saw neither: the conditions hold only once the clone's repo exists.
+  - A global `[remote "<url>"]` section with its own `url` changes what `ls-remote --get-url <url>` prints, and a clone of that URL did not use it. So the read can name a URL that the clone would not use; the step then refuses, which is the safe side.
 
 ## 5. Prior art: how acmelabs-15/cli was created on 2026-10-20
 

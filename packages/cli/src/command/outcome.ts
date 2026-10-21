@@ -77,10 +77,28 @@ export function outsideError(message: string, issues: readonly Issue[] = []): Co
   return new CommandError("outside", message, issues);
 }
 
-/** A login to `service`, such as gh or npm, is needed: kind `login`, exit 4. */
-export function loginNeeded(service: string): CommandError {
+/**
+ * A login's fix with more than one way, or with a reason. Each way is a text that the message
+ * names, such as `run gh auth login`. The reason says why the login fails, such as the service's
+ * own error text; it ends the message, after a colon. A reason with no text adds nothing.
+ */
+export type LoginFix = { ways: readonly [string, ...string[]]; reason?: string };
+
+/** The LoginFix for loginNeeded's `fix` that is a command line, or none. */
+function plainFix(service: string, commandLine: string | undefined): LoginFix {
+  return { ways: [commandLine === undefined ? `log in to ${service}` : `run ${commandLine}`] };
+}
+
+/**
+ * A login to `service`, such as gh or npm, is needed: kind `login`, exit 4. `fix`, when given, is
+ * the command line that fixes the login, such as `gh auth login`, and the message names it; or a
+ * `LoginFix`, whose ways the message names one after another, then its reason.
+ */
+export function loginNeeded(service: string, fix?: string | LoginFix): CommandError {
+  const { ways, reason } = typeof fix === "object" ? fix : plainFix(service, fix);
+  const why = reason === undefined || reason === "" ? "" : `: ${reason}`;
   return new CommandError(
     "login",
-    `${service} needs a login; log in to ${service}, then run the command again`,
+    `${service} needs a login; ${ways.join(", or ")}, then run the command again${why}`,
   );
 }

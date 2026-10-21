@@ -2,32 +2,34 @@
 
 The one place for where the project stands. Every session reads it first and rewrites it last (see "Session end" in `AGENTS.md`). Keep it short: facts a new session needs to continue, nothing else.
 
-**Updated:** 2026-10-20, after the `github-ops` spec was approved, by the Claude Code session that wrote it.
+**Updated:** 2026-10-20, after the `github-ops` build and its review fixes, by the Claude Code session that wrote the spec and the plan and ran `/brain:build auto`.
 
 ## Where things stand
 
 - **The spec:** the capability map of 16 modules is approved (`spec/README.md`). Every interview decision is recorded (`docs/design/spec-interview.md`, `docs/decisions/`).
-- **Done and merged into main:** `repo-model` (PR #1, `082abe4`), `command-core` (PR #2, `38888fa`) and `config-presets` (PR #3, `7fcb916`). Their plans are in `tasks/done/`. `bun run check` is green on main: 213 tests.
-- **In progress: `github-ops`.** The spec is approved (`spec/SPEC-github-ops.md`, draft `0601f9b`). Phase: Plan. `tasks/plan.md` and `tasks/todo.md` do not exist yet; no branch exists yet.
-- **What the `github-ops` spec settled:** GitHub calls run through `gh api`, and push and clone through git with gh's credential helper (ADR-0014); each step reads before it writes and picks up a half-done run; outside programs keep the whole environment, and every program and request runs under limits of 5 minutes, 1 minute and 10 MB (ADR-0015, open questions 21 and 22 settled); the tests use the command seam and the World's own tests, and no test calls GitHub. Research notes 09 and 10 hold the facts.
+- **Done and merged into main:** `repo-model` (PR #1, `082abe4`), `command-core` (PR #2, `38888fa`) and `config-presets` (PR #3, `7fcb916`). Their plans are in `tasks/done/`.
+- **`github-ops` is built, on branch `github-ops`, pushed; PR #4 into `main` is open (https://github.com/acmelabs-15/cli/pull/4) and waits for Peter's review.** All 13 tasks and both earlier checkpoints are ticked (`tasks/todo.md`); the final checkpoint is ticked apart from opening the PR. The review (`docs/reviews/2026-10-20-github-ops.md`) approves after the re-check. `bun run check` is green on the working copy and on a clean clone: 653 tests at `7d47f89`.
+- **What `github-ops` holds:** the World's limits (5 minutes per program, 1 minute per request, 10 MB per output or body), a process group per program, network failures as exit 3, `sleep` with a fake clock, and git calls without the `GIT_` variables (ADR-0015, ADR-0016); the GitHub steps in `packages/cli/src/github/` (`checkLogin`, `ensureRepo`, `ensureActionsSetting`, `ensureProtectMain`, `push`, `clone`, `openPullRequest`, `watchRun`, `findTag`), each safe to run again. No command uses them yet: `scaffold` and `marketplace-add` will.
+- **Peter's choices during the build:** keep the repo's own command code (note 11); run tasks 6, 7, 10, 12 and 13 in parallel worktrees; git calls run without the `GIT_` variables, not by flags (note 12, ADR-0016); fix the review's groups A and B before the PR.
 - **The repo:** public at https://github.com/acmelabs-15/cli, main protected by "Protect main". Peter's standing permissions: commit at task and session ends, push after every commit, one branch per module merged through one PR; opening a PR and merging are asked.
 
 ## Red and notes
 
-- **A flaky timing test in `repo-model`:** "reads a list of 10,000 distinct package paths in under 100 ms" took 132 ms once while other tests ran on the machine; quiet runs take 37 to 45 ms. It is not fixed; a wall-clock limit in a unit test fails under load.
-- **This repo's root configs do not load under real Node** (an editor's oxc extension). Peter accepted this on 2026-10-20 (`spec/SPEC-config-presets.md`, "This repo on the presets"). Other repos import the built package, which loads under Node.
-- **For `cli-release`:** open questions 23 (does a changesets changelog under `packages/` pass the format check?) and 24 (each package folder needs a `LICENSE`); the built JavaScript holds path comments with the install store's hash, so a byte-for-byte compare of release builds must build from one fixed folder.
-- **Open question 19 blocks `repo-checks`:** a parse error that quotes a linked `acmelabs.json` reaches JSON mode's lines. Settle it in the `repo-checks` spec, before a command that reads the config ships.
-- **For `shared-workflows`:** prove the World's process groups and limits on Linux in CI (open question 22), beside `run.bun` (open question 4).
-- **For the `github-ops` build:** the timing right after a repo is created is UNVERIFIED (spec open question 1). A probe with a scratch repo would settle it; the gh login cannot delete a repo, so the probe is asked before it runs.
-- **New repos and the two plugins:** the rule for which plugin's skill runs on a shared name is open question 6, for the `scaffold` spec.
-- **npm:** the local npm login is rejected (401). The first publishes need Peter's `npm login` and 2FA, in module `cli-release`.
+- **The review's simplification fell short of its estimate:** group B cut 51 code lines, not 120 to 150; four candidates made the code longer when written out (review, "Re-check").
+- **Optional review findings left open:** the test suite takes about 12 s (up from 3 s); a folder that is not a git repo ends with exit 3 in `push`; `loginNeeded` has two forms.
+- **Flaky timing tests:** `repo-model`'s "10,000 package paths in under 100 ms" (132 ms once under load); `command-core`'s "spawn stops the program soon after its signal aborts" failed once in 200 runs under heavy load (cause UNVERIFIED).
+- **Bun 1.4.0 faults seen in the build, candidates for upstream issues (filing is asked first):** a segfault in a fetch test on old code; `server.stop(true)` never resolves after a client's time-out and cancel; an async generator body keeps draining after a cancel.
+- **git upstream, Peter's call:** `GIT_REFERENCE_BACKEND` is missing from git 2.54.0's own list of local variables (note 12).
+- **For later modules:** open question 25 (`marketplace-add`: where it clones); open question 19 blocks `repo-checks`; `shared-workflows` proves the World's process groups, limits and network-failure codes on Linux, beside `run.bun`; `scaffold`'s acceptance run proves GitHub's timing right after a create (`github-ops` spec open question 1) and decides open question 6; `cli-frontend` turns Ctrl+C into the run's cancel (a program in its own process group does not get the terminal's Ctrl+C) and may give `acmelabs` a folder flag.
+- **This repo's root configs do not load under real Node** (an editor's oxc extension); accepted by Peter.
+- **For `cli-release`:** open questions 23 and 24; the local npm login is rejected (401), so the first publishes need Peter's `npm login` and 2FA.
+- **Two stray 1-byte files** from review agents sit outside the repo, at `/private/tmp/claude-501/-Users-peterkloss/Dev/ACMElabs/cli/placeholder` and `/private/tmp/claude-501/-Users-peterkloss/-Dev-ACMElabs-cli/placeholder`. Their deletion was denied to the agents; Peter removes them if he wants.
 
 ## Waiting on Peter
 
-Nothing blocks. The `github-ops` plan stops for Peter's approval when it is written.
+The review of PR #4 (https://github.com/acmelabs-15/cli/pull/4), then the merge (a merge commit), asked first.
 
 ## Next steps
 
-1. `/brain:plan` for `github-ops`: `tasks/plan.md` and `tasks/todo.md`, then Peter's approval, then the build on the branch `github-ops`.
-2. The other layer 1 spec: `npm-ops`. `tui-kit` waits for its prototype (open question 3: the vendored `@clack/ui` on tty 0.9).
+1. Peter's review of PR #4; then the merge, asked first; then, on `main`, the plan moves to `tasks/done/github-ops/` and the map row says merged.
+2. The other layer 1 spec: `npm-ops`. `tui-kit` waits for its prototype (open question 3).

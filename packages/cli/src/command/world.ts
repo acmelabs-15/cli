@@ -1,253 +1,154 @@
-import type { CommandError } from "./outcome";
-import { outsideError } from "./outcome";
-import { sameWords } from "./words";
+// Named `wait` here, so it is not taken for the global setTimeout, which takes no signal.
+import { setTimeout as wait } from "node:timers/promises";
+
+import { fetchWithLimits } from "./world-fetch";
+import { waitMs } from "./world-limits";
+import { spawnWithBun } from "./world-spawn";
 
 /**
- * How to run a spawned program: its working folder, the text it reads on stdin, and the signal that
- * stops it.
+ * How to run a spawned program: its working folder, the text it reads on stdin, the signal that
+ * stops it, the variables added to or removed from its environment, and its time and output
+ * limits. `limits`, the defaults of a program's and a request's limits, is in `world-limits.ts`.
  */
-export type SpawnOptions = { cwd?: string; stdin?: string; signal?: AbortSignal };
+export type SpawnOptions = {
+  cwd?: string;
+  stdin?: string;
+  signal?: AbortSignal;
+  /**
+   * Variables added to the environment the program gets, such as GIT_TERMINAL_PROMPT=0. A variable
+   * here replaces one of the same name. A variable given as undefined is removed. runCommand
+   * removes only the World's env secrets from its messages, so no secret goes here.
+   */
+  env?: Readonly<Record<string, string | undefined>>;
+  /**
+   * The program's time limit in milliseconds, a positive number: `limits.programMs` when unset. A
+   * limit past about 24 days, the longest a timer holds, acts as about 24 days.
+   */
+  timeoutMs?: number;
+  /**
+   * The program's output limit in bytes, a positive number, for stdout and for stderr each on its
+   * own: `limits.outputBytes` when unset.
+   */
+  maxOutputBytes?: number;
+};
 
 /** How a spawned program ended: its exit code, and its output as text. */
 export type Spawned = { code: number; stdout: string; stderr: string };
+
+/** A request's options: fetch's own, and its limits. */
+export type FetchInit = RequestInit & {
+  /**
+   * The request's time limit in milliseconds, to the end of its body, a positive number:
+   * `limits.requestMs` when unset. A limit past about 24 days acts as about 24 days.
+   */
+  timeoutMs?: number;
+  /** The most bytes of the response body, a positive number: `limits.outputBytes` when unset. */
+  maxBodyBytes?: number;
+};
+
+/** How to wait: the signal that ends the wait early. */
+export type SleepOptions = { signal?: AbortSignal };
 
 /** The outside world a command reaches. Commands reach programs, the network and env only here. */
 export type World = {
   /** The repo folder the command acts on; the working folder by default. */
   root: string;
-  /** The environment variables. */
+  /**
+   * The environment variables: the ones every program that spawn starts gets. So a call that
+   * removes variables reads their names here, and finds every one that the program would get.
+   */
   env: Readonly<Record<string, string | undefined>>;
   /**
-   * Runs a program, with no shell, and returns its exit code and output. When the signal aborts,
-   * the program stops and the call rejects with the signal's reason, as fetch does. A program that
-   * is not installed rejects with an outside failure that names it.
+   * Runs a program, with no shell, and returns its exit code and output. The program gets the
+   * World's `env` plus the call's `env`, without the variables that the call gives as undefined.
+   * At its time limit, or past its output limit on stdout or on stderr, the program and every
+   * program it started stop, and the call rejects with an outside failure that names the program
+   * and the limit. When the signal aborts, they stop too, and the call rejects with the signal's
+   * reason, as fetch does. A program that is not installed rejects with an outside failure that
+   * names it.
    */
   spawn: (commandLine: readonly string[], options?: SpawnOptions) => Promise<Spawned>;
-  /** Sends an HTTP request. */
-  fetch: typeof globalThis.fetch;
+  /**
+   * Sends an HTTP request, as the global fetch does, under a time limit and a body limit. A request
+   * that gets no whole answer, its body included, within its time limit stops and rejects with an
+   * outside failure that names the method, the URL and the limit; a read of the body rejects so
+   * when the time-out comes during the body. A body past its body limit stops, and its read
+   * rejects with an outside failure too: at once when its Content-Length tells it, so it is never
+   * read. A request that fails in the network, such as a refused connection, a reset, or a DNS or
+   * TLS failure, rejects with an outside failure that names the method, the URL and what failed,
+   * and so does a read of a body that fails so. A caller's bug, such as an invalid URL or header,
+   * rejects as fetch rejects it. When the signal aborts, the call or the read rejects with the
+   * signal's reason.
+   */
+  fetch: (input: string | URL | Request, init?: FetchInit) => Promise<Response>;
   /** The current time. */
   now: () => Date;
+  /**
+   * Waits `ms` milliseconds, unless the signal aborts first: then the call rejects with the
+   * signal's reason, as spawn and fetch do. A fake World moves its clock instead of waiting. A wait
+   * past about 24 days, the longest a timer holds, ends after about 24 days. A time that is not a
+   * finite number of 0 or more is a bug in the caller.
+   */
+  sleep: (ms: number, options?: SleepOptions) => Promise<void>;
 };
 
-/** The outside failure for a program that is not installed: kind `outside`, exit 3. */
-function notInstalled(program: string): CommandError {
-  return outsideError(`${program} is not installed or not on PATH`);
-}
+/**
+ * What realWorld takes: the grace between SIGTERM and SIGKILL when it stops a program, and the
+ * environment.
+ */
+export type RealWorldOptions = {
+  /** 5 seconds when unset; a test of a program that ignores SIGTERM sets less. */
+  graceMs?: number;
+  /**
+   * The World's env, which every program it starts gets: the process environment when unset. A
+   * test gives its own, so it sets no variable in the test process.
+   */
+  env?: World["env"];
+};
+
+/** The grace between SIGTERM and SIGKILL when realWorld stops a program: 5 seconds. */
+const defaultGraceMs = 5 * 1000;
 
 /**
- * The program that Bun found in no PATH folder, if `error` is the error Bun.spawn throws then. On
- * Bun 1.4.0 that error has code ENOENT, the program as its `path`, and no `syscall`, because no
- * program started. Any other error gives undefined: a working folder that does not exist also has
- * code ENOENT and the program as its `path`, but `syscall` "posix_spawn".
+ * Waits with a timer from `node:timers/promises`, which takes the signal. On Bun 1.4.0 its cancel
+ * rejects with its own AbortError, which holds the signal's reason only as its `cause`, so the
+ * wait rejects with the reason itself. Its timer fires at once, with a warning on stderr, for a
+ * delay past `longestTimerMs`; `waitMs` holds the delay to that.
  */
-function notOnPath(error: unknown): string | undefined {
-  if (
-    error instanceof Error &&
-    "code" in error &&
-    error.code === "ENOENT" &&
-    !("syscall" in error) &&
-    "path" in error &&
-    typeof error.path === "string"
-  ) {
-    return error.path;
-  }
-  return undefined;
-}
-
-/**
- * Starts a program with Bun. A program that is not on PATH is an outside failure that names it;
- * any other error that Bun throws stays as it is.
- */
-function startWithBun(commandLine: readonly string[], options: SpawnOptions) {
+async function sleepWithTimer(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  // An aborted signal starts no wait, and the call keeps the signal's reason.
+  signal?.throwIfAborted();
+  const delay = waitMs(ms);
   try {
-    return Bun.spawn([...commandLine], {
-      cwd: options.cwd,
-      stdin: options.stdin === undefined ? "ignore" : new Blob([options.stdin]),
-      stderr: "pipe",
-      signal: options.signal,
-    });
+    await wait(delay, undefined, { signal });
   } catch (error) {
-    const program = notOnPath(error);
-    throw program === undefined ? error : notInstalled(program);
+    signal?.throwIfAborted();
+    throw error;
   }
 }
 
 /**
- * Runs a program with Bun, with no shell, and collects its exit code and output as text. With no
- * stdin text, the program gets no stdin, so it can never wait on the user's terminal. Bun stops the
- * program (SIGTERM) when the signal aborts.
+ * The real World: the working folder, the process environment (or the env it is given), Bun's
+ * spawn and fetch, each under its limits, the clock, and a timer. It is the one place in the CLI
+ * that touches the process for these.
  */
-async function spawnWithBun(
-  commandLine: readonly string[],
-  options: SpawnOptions = {},
-): Promise<Spawned> {
-  const { signal } = options;
-  // An aborted signal starts no program. Bun would throw its own AbortError; this keeps the reason.
-  signal?.throwIfAborted();
-  const child = startWithBun(commandLine, options);
-  const [stdout, stderr, code] = await Promise.all([
-    child.stdout.text(),
-    child.stderr.text(),
-    child.exited,
-  ]);
-  // A program stopped by the signal has no result to give.
-  signal?.throwIfAborted();
-  return { code, stdout, stderr };
-}
-
-/**
- * The real World: the working folder, the process environment, Bun's spawn, the global fetch and
- * the clock. It is the one place in the CLI that touches the process for these.
- */
-export function realWorld(): World {
+export function realWorld(options: RealWorldOptions = {}): World {
+  const graceMs = options.graceMs ?? defaultGraceMs;
+  // One value for env and for spawn: the variables a caller reads in env are the ones the program
+  // gets, so git's calls remove every GIT_ variable (ADR-0016). Bun.env is process.env itself.
+  const env = options.env ?? Bun.env;
   return {
     root: process.cwd(),
-    env: Bun.env,
-    spawn: spawnWithBun,
-    fetch: globalThis.fetch,
+    env,
+    spawn(commandLine, spawnOptions = {}) {
+      return spawnWithBun(commandLine, spawnOptions, graceMs, env);
+    },
+    fetch: fetchWithLimits,
     now() {
       return new Date();
     },
-  };
-}
-
-/**
- * A scripted answer to a spawn call: the command line it matches, word for word, and its end. A
- * `missing` program is not installed: the call rejects as realWorld's does, and `answer` is unused.
- */
-export type ScriptedSpawn = {
-  commandLine: readonly string[];
-  answer?: Partial<Spawned>;
-  missing?: boolean;
-};
-
-/**
- * A scripted answer to a fetch call: the method (GET when unset) and the URL it matches, and the
- * response's status, body and headers.
- */
-export type ScriptedFetch = {
-  method?: string;
-  url: string;
-  answer?: { status?: number; body?: string; headers?: Record<string, string> };
-};
-
-/** What fakeWorld builds a fake World from. Each field is optional. */
-export type FakeWorldOptions = {
-  root?: string;
-  env?: Readonly<Record<string, string | undefined>>;
-  now?: Date;
-  spawn?: readonly ScriptedSpawn[];
-  fetch?: readonly ScriptedFetch[];
-};
-
-/**
- * One spawn or fetch call that a fake World received. The log leaves out the signal: it says how a
- * call is cancelled, not what the call asks for.
- */
-export type WorldCall =
-  | ({ kind: "spawn"; commandLine: readonly string[] } & Omit<SpawnOptions, "signal">)
-  | { kind: "fetch"; method: string; url: string };
-
-/** A fake World, and the log of every spawn and fetch call it received, in order. */
-export type FakeWorld = World & { calls: readonly WorldCall[] };
-
-/** A fake World's root when the options give none: a folder that does not exist. */
-const defaultRoot = "/fake-world/repo";
-
-/** A fake World's time when the options give none. */
-const defaultTime = new Date("2026-01-01T00:00:00.000Z");
-
-/** Removes the first entry that matches from the script and returns it; undefined for none. */
-function take<Entry>(script: Entry[], matches: (entry: Entry) => boolean): Entry | undefined {
-  const index = script.findIndex(matches);
-  return index === -1 ? undefined : script.splice(index, 1)[0];
-}
-
-/** Whether a scripted fetch matches a request: the same method, and the same URL in normal form. */
-function fetchMatches(entry: ScriptedFetch, request: Request): boolean {
-  return (
-    (entry.method ?? "GET").toUpperCase() === request.method.toUpperCase() &&
-    new URL(entry.url).href === request.url
-  );
-}
-
-/**
- * A fake World for tests. `spawn` and `fetch` answer from the scripts in the options: a call takes
- * the first unused scripted answer that matches it, so each answer answers one call. A call with no
- * answer left fails with an error that names the call. A call whose signal is aborted rejects with
- * the signal's reason, as the real one does. `calls` logs every call, in order.
- *
- * With no root, the root is a folder that does not exist, so a test that forgets to give one fails
- * instead of writing in the working folder. With no env, env is empty; with no time, the clock
- * stands at 2026-01-01T00:00:00Z.
- */
-export function fakeWorld(options: FakeWorldOptions = {}): FakeWorld {
-  const time = options.now ?? defaultTime;
-  const calls: WorldCall[] = [];
-  const spawnScript = [...(options.spawn ?? [])];
-  const fetchScript = [...(options.fetch ?? [])];
-
-  function answerSpawn(commandLine: readonly string[], spawnOptions: SpawnOptions = {}): Spawned {
-    const { signal, ...logged } = spawnOptions;
-    calls.push({ kind: "spawn", commandLine: [...commandLine], ...logged });
-    // A cancelled call rejects, as the real one does, and uses up no scripted answer.
-    signal?.throwIfAborted();
-    const scripted = take(spawnScript, (entry) => sameWords(entry.commandLine, commandLine));
-    if (scripted === undefined) {
-      throw new Error(
-        `fakeWorld has no scripted answer for spawn ${JSON.stringify(commandLine)}; add one to its spawn list`,
-      );
-    }
-    if (scripted.missing === true) {
-      const [program = ""] = commandLine;
-      throw notInstalled(program);
-    }
-    const answer = scripted.answer ?? {};
-    return { code: answer.code ?? 0, stdout: answer.stdout ?? "", stderr: answer.stderr ?? "" };
-  }
-
-  function answerFetch(input: string | URL | Request, init?: RequestInit): Response {
-    const request =
-      input instanceof Request ? new Request(input, init) : new Request(String(input), init);
-    calls.push({ kind: "fetch", method: request.method, url: request.url });
-    request.signal.throwIfAborted();
-    const scripted = take(fetchScript, (entry) => fetchMatches(entry, request));
-    if (scripted === undefined) {
-      throw new Error(
-        `fakeWorld has no scripted answer for fetch ${request.method} ${request.url}; add one to its fetch list`,
-      );
-    }
-    const answer = scripted.answer ?? {};
-    return new Response(answer.body ?? null, {
-      status: answer.status ?? 200,
-      headers: answer.headers,
-    });
-  }
-
-  // Promise.try turns a throw into a rejection, as the real spawn and fetch fail.
-  function fakeSpawn(
-    commandLine: readonly string[],
-    spawnOptions?: SpawnOptions,
-  ): Promise<Spawned> {
-    return Promise.try(answerSpawn, commandLine, spawnOptions);
-  }
-
-  function fakeFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
-    return Promise.try(answerFetch, input, init);
-  }
-
-  return {
-    root: options.root ?? defaultRoot,
-    env: options.env ?? {},
-    spawn: fakeSpawn,
-    fetch: Object.assign(fakeFetch, {
-      preconnect() {
-        // Bun's fetch type carries `preconnect`. The fake opens no socket, so it has nothing to do.
-      },
-    }),
-    now() {
-      return new Date(time);
+    sleep(ms, sleepOptions = {}) {
+      return sleepWithTimer(ms, sleepOptions.signal);
     },
-    calls,
   };
 }
