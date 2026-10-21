@@ -567,7 +567,7 @@ describe("checkLogin: an outside failure, exit 3", () => {
   test("gh's host name inside a thing wrong with its answer shows on one line, in the message and in the issue", async () => {
     // Built: a host name is a key of gh's answer, so the place of a thing wrong holds gh's text.
     const world = fakeWorld({
-      spawn: [statusScripted(statusAnswer({ "git‮hub.com": "no list" }))],
+      spawn: [statusScripted(statusAnswer({ "git\u202Ehub.com": "no list" }))],
     });
     const outcome = await runCommand(
       loginCommand,

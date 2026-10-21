@@ -399,7 +399,7 @@ describe("openPullRequest: a PR that opens between the read and the POST", () =>
 
   test("GitHub's 'already exists' text shows on one line, with no bidi mark, and stops at 300 characters", async () => {
     // Built: GitHub's text can echo what a request sent, so it reaches a terminal as untrusted text.
-    const longText = `A pull request already exists for acmelabs-15:add-brain.\r\n‮${"x".repeat(400)}`;
+    const longText = `A pull request already exists for acmelabs-15:add-brain.\r\n\u202E${"x".repeat(400)}`;
     const world = fakeWorld({
       spawn: [
         ghScripted(listAddBrain, noOpenPullRequests),

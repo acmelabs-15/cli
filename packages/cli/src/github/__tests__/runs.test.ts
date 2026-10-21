@@ -470,14 +470,17 @@ describe("watchRun", () => {
         ghScripted(
           list,
           runListAnswer([
-            runWith(releaseRunOfBrain, { name: "Release\r\n\u001B[2J", conclusion: "fail‮ure" }),
+            runWith(releaseRunOfBrain, {
+              name: "Release\r\n\u001B[2J",
+              conclusion: "fail\u202Eure",
+            }),
           ]),
         ),
       ],
     });
     const caller = frontEnd(world);
     const outcome = await runCommand(watchCommand, brainRelease(brainSha), caller);
-    expect(outcome).toMatchObject({ ok: true, result: { conclusion: "fail‮ure" } });
+    expect(outcome).toMatchObject({ ok: true, result: { conclusion: "fail\u202Eure" } });
     expect(caller.updates).toEqual([
       runStep("started"),
       info("Release [2J: completed"),
@@ -492,7 +495,7 @@ describe("watchRun", () => {
       name: "Release\u001B[2J",
       status: "in_progress",
       conclusion: null,
-      html_url: "https://github.com/acmelabs-15/brain/actions/runs/39382027513‮",
+      html_url: "https://github.com/acmelabs-15/brain/actions/runs/39382027513\u202E",
     });
     const world = fakeWorld({
       spawn: [

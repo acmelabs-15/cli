@@ -827,7 +827,7 @@ describe("push: git's answers on the way to GitHub", () => {
         ...originInUse,
         git("remoteCommit", {
           code: 128,
-          stderr: `fatal: unable to access 'https://github.com/acmelabs-15/jev.git/': Could not resolve host\r\n‮${"x".repeat(400)}\n`,
+          stderr: `fatal: unable to access 'https://github.com/acmelabs-15/jev.git/': Could not resolve host\r\n\u202E${"x".repeat(400)}\n`,
         }),
       ],
     });
@@ -1272,7 +1272,7 @@ describe("clone", () => {
 
   test("a folder with control characters shows on one line in the step's title, and git gets the folder as given", async () => {
     // A folder comes from the caller as given, and a terminal shows the step's title.
-    const into = "/fake-world/market\r\nplace‮";
+    const into = "/fake-world/market\r\nplace\u202E";
     const line = [...cloneLine.slice(0, -1), into];
     const world = fakeWorld({ spawn: [cloneUrlKept, { commandLine: line }] });
     const caller = frontEnd(world);

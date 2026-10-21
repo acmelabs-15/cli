@@ -599,7 +599,7 @@ describe("answerOrThrow: GitHub's first error joins its message", () => {
           marketplacePull.call,
           validationFailed({
             message: "Validation\u001B[31m Failed",
-            errors: ["\n", `No commits\nbetween‮main and add-brain ${"x".repeat(400)}`],
+            errors: ["\n", `No commits\nbetween\u202Emain and add-brain ${"x".repeat(400)}`],
           }),
         ),
       ],
