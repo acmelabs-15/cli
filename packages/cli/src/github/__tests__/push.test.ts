@@ -884,6 +884,30 @@ describe("push: the names", () => {
     },
   );
 
+  test("a refused branch shows its bidi mark and C1 control as escapes in the issue", async () => {
+    const world = fakeWorld();
+    const outcome = await runCommand(
+      pushCommand,
+      { ...jevMain, branch: "main\u202E\u009B2J" },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 2,
+      error: {
+        kind: "input",
+        issues: [
+          {
+            field: "branch",
+            message: expect.stringMatching(
+              /^"main\\u202e\\u009b2J" is not a branch name that git allows: /u,
+            ),
+          },
+        ],
+      },
+    });
+    expect(world.calls).toEqual([]);
+  });
+
   test("a branch that starts with + goes into each command line as a full ref, so no push is forced", async () => {
     const plus = "refs/heads/+main";
     const world = fakeWorld({

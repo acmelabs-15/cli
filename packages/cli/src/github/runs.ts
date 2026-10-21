@@ -7,7 +7,7 @@ import type { StepContext } from "./gh";
 import { ghApi, readBody, repoPath, shownText } from "./gh";
 import { commitShaSchema } from "./git";
 import type { GitHubRepo } from "./names";
-import { fullName } from "./names";
+import { fullName, quoted } from "./names";
 
 /**
  * One workflow run, as the runs list and a read of the run give it: the fields that the step reads
@@ -103,7 +103,7 @@ function checkedWaits(watch: RunWatch): RunWaits {
 function checkedSha(headSha: string): string {
   if (!commitShaSchema.safeParse(headSha).success) {
     throw inputError(
-      `${JSON.stringify(headSha)} is not a commit sha; a sha is 40 lowercase hex characters, as git rev-parse prints it`,
+      `${quoted(headSha)} is not a commit sha; a sha is 40 lowercase hex characters, as git rev-parse prints it`,
     );
   }
   return headSha;
@@ -242,9 +242,7 @@ const pointedAt = z.object({ object: z.object({ sha: commitShaSchema, type: z.st
  */
 function tagInPath(tag: string): string {
   if (tag === "" || tag === "." || tag === "..") {
-    throw inputError(
-      `${JSON.stringify(tag)} is not a tag; a tag has a name, and is not "." or ".."`,
-    );
+    throw inputError(`${quoted(tag)} is not a tag; a tag has a name, and is not "." or ".."`);
   }
   return encodeURIComponent(tag);
 }

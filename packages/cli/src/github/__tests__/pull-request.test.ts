@@ -479,28 +479,35 @@ describe("openPullRequest: the branch check, before any call", () => {
   const branchRule =
     'is not a branch name that git allows: a branch name has no control character, space, "~", "^", ":", "?", "*", "[" or "\\", no "..", "@{" or "//", and no part that starts with "." or ends with ".lock"; it does not start with "-", "/" or ".", does not end with "/" or ".", and is not HEAD; acmelabs also refuses a format character, such as a bidi mark, and a line or paragraph separator';
 
+  // The last column is the name as the issue quotes it: each control, format character and line
+  // separator as its escape.
   test.each([
-    ["head", "no characters", ""],
-    ["head", "a newline", "add-brain\n"],
-    ["head", "an escape", "add-\u001B[2Jbrain"],
-    ["head", "a delete", "add-brain\u007F"],
-    ["head", "a C1 control character", "add-\u009Bbrain"],
-    ["head", "a colon, which names another owner's branch", "someone:add-brain"],
-    ["base", "no characters", ""],
-    ["base", "a tab", "ma\tin"],
-    ["base", "a colon", "acmelabs-15:main"],
+    ["head", "no characters", "", '""'],
+    ["head", "a newline", "add-brain\n", String.raw`"add-brain\n"`],
+    ["head", "an escape", "add-\u001B[2Jbrain", String.raw`"add-\u001b[2Jbrain"`],
+    ["head", "a delete", "add-brain\u007F", String.raw`"add-brain\u007f"`],
+    ["head", "a C1 control character", "add-\u009Bbrain", String.raw`"add-\u009bbrain"`],
+    [
+      "head",
+      "a colon, which names another owner's branch",
+      "someone:add-brain",
+      '"someone:add-brain"',
+    ],
+    ["base", "no characters", "", '""'],
+    ["base", "a tab", "ma\tin", String.raw`"ma\tin"`],
+    ["base", "a colon", "acmelabs-15:main", '"acmelabs-15:main"'],
     // git refuses each of these.
-    ["head", "a space", "add brain"],
-    ["head", "two dots", "add..brain"],
-    ["head", "a leading -, which reads as an option", "-add-brain"],
-    ["head", "a part that ends with .lock", "add-brain.lock"],
-    ["head", "a ~, which is revision syntax", "add-brain~1"],
-    ["head", "a reflog entry", "add-brain@{1}"],
-    ["base", "the name HEAD", "HEAD"],
+    ["head", "a space", "add brain", '"add brain"'],
+    ["head", "two dots", "add..brain", '"add..brain"'],
+    ["head", "a leading -, which reads as an option", "-add-brain", '"-add-brain"'],
+    ["head", "a part that ends with .lock", "add-brain.lock", '"add-brain.lock"'],
+    ["head", "a ~, which is revision syntax", "add-brain~1", '"add-brain~1"'],
+    ["head", "a reflog entry", "add-brain@{1}", '"add-brain@{1}"'],
+    ["base", "the name HEAD", "HEAD", '"HEAD"'],
     // git allows a format character and a line separator, but the step's title would show them.
-    ["head", "a bidi mark", "add-\u202Ebrain"],
-    ["base", "a line separator", "ma\u2028in"],
-  ])("a %s with %s ends with exit 2, and makes no call", async (field, _case, branch) => {
+    ["head", "a bidi mark", "add-\u202Ebrain", String.raw`"add-\u202ebrain"`],
+    ["base", "a line separator", "ma\u2028in", String.raw`"ma\u2028in"`],
+  ])("a %s with %s ends with exit 2, and makes no call", async (field, _case, branch, shown) => {
     const world = fakeWorld();
     const caller = frontEnd(world);
     const outcome = await runCommand(pullRequestCommand, { ...addBrain, [field]: branch }, caller);
@@ -512,7 +519,7 @@ describe("openPullRequest: the branch check, before any call", () => {
       error: {
         kind: "input",
         message: "the pull request's head or base is not a branch name",
-        issues: [{ field, message: `${JSON.stringify(branch)} ${branchRule}` }],
+        issues: [{ field, message: `${shown} ${branchRule}` }],
       },
     });
     expect(caller.updates).toEqual([]);

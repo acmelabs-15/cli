@@ -714,15 +714,15 @@ describe("ensureRepo: answers the step cannot use", () => {
     expect(world.calls).toEqual([ghLogged(calls.read), ghLogged(calls.main)]);
   });
 
-  test("GitHub's text inside a thing wrong with its answer shows on one line, in the message and in the issue", async () => {
-    // Built: the check quotes GitHub's sha as JSON, which escapes a line break but not a bidi mark.
+  test("GitHub's sha that the check refuses shows a bidi mark and a C1 control as escapes", async () => {
+    // Built: the check quotes GitHub's sha, and JSON.stringify alone leaves U+202E and U+009B raw.
     const calls = repoCalls("acmelabs-15", "cli");
     const world = fakeWorld({
       spawn: [
         ghScripted(calls.read, repoAnswers.cli),
         ghScripted(calls.main, {
           code: 0,
-          stdout: String.raw`{"ref":"refs/heads/main","object":{"sha":"bb0c‮minim","type":"commit"}}`,
+          stdout: String.raw`{"ref":"refs/heads/main","object":{"sha":"bb0c\u202e\u009bminim","type":"commit"}}`,
           stderr: "",
         }),
       ],
@@ -732,7 +732,7 @@ describe("ensureRepo: answers the step cannot use", () => {
       { owner: "acmelabs-15", name: "cli", visibility: "public", localRoot },
       frontEnd(world),
     );
-    const wrong = '"bb0c minim" is not a commit sha; a sha is 40 characters, each 0 to 9 or a to f';
+    const wrong = String.raw`"bb0c\u202e\u009bminim" is not a commit sha; a sha is 40 characters, each 0 to 9 or a to f`;
     expect(outcome).toMatchObject({
       exitCode: 3,
       error: {

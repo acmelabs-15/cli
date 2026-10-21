@@ -288,6 +288,24 @@ describe("inLocalHistory: the git call", () => {
     expect(outcome).toMatchObject({ ok: false, exitCode: 70, error: { kind: "bug" } });
     expect(world.calls).toEqual([]);
   });
+
+  test("a sha with a bidi mark and a C1 control names them as escapes in the bug's message", async () => {
+    const world = fakeWorld();
+    const outcome = await runCommand(
+      history,
+      { sha: "bb0c949\u202E\u009B2J", localRoot: "/work/cli" },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 70,
+      error: {
+        kind: "bug",
+        message: expect.stringContaining(
+          String.raw`inLocalHistory takes a full commit sha, not "bb0c949\u202e\u009b2J"`,
+        ),
+      },
+    });
+  });
 });
 
 /** A sample command that reads the commit of a local branch, with no check of its own. */
@@ -313,5 +331,23 @@ describe("the git calls about a branch", () => {
     const outcome = await runCommand(branchCommit, { cwd: "/work/cli", branch }, frontEnd(world));
     expect(outcome).toMatchObject({ ok: false, exitCode: 70, error: { kind: "bug" } });
     expect(world.calls).toEqual([]);
+  });
+
+  test("a branch with a bidi mark and a C1 control names them as escapes in the bug's message", async () => {
+    const world = fakeWorld();
+    const outcome = await runCommand(
+      branchCommit,
+      { cwd: "/work/cli", branch: "main\u202E\u009B2J" },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 70,
+      error: {
+        kind: "bug",
+        message: expect.stringContaining(
+          String.raw`git.ts takes a checked branch name, not "main\u202e\u009b2J"`,
+        ),
+      },
+    });
   });
 });

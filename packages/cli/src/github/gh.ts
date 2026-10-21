@@ -5,7 +5,7 @@ import type { CommandError, Issue, Json } from "../command/outcome";
 import { inputError, loginNeeded, outsideError } from "../command/outcome";
 import type { SpawnOptions, Spawned, World } from "../command/world";
 import type { GitHubRepo } from "./names";
-import { fullName, ownerSchema, repoNameSchema } from "./names";
+import { fullName, ownerSchema, quoted, repoNameSchema } from "./names";
 
 /** What a GitHub step runs in: the command's context without `ask`, because no step asks. */
 export type StepContext = Omit<Context<unknown>, "ask">;
@@ -579,7 +579,7 @@ export function repoPath(repo: GitHubRepo, rest?: string): string {
   const checked = repoSchema.safeParse(repo);
   if (!checked.success) {
     throw inputError(
-      `${JSON.stringify(fullName(repo))} is not a GitHub repo`,
+      `${quoted(fullName(repo))} is not a GitHub repo`,
       checked.error.issues.map((issue) => ({
         field: issue.path.join("."),
         message: issue.message,

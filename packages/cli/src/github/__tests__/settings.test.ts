@@ -353,6 +353,49 @@ describe("ensureActionsSetting: the name check, before any call", () => {
     expect(world.calls).toEqual([]);
   });
 
+  test("names with a bidi mark and a C1 control show them as escapes in the message and the issues", async () => {
+    // JSON.stringify leaves U+202E and U+009B raw; a terminal would reorder the text, or read
+    // U+009B as the start of an escape sequence.
+    const world = fakeWorld();
+    const outcome = await runCommand(
+      actionsSettingCommand,
+      { owner: "acme\u202E15", name: "cli\u009B2J" },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 2,
+      error: {
+        kind: "input",
+        message: String.raw`"acme\u202e15/cli\u009b2J" is not a GitHub repo`,
+        issues: [
+          { field: "owner", message: String.raw`"acme\u202e15" ${ownerRule}` },
+          { field: "name", message: String.raw`"cli\u009b2J" ${nameRule}` },
+        ],
+      },
+    });
+    expect(world.calls).toEqual([]);
+  });
+
+  test.each([
+    ["DEL", "acme\u007F", String.raw`"acme\u007f"`],
+    ["a soft hyphen, a format character", "acme\u00AD15", String.raw`"acme\u00ad15"`],
+    ["a line separator", "acme\u2028", String.raw`"acme\u2028"`],
+    ["a paragraph separator", "acme\u2029", String.raw`"acme\u2029"`],
+    ["a format character past U+FFFF", "acme\u{E0001}", String.raw`"acme\udb40\udc01"`],
+    ["a line break and a quote, which JSON escapes", 'acme\n"', String.raw`"acme\n\""`],
+  ])("an owner with %s shows it as its escape", async (_case, owner, shown) => {
+    const world = fakeWorld();
+    const outcome = await runCommand(
+      actionsSettingCommand,
+      { owner, name: "cli" },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 2,
+      error: { issues: [{ field: "owner", message: `${shown} ${ownerRule}` }] },
+    });
+  });
+
   test("a command whose input checks the names with the two schemas ends with exit 2 before its run", async () => {
     const checked = defineCommand({
       ...actionsSettingCommand,

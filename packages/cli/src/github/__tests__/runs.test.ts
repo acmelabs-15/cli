@@ -777,6 +777,23 @@ describe("watchRun: the commit and the runs", () => {
     expect(world.calls).toEqual([]);
   });
 
+  test("a commit sha with a bidi mark and a C1 control shows them as escapes", async () => {
+    const world = fakeWorld();
+    const outcome = await runCommand(
+      watchCommand,
+      brainRelease("7dee2ef\u202E\u009B2J"),
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      exitCode: 2,
+      error: {
+        kind: "input",
+        message: String.raw`"7dee2ef\u202e\u009b2J" is not a commit sha; a sha is 40 lowercase hex characters, as git rev-parse prints it`,
+      },
+    });
+    expect(world.calls).toEqual([]);
+  });
+
   test("of several runs of the workflow on one commit, the step follows the newest; of two at the same second, the higher id", async () => {
     // Built: three runs of release.yml on one commit, as a second push of the commit would give.
     const { list } = runCalls(brainSha, 39_382_027_513);

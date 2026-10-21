@@ -6,7 +6,7 @@ import type { Spawned, World } from "../command/world";
 import type { StepContext } from "./gh";
 import { ghLoginNeeded, repoPath, retry, shownText, tokenVariablesIn } from "./gh";
 import type { GitHubRepo } from "./names";
-import { fullName } from "./names";
+import { fullName, quoted } from "./names";
 
 /**
  * The `env` of every git call: each GIT_ variable of the World's environment removed, then
@@ -79,7 +79,7 @@ function gitFailed(call: GitCall, spawned: Spawned): CommandError {
  */
 export const commitShaSchema = z.string().regex(/^[\da-f]{40}$/u, {
   error: (issue) =>
-    `${JSON.stringify(issue.input)} is not a commit sha; a sha is 40 characters, each 0 to 9 or a to f`,
+    `${quoted(String(issue.input))} is not a commit sha; a sha is 40 characters, each 0 to 9 or a to f`,
 });
 
 /** What `inLocalHistory` takes: the commit, and the folder of the local git repo to look in. */
@@ -100,7 +100,7 @@ export async function inLocalHistory(
   { sha, localRoot }: HistoryQuestion,
 ): Promise<boolean> {
   if (!commitShaSchema.safeParse(sha).success) {
-    throw new Error(`inLocalHistory takes a full commit sha, not ${JSON.stringify(sha)}`);
+    throw new Error(`inLocalHistory takes a full commit sha, not ${quoted(sha)}`);
   }
   const call = { words: ["merge-base", "--is-ancestor", sha, "HEAD"], cwd: localRoot };
   const spawned = await runGit(context, call);
@@ -142,7 +142,7 @@ export const branchNameSchema = z
     /^(?!HEAD$)(?![-/.])(?!.*(?:\.\.|@\{|\/\/|\/\.|\.lock(?:\/|$)|[/.]$))[^\p{Cc}\p{Cf}\p{Zl}\p{Zp} ~^:?*[\\]+$/u,
     {
       error: (issue) =>
-        `${JSON.stringify(issue.input)} is not a branch name that git allows: a branch name has no control character, space, "~", "^", ":", "?", "*", "[" or "\\", no "..", "@{" or "//", and no part that starts with "." or ends with ".lock"; it does not start with "-", "/" or ".", does not end with "/" or ".", and is not HEAD; acmelabs also refuses a format character, such as a bidi mark, and a line or paragraph separator`,
+        `${quoted(String(issue.input))} is not a branch name that git allows: a branch name has no control character, space, "~", "^", ":", "?", "*", "[" or "\\", no "..", "@{" or "//", and no part that starts with "." or ends with ".lock"; it does not start with "-", "/" or ".", does not end with "/" or ".", and is not HEAD; acmelabs also refuses a format character, such as a bidi mark, and a line or paragraph separator`,
     },
   );
 
@@ -173,7 +173,7 @@ export function checkBranchNames(
  */
 function branchRef(branch: string): string {
   if (!branchNameSchema.safeParse(branch).success) {
-    throw new Error(`git.ts takes a checked branch name, not ${JSON.stringify(branch)}`);
+    throw new Error(`git.ts takes a checked branch name, not ${quoted(branch)}`);
   }
   return `refs/heads/${branch}`;
 }
