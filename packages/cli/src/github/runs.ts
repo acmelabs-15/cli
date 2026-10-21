@@ -233,10 +233,11 @@ const pointedAt = z.object({ object: z.object({ sha: commitShaSchema, type: z.st
 /**
  * A tag's name as it goes into an API path, encoded. `encodeURIComponent` leaves a dot as it is, so
  * an empty tag, "." and ".." are an input failure, exit 2, before any call: each would move inside
- * the path.
+ * the path. So is a tag with a lone surrogate (one half of a UTF-16 pair), which
+ * `encodeURIComponent` cannot encode.
  */
 function tagInPath(tag: string): string {
-  if (tag === "" || tag === "." || tag === "..") {
+  if (tag === "" || tag === "." || tag === ".." || /\p{Cs}/u.test(tag)) {
     throw inputError(`${quoted(tag)} is not a tag; a tag has a name, and is not "." or ".."`);
   }
   return encodeURIComponent(tag);

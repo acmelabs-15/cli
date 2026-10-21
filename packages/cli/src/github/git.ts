@@ -133,12 +133,13 @@ export function httpsUrl(repo: GitHubRepo): string {
  * branch. Beyond git's rules, the check keeps out a format character (\p{Cf}), such as a bidi
  * mark, and a line or paragraph separator: git allows them, but a step's title shows the branch,
  * and a terminal would reorder it or break its line. So a branch that passes holds none of the
- * characters that `shownText` replaces.
+ * characters that `shownText` replaces. It keeps out a lone surrogate (\p{Cs}, one half of a
+ * UTF-16 pair) too, which encodeURIComponent cannot encode into a pull request's query.
  */
 export const branchNameSchema = z
   .string()
   .regex(
-    /^(?!HEAD$)(?![-/.])(?!.*(?:\.\.|@\{|\/\/|\/\.|\.lock(?:\/|$)|[/.]$))[^\p{Cc}\p{Cf}\p{Zl}\p{Zp} ~^:?*[\\]+$/u,
+    /^(?!HEAD$)(?![-/.])(?!.*(?:\.\.|@\{|\/\/|\/\.|\.lock(?:\/|$)|[/.]$))[^\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp} ~^:?*[\\]+$/u,
     {
       error: (issue) =>
         `${quoted(String(issue.input))} is not a branch name that git allows: a branch name has no control character, space, "~", "^", ":", "?", "*", "[" or "\\", no "..", "@{" or "//", and no part that starts with "." or ends with ".lock"; it does not start with "-", "/" or ".", does not end with "/" or ".", and is not HEAD; acmelabs also refuses a format character, such as a bidi mark, and a line or paragraph separator`,

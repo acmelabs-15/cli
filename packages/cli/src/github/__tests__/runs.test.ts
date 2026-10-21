@@ -227,6 +227,25 @@ describe("findTag", () => {
     });
     expect(world.calls).toEqual([]);
   });
+
+  test("a tag with a lone surrogate ends with exit 2, and makes no call", async () => {
+    // One half of a UTF-16 pair: encodeURIComponent cannot encode it into the API path.
+    const world = fakeWorld();
+    const outcome = await runCommand(
+      tagCommand,
+      { owner: "acmelabs-15", name: "brain", tag: "v1\uD800" },
+      frontEnd(world),
+    );
+    expect(outcome).toMatchObject({
+      ok: false,
+      exitCode: 2,
+      error: {
+        kind: "input",
+        message: String.raw`"v1\ud800" is not a tag; a tag has a name, and is not "." or ".."`,
+      },
+    });
+    expect(world.calls).toEqual([]);
+  });
 });
 
 /** A sample command that waits for a push run of a workflow file, with the step's options. */

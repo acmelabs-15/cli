@@ -507,6 +507,8 @@ describe("openPullRequest: the branch check, before any call", () => {
     // git allows a format character and a line separator, but the step's title would show them.
     ["head", "a bidi mark", "add-\u202Ebrain", String.raw`"add-\u202ebrain"`],
     ["base", "a line separator", "ma\u2028in", String.raw`"ma\u2028in"`],
+    // One half of a UTF-16 pair: encodeURIComponent cannot encode it into the list's query.
+    ["head", "a lone surrogate", "add-\uD800brain", String.raw`"add-\ud800brain"`],
   ])("a %s with %s ends with exit 2, and makes no call", async (field, _case, branch, shown) => {
     const world = fakeWorld();
     const caller = frontEnd(world);
