@@ -13,10 +13,10 @@ function countOf(count: number, unit: string): string {
 
 /** A time in words, in its largest whole unit: 5 minutes, 90 seconds, 1500 milliseconds. */
 export function durationOf(ms: number): string {
-  if (ms % 60_000 === 0) {
+  if (ms >= 60_000 && ms % 60_000 === 0) {
     return countOf(ms / 60_000, "minute");
   }
-  if (ms % 1000 === 0) {
+  if (ms >= 1000 && ms % 1000 === 0) {
     return countOf(ms / 1000, "second");
   }
   return countOf(ms, "millisecond");
@@ -24,10 +24,10 @@ export function durationOf(ms: number): string {
 
 /** A size in words, in its largest whole unit, with 1024 bytes a KB: 10 MB, 64 KB, 1500 bytes. */
 export function sizeOf(bytes: number): string {
-  if (bytes % (1024 * 1024) === 0) {
+  if (bytes >= 1024 * 1024 && bytes % (1024 * 1024) === 0) {
     return `${bytes / (1024 * 1024)} MB`;
   }
-  if (bytes % 1024 === 0) {
+  if (bytes >= 1024 && bytes % 1024 === 0) {
     return `${bytes / 1024} KB`;
   }
   return countOf(bytes, "byte");

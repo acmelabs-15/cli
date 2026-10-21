@@ -444,6 +444,7 @@ function errorText(item: Json | undefined): string | undefined {
  * name is taken in the organization (note 09, section 2.3).
  */
 function nameTaken(body: Json): boolean {
+  // Only an object counts: GitHub names a taken name in an object, not in `errors` as one text.
   return errorItems(body).some(
     (item) => isJsonObject(item) && errorText(item)?.includes("name already exists") === true,
   );
