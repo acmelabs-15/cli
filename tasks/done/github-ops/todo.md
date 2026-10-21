@@ -291,3 +291,4 @@ Phase 3 The other steps
 - [x] Every success criterion of `spec/SPEC-github-ops.md` passes, `checkLogin`'s cases included.
 - [x] `packages/cli/src/github` holds no `gh auth token`, no `--show-token` and no `--force`.
 - [x] `/brain:review` on the branch (`docs/reviews/2026-10-20-github-ops.md`, approve after the re-check). The PR into `main` is asked first.
+- [x] Peter reviews; the PR into `main` merges with a merge commit, after he asks for it (PR #4, `7a875ae`).
