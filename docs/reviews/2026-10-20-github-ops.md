@@ -70,3 +70,16 @@ The final-checkpoint review of module `github-ops` (`/brain:review`, the five-ax
 - Names gate every API path and git argument; branches go in as `refs/heads/<branch>`; `clone` uses `--`; no shell; bodies go on stdin. (security)
 - Dependencies flow one way, with no cycle; the World's split keeps the limits in one place; no speculative generality; type boundaries explicit. (architecture)
 - Each step makes a fixed, small number of calls; polling is bounded and goes through `context.sleep`; output and bodies stop at their limits; no leaked timers. (performance)
+
+## Re-check after the fixes
+
+Run on 2026-10-20 by the orchestrator, after the fixes Peter chose (groups A and B): `154eb3d`, `fc36781`, `1c3e9ac` (group A); `e869e82`, `9210c51` (two small fixes found by group A's review); `d9cb6dd` to `7d47f89` (group B, eight commits). Each slice ran the five-axis review on its own diff; all approve. `bun run check` is green by its own exit code, on the working copy and on a clean clone of the pushed branch: 653 tests.
+
+- **Finding 1 is resolved.** `push` reads the fetch URL and the push URL that git will really use, and refuses with exit 2 any URL other than the repo's HTTPS URL, the SSH form included (it skips gh's login, ADR-0014). `clone` refuses the same way (`9210c51`). One gap stays as a known limit in the spec: a rewrite in a conditional include (`includeIf`) holds only once the clone's folder exists; `marketplace-add`, the one caller of `clone`, decides it (open question 25 in `spec/README.md`).
+- **Finding 2 is resolved.** One `ghEnv`, one sha check, one branch rule (git's rules, with no bidi mark, separator or lone surrogate), one text for an unreadable answer.
+- **Findings 3, 4, 6 and 9 are done**, as group B: `durationOf` and `sizeOf` in `command/words.ts`, `startStep` for all eight steps, one check per limit, `checkRepo` at each step's entry. **Findings 5, 7, 8 and 12 are skipped with evidence:** written out, a split of `gh.ts`, one poll loop, a failure table by status and one retry loop each made the code longer or only moved lines. Group B cut 51 code lines (1,962 to 1,911), not the 120 to 150 that this review estimated.
+- **Findings 14, 15 and 16 are recorded** in the spec (`1c3e9ac`). **Finding 17** is fixed with this re-check (the handoff note and the map row).
+- **Also fixed:** a value that a check refuses shows each control, format and separator character as an escape (`e869e82`), as the spec's text rule promises; a lone surrogate in a branch, a tag or GitHub's default branch ends with exit 2 or 3, not as a bug (`e32ee56`, `7d47f89`).
+- **Still open, Optional:** finding 10 (the suite takes about 12 s), finding 11 (a folder that is not a git repo ends with exit 3), finding 13 (`loginNeeded`'s two forms).
+
+**Verdict after the re-check: approve.**

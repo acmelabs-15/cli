@@ -29,7 +29,7 @@ Phase 3 The other steps
 - [x] 11. push and clone through gh's login
 - [x] 12. openPullRequest reuses an open PR or opens one
 - [x] 13. watchRun waits for a run, and findTag reads a tag
-- [ ] Checkpoint: github-ops complete
+- [x] Checkpoint: github-ops complete
 
 ## Task 1: A program runs in its own process group, under a time limit
 
@@ -287,7 +287,7 @@ Phase 3 The other steps
 
 ## Checkpoint: github-ops complete
 
-- [ ] `bun run check` is green, on the working copy and on a clean clone of the branch.
-- [ ] Every success criterion of `spec/SPEC-github-ops.md` passes, `checkLogin`'s cases included.
-- [ ] `packages/cli/src/github` holds no `gh auth token`, no `--show-token` and no `--force`.
-- [ ] `/brain:review` on the branch, then the PR into `main`, asked first.
+- [x] `bun run check` is green, on the working copy and on a clean clone of the branch: 653 tests at `7d47f89`.
+- [x] Every success criterion of `spec/SPEC-github-ops.md` passes, `checkLogin`'s cases included.
+- [x] `packages/cli/src/github` holds no `gh auth token`, no `--show-token` and no `--force`.
+- [x] `/brain:review` on the branch (`docs/reviews/2026-10-20-github-ops.md`, approve after the re-check). The PR into `main` is asked first.
