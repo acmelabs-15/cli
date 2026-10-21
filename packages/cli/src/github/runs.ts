@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import type { ProgressUpdate } from "../command/command";
 import { inputError, outsideError } from "../command/outcome";
-import { durationOf } from "../command/world-limits";
+import { durationOf } from "../command/words";
 import type { StepContext } from "./gh";
 import { ghApi, readBody, repoPath, shownText, startStep } from "./gh";
 import { commitShaSchema } from "./git";

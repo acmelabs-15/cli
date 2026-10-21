@@ -192,6 +192,7 @@ packages/cli/src/github/runs.ts             watchRun, findTag
 packages/cli/src/github/__tests__/          one test file per step file, at the command seam
 packages/cli/src/command/world.ts           World, its options and realWorld; sleep (changed)
 packages/cli/src/command/world-limits.ts    limits and the limits' outside failures (split from world.ts)
+packages/cli/src/command/words.ts           durationOf and sizeOf: a time and a size in words, for the World's and watchRun's messages (changed)
 packages/cli/src/command/world-spawn.ts     a program's environment, process group and limits (split from world.ts)
 packages/cli/src/command/world-fetch.ts     a request's limits (split from world.ts)
 packages/cli/src/command/fake-world.ts      fakeWorld: the limit answers and sleep (split from world.ts)

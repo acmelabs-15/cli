@@ -1,5 +1,6 @@
 import type { CommandError } from "./outcome";
 import { outsideError } from "./outcome";
+import { durationOf, sizeOf } from "./words";
 import type { FetchInit, SpawnOptions } from "./world";
 
 /** The limits that every outside program and request gets unless the call changes them. */
@@ -21,47 +22,15 @@ function shortCommandLine(commandLine: readonly string[]): string {
   return commandLine.length > 2 ? `${shown} ...` : shown;
 }
 
-/** A count and its unit in words: 1 minute, 90 seconds. */
-function countOf(count: number, unit: string): string {
-  return count === 1 ? `1 ${unit}` : `${count} ${unit}s`;
-}
-
-/** A time in words, in its largest whole unit: 5 minutes, 90 seconds, 1500 milliseconds. */
-export function durationOf(ms: number): string {
-  if (ms >= 60_000 && ms % 60_000 === 0) {
-    return countOf(ms / 60_000, "minute");
-  }
-  if (ms >= 1000 && ms % 1000 === 0) {
-    return countOf(ms / 1000, "second");
-  }
-  return countOf(ms, "millisecond");
-}
-
-/** The bytes in a KB, and in a MB: 1024, and 1024 KB. */
-const kb = 1024;
-const mb = 1024 * kb;
-
-/** A size in words, in its largest whole unit: 10 MB, 64 KB, 1500 bytes. */
-function sizeOf(bytes: number): string {
-  if (bytes >= mb && bytes % mb === 0) {
-    return `${bytes / mb} MB`;
-  }
-  if (bytes >= kb && bytes % kb === 0) {
-    return `${bytes / kb} KB`;
-  }
-  return countOf(bytes, "byte");
-}
-
 /**
- * A limit that a spawn or fetch call gives, such as its time limit in milliseconds. `name` says
- * whose limit it is, such as "a program's time limit". A limit that is not a positive number is a
- * bug in the caller, not an outside failure, so it throws a plain Error.
+ * Checks a limit that a spawn or fetch call gives, such as its time limit in milliseconds. `name`
+ * says whose limit it is, such as "a program's time limit". A limit that is not a positive number
+ * is a bug in the caller, not an outside failure, so it throws a plain Error.
  */
-function positiveLimit(limit: number, name: string, unit: string): number {
+function checkLimit(limit: number, name: string, unit: string): void {
   if (Number.isNaN(limit) || limit <= 0) {
     throw new Error(`${name} is a positive number of ${unit}, not ${limit}`);
   }
-  return limit;
 }
 
 /** A spawn call's limits: its own, or the ones in `limits`. */
@@ -69,34 +38,20 @@ export function programLimits(options: SpawnOptions): {
   timeoutMs: number;
   maxOutputBytes: number;
 } {
-  return {
-    timeoutMs: positiveLimit(
-      options.timeoutMs ?? limits.programMs,
-      "a program's time limit",
-      "milliseconds",
-    ),
-    maxOutputBytes: positiveLimit(
-      options.maxOutputBytes ?? limits.outputBytes,
-      "a program's output limit",
-      "bytes",
-    ),
-  };
+  const timeoutMs = options.timeoutMs ?? limits.programMs;
+  const maxOutputBytes = options.maxOutputBytes ?? limits.outputBytes;
+  checkLimit(timeoutMs, "a program's time limit", "milliseconds");
+  checkLimit(maxOutputBytes, "a program's output limit", "bytes");
+  return { timeoutMs, maxOutputBytes };
 }
 
 /** A fetch call's limits: its own, or the ones in `limits`. */
 export function requestLimits(init: FetchInit): { timeoutMs: number; maxBodyBytes: number } {
-  return {
-    timeoutMs: positiveLimit(
-      init.timeoutMs ?? limits.requestMs,
-      "a request's time limit",
-      "milliseconds",
-    ),
-    maxBodyBytes: positiveLimit(
-      init.maxBodyBytes ?? limits.outputBytes,
-      "a request's body limit",
-      "bytes",
-    ),
-  };
+  const timeoutMs = init.timeoutMs ?? limits.requestMs;
+  const maxBodyBytes = init.maxBodyBytes ?? limits.outputBytes;
+  checkLimit(timeoutMs, "a request's time limit", "milliseconds");
+  checkLimit(maxBodyBytes, "a request's body limit", "bytes");
+  return { timeoutMs, maxBodyBytes };
 }
 
 /**

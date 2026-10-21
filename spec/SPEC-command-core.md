@@ -221,7 +221,7 @@ packages/cli/src/command/input.ts         flagOf, and the checks of the input an
 packages/cli/src/command/steps.ts         trackSteps: the open steps of one run
 packages/cli/src/command/run.ts           runCommand
 packages/cli/src/command/redact.ts        redactorFor: the secrets removed from each text that leaves runCommand
-packages/cli/src/command/words.ts         sameWords: two word lists with the same words in the same order
+packages/cli/src/command/words.ts         sameWords: two word lists with the same words in the same order; durationOf and sizeOf: a time and a size in words
 packages/cli/src/command/lines.ts         progressLine, resultLine
 packages/cli/src/command/list.ts          CommandList, the type every front-end reads
 packages/cli/src/command/list-rules.ts    the command list's rules and the import scan, for the tests only
