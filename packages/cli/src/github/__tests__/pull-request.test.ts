@@ -472,9 +472,12 @@ describe("openPullRequest: a PR that opens between the read and the POST", () =>
 });
 
 describe("openPullRequest: the branch check, before any call", () => {
-  /** The rule each branch name must pass, as an issue's message gives it after the name. */
+  /**
+   * The rule each branch name must pass, git's own and no format character, as an issue's message
+   * gives it after the name.
+   */
   const branchRule =
-    "is not a branch name; a branch name has at least one character, and no control character or colon";
+    'is not a branch name that git allows: a branch name has no control character, space, "~", "^", ":", "?", "*", "[" or "\\", no "..", "@{" or "//", and no part that starts with "." or ends with ".lock"; it does not start with "-", "/" or ".", does not end with "/" or ".", and is not HEAD; acmelabs also refuses a format character, such as a bidi mark, and a line or paragraph separator';
 
   test.each([
     ["head", "no characters", ""],
@@ -486,6 +489,17 @@ describe("openPullRequest: the branch check, before any call", () => {
     ["base", "no characters", ""],
     ["base", "a tab", "ma\tin"],
     ["base", "a colon", "acmelabs-15:main"],
+    // git refuses each of these.
+    ["head", "a space", "add brain"],
+    ["head", "two dots", "add..brain"],
+    ["head", "a leading -, which reads as an option", "-add-brain"],
+    ["head", "a part that ends with .lock", "add-brain.lock"],
+    ["head", "a ~, which is revision syntax", "add-brain~1"],
+    ["head", "a reflog entry", "add-brain@{1}"],
+    ["base", "the name HEAD", "HEAD"],
+    // git allows a format character and a line separator, but the step's title would show them.
+    ["head", "a bidi mark", "add-\u202Ebrain"],
+    ["base", "a line separator", "ma\u2028in"],
   ])("a %s with %s ends with exit 2, and makes no call", async (field, _case, branch) => {
     const world = fakeWorld();
     const caller = frontEnd(world);

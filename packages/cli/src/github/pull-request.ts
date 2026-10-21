@@ -1,8 +1,9 @@
 import { z } from "zod";
 
-import { inputError, outsideError } from "../command/outcome";
+import { outsideError } from "../command/outcome";
 import type { GhAnswer, StepContext } from "./gh";
 import { ghApi, readBody, repoPath, shownText } from "./gh";
+import { checkBranchNames } from "./git";
 import type { GitHubRepo } from "./names";
 import { fullName } from "./names";
 
@@ -24,39 +25,6 @@ export type NewPullRequest = {
  * whether the step opened it ("created") or found it open already ("reused").
  */
 export type PullRequest = { number: number; url: string; made: "created" | "reused" };
-
-/**
- * A branch name, the head or the base: at least one character, and no control character or
- * colon. Git refuses both in a branch name (git check-ref-format). A colon in the head would name
- * another owner's branch, because GitHub reads a head as `owner:branch`, and the head is a branch
- * of the same repo. A control character is a mistake, and the head goes into the step's title,
- * which a terminal shows. The name is not a path segment: the query encodes it, and the body
- * carries it as JSON.
- */
-const branchSchema = z.string().regex(/^[^\p{Cc}:]+$/u, {
-  error: (issue) =>
-    `${JSON.stringify(issue.input)} is not a branch name; a branch name has at least one character, and no control character or colon`,
-});
-
-/** The two branches of a pull request, each with the branch check. */
-const branchesSchema = z.object({ head: branchSchema, base: branchSchema });
-
-/**
- * Checks the head and the base before any call: a name that fails is an input failure, exit 2,
- * with one issue for each branch that fails.
- */
-function checkBranches(head: string, base: string): void {
-  const checked = branchesSchema.safeParse({ head, base });
-  if (!checked.success) {
-    throw inputError(
-      "the pull request's head or base is not a branch name",
-      checked.error.issues.map((issue) => ({
-        field: issue.path.join("."),
-        message: issue.message,
-      })),
-    );
-  }
-}
 
 /**
  * The repo's pull requests as GitHub lists them: each one's number, web address, head branch and
@@ -145,7 +113,9 @@ export async function openPullRequest(
   // The names and the branches pass their checks before the step starts, so no title shows one
   // that fails.
   const path = repoPath(repo, "pulls");
-  checkBranches(head, base);
+  // git's branch rules keep out a colon, which would make the head another owner's branch, and a
+  // control or format character, which the title would show.
+  checkBranchNames("the pull request's head or base is not a branch name", { head, base });
   const step = {
     kind: "step",
     step: "github-pull-request",

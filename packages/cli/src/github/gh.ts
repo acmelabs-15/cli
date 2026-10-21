@@ -168,8 +168,11 @@ const headers = [
   "X-GitHub-Api-Version: 2026-03-10",
 ] as const;
 
-/** The variables every gh call adds: gh asks nothing, and prints no notice of a new release. */
-const ghEnv = { GH_PROMPT_DISABLED: "1", GH_NO_UPDATE_NOTIFIER: "1" } as const;
+/**
+ * The variables that every gh call adds, ghApi's and checkLogin's: gh asks nothing, and prints no
+ * notice of a new release.
+ */
+export const ghEnv = { GH_PROMPT_DISABLED: "1", GH_NO_UPDATE_NOTIFIER: "1" } as const;
 
 /**
  * A JSON object, such as GitHub's error body: its fields by name. A step reads an ok answer's body
@@ -526,13 +529,29 @@ function wrongThing(issue: Issue): string {
 }
 
 /**
+ * The outside failure, exit 3, for an answer of a shape that acmelabs cannot read: `call` names
+ * the call, such as `gh api GET repos/acmelabs-15/cli`, and `error` is the schema's. The message
+ * names the first thing wrong and how many more, with each thing wrong as an issue at its place in
+ * the answer, such as `[0].id`. Each place and each issue's message show as `shownText` gives
+ * them: a place can hold a key of the answer, and a check's message can quote a value from it.
+ */
+export function unreadableAnswer(call: string, error: z.ZodError): CommandError {
+  const issues = error.issues.map((issue) => ({
+    field: shownText(z.core.toDotPath(issue.path)),
+    message: shownText(issue.message),
+  }));
+  // zod gives at least one issue for an answer it cannot read.
+  const [first = "", ...rest] = issues.map(wrongThing);
+  const more = rest.length === 0 ? "" : ` (and ${rest.length} more)`;
+  return outsideError(`${call} gave an answer that acmelabs cannot read: ${first}${more}`, issues);
+}
+
+/**
  * The body of an ok answer, read with a schema, which drops the fields it does not name. Any other
  * answer throws the failure that the spec's table gives it, as `answerOrThrow` does, so a step
  * reads the answers it expects, such as a 404, before it gives the answer here. A body of
- * another shape is an outside failure, exit 3: GitHub answered something the step cannot read. Its
- * message names the call and the first thing wrong, with each thing wrong as an issue at its place
- * in the body, such as `[0].id`. Each place and each issue's message show as `shownText` gives
- * them: a place can hold a key of GitHub's body, and a check's message can quote a value from it.
+ * another shape is an outside failure, exit 3, as `unreadableAnswer` words it: GitHub answered
+ * something the step cannot read.
  */
 export function readBody<Schema extends z.ZodType>(
   answer: GhAnswer,
@@ -543,17 +562,7 @@ export function readBody<Schema extends z.ZodType>(
   if (read.success) {
     return read.data;
   }
-  const issues = read.error.issues.map((issue) => ({
-    field: shownText(z.core.toDotPath(issue.path)),
-    message: shownText(issue.message),
-  }));
-  // zod gives at least one issue for a body it cannot read.
-  const [first = "", ...rest] = issues.map(wrongThing);
-  const more = rest.length === 0 ? "" : ` (and ${rest.length} more)`;
-  throw outsideError(
-    `gh api ${answer.method} ${answer.path} gave an answer that acmelabs cannot read: ${first}${more}`,
-    issues,
-  );
+  throw unreadableAnswer(`gh api ${answer.method} ${answer.path}`, read.error);
 }
 
 /** The two names of a repo, each with its check. */

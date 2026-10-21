@@ -863,6 +863,7 @@ describe("push: the names", () => {
     ["two slashes", "a//b"],
     ["HEAD", "HEAD"],
     ["no character", ""],
+    ["a bidi mark, which git allows but a terminal shows reordered", "main\u202E"],
   ])(
     "a branch with %s ends with exit 2 before the step starts, and makes no call",
     async (_case, branch) => {

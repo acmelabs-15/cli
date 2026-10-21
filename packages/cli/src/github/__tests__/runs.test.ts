@@ -174,7 +174,7 @@ describe("findTag", () => {
     });
   });
 
-  test("a sha that is not 40 lowercase hex characters ends with exit 3, and goes into no path", async () => {
+  test("a sha that is not a commit sha ends with exit 3, and goes into no path", async () => {
     const ref = { path: "repos/changesets/changesets/git/ref/tags/v1" };
     const world = fakeWorld({
       spawn: [
@@ -199,7 +199,7 @@ describe("findTag", () => {
       error: {
         kind: "outside",
         message:
-          "gh api GET repos/changesets/changesets/git/ref/tags/v1 gave an answer that acmelabs cannot read: object.sha: expected 40 lowercase hex characters",
+          'gh api GET repos/changesets/changesets/git/ref/tags/v1 gave an answer that acmelabs cannot read: object.sha: "../../../user" is not a commit sha; a sha is 40 characters, each 0 to 9 or a to f',
       },
     });
     expect(world.calls).toEqual([ghLogged(ref)]);

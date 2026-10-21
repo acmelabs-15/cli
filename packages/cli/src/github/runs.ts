@@ -5,13 +5,9 @@ import { inputError, outsideError } from "../command/outcome";
 import { durationOf } from "../command/world-limits";
 import type { StepContext } from "./gh";
 import { ghApi, readBody, repoPath, shownText } from "./gh";
+import { commitShaSchema } from "./git";
 import type { GitHubRepo } from "./names";
 import { fullName } from "./names";
-
-/** A commit's sha as git prints it: 40 lowercase hex characters. */
-const shaSchema = z
-  .string()
-  .regex(/^[\da-f]{40}$/u, { error: "expected 40 lowercase hex characters" });
 
 /**
  * One workflow run, as the runs list and a read of the run give it: the fields that the step reads
@@ -105,7 +101,7 @@ function checkedWaits(watch: RunWatch): RunWaits {
  * call.
  */
 function checkedSha(headSha: string): string {
-  if (!shaSchema.safeParse(headSha).success) {
+  if (!commitShaSchema.safeParse(headSha).success) {
     throw inputError(
       `${JSON.stringify(headSha)} is not a commit sha; a sha is 40 lowercase hex characters, as git rev-parse prints it`,
     );
@@ -237,7 +233,7 @@ export async function watchRun(context: StepContext, watch: RunWatch): Promise<R
  * The object that a ref or a tag object points at: its sha and its type, such as commit or tag.
  * The sha of a tag object goes into an API path, so it passes the sha check.
  */
-const pointedAt = z.object({ object: z.object({ sha: shaSchema, type: z.string() }) });
+const pointedAt = z.object({ object: z.object({ sha: commitShaSchema, type: z.string() }) });
 
 /**
  * A tag's name as it goes into an API path, encoded. `encodeURIComponent` leaves a dot as it is, so

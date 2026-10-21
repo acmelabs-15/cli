@@ -3,7 +3,14 @@ import { z } from "zod";
 import { outsideError } from "../command/outcome";
 import type { Spawned, World } from "../command/world";
 import type { StepContext } from "./gh";
-import { ghLoginNeeded, shownText, tokenVariablesFrom, tokenVariablesIn } from "./gh";
+import {
+  ghEnv,
+  ghLoginNeeded,
+  shownText,
+  tokenVariablesFrom,
+  tokenVariablesIn,
+  unreadableAnswer,
+} from "./gh";
 
 /** The gh login that checkLogin checked: its login name, and the scopes its token reports. */
 export type CheckedLogin = { login: string; scopes: readonly string[] };
@@ -24,12 +31,6 @@ const statusCommandLine = [
 
 /** The command line as one text, as a failure's message names it. */
 const statusCall = statusCommandLine.join(" ");
-
-/**
- * The variables every gh call adds: gh asks nothing, and prints no notice of a new release. The
- * same two as `ghApi` adds in gh.ts.
- */
-const ghEnv = { GH_PROMPT_DISABLED: "1", GH_NO_UPDATE_NOTIFIER: "1" } as const;
 
 /**
  * One account in gh's answer: the fields that the step reads. gh leaves out `scopes` for a token
@@ -75,19 +76,7 @@ function readStatus(spawned: Spawned, env: World["env"]): z.output<typeof status
   if (read.success) {
     return read.data;
   }
-  // A place can hold a key of gh's answer, such as a host name, so each text follows the rule.
-  const issues = read.error.issues.map((issue) => ({
-    field: shownText(z.core.toDotPath(issue.path)),
-    message: shownText(issue.message),
-  }));
-  // zod gives at least one issue for an answer it cannot read.
-  const [first = { field: "", message: "" }] = issues;
-  const more = issues.length > 1 ? ` (and ${issues.length - 1} more)` : "";
-  const place = first.field === "" ? "" : `${first.field}: `;
-  throw outsideError(
-    `${statusCall} gave an answer that acmelabs cannot read: ${place}${first.message}${more}`,
-    issues,
-  );
+  throw unreadableAnswer(statusCall, read.error);
 }
 
 /** The scopes in gh's `scopes` text, such as `gist, repo`, as a list. No text, no scopes. */

@@ -6,7 +6,7 @@ import { shownText } from "./gh";
 import type { CloneRequest, OriginUrl, RemoteBranchRequest } from "./git";
 import {
   addOrigin,
-  branchNameSchema,
+  checkBranchNames,
   cloneRepo,
   httpsUrl,
   localCommit,
@@ -25,20 +25,6 @@ export type PushRequest = RemoteBranchRequest;
  * GitHub's branch was at that commit already.
  */
 export type Pushed = { sha: string; pushed: boolean };
-
-/**
- * Checks the branch before any call: a branch name that git does not allow is an input failure,
- * exit 2, with one issue that says why.
- */
-function checkBranch(branch: string): void {
-  const checked = branchNameSchema.safeParse(branch);
-  if (!checked.success) {
-    throw inputError(
-      "the branch to push is not a branch name that git allows",
-      checked.error.issues.map((issue) => ({ field: "branch", message: issue.message })),
-    );
-  }
-}
 
 /**
  * A URL of the remote origin as a message shows it: a URL such as
@@ -114,7 +100,7 @@ export async function push(context: StepContext, request: PushRequest): Promise<
   // The names and the branch pass their checks before the step starts, so no title shows one that
   // fails.
   httpsUrl(repo);
-  checkBranch(branch);
+  checkBranchNames("the branch to push is not a branch name that git allows", { branch });
   const step = {
     kind: "step",
     step: "github-push",

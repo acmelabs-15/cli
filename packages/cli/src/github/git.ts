@@ -129,17 +129,42 @@ export function httpsUrl(repo: GitHubRepo): string {
  * control character, space, "~", "^", ":", "?", "*", "[" or "\", no "..", "@{" or "//", no part
  * that starts with "." or ends with ".lock"; not starting with "-", "/" or ".", not ending with
  * "/" or ".", and not HEAD. A branch goes into a git command line, so the check keeps out a
- * refspec's ":" (`:main` deletes GitHub's main) and "*", and revision syntax such as `main~1`.
+ * refspec's ":" (`:main` deletes GitHub's main) and "*", and revision syntax such as `main~1`. A
+ * pull request's head goes into GitHub's `owner:branch`, where a ":" would name another owner's
+ * branch. Beyond git's rules, the check keeps out a format character (\p{Cf}), such as a bidi
+ * mark, and a line or paragraph separator: git allows them, but a step's title shows the branch,
+ * and a terminal would reorder it or break its line. So a branch that passes holds none of the
+ * characters that `shownText` replaces.
  */
 export const branchNameSchema = z
   .string()
   .regex(
-    /^(?!HEAD$)(?![-/.])(?!.*(?:\.\.|@\{|\/\/|\/\.|\.lock(?:\/|$)|[/.]$))[^\p{Cc} ~^:?*[\\]+$/u,
+    /^(?!HEAD$)(?![-/.])(?!.*(?:\.\.|@\{|\/\/|\/\.|\.lock(?:\/|$)|[/.]$))[^\p{Cc}\p{Cf}\p{Zl}\p{Zp} ~^:?*[\\]+$/u,
     {
       error: (issue) =>
-        `${JSON.stringify(issue.input)} is not a branch name that git allows: a branch name has no control character, space, "~", "^", ":", "?", "*", "[" or "\\", no "..", "@{" or "//", and no part that starts with "." or ends with ".lock"; it does not start with "-", "/" or ".", does not end with "/" or ".", and is not HEAD`,
+        `${JSON.stringify(issue.input)} is not a branch name that git allows: a branch name has no control character, space, "~", "^", ":", "?", "*", "[" or "\\", no "..", "@{" or "//", and no part that starts with "." or ends with ".lock"; it does not start with "-", "/" or ".", does not end with "/" or ".", and is not HEAD; acmelabs also refuses a format character, such as a bidi mark, and a line or paragraph separator`,
     },
   );
+
+/**
+ * Checks branch names before any call, each against `branchNameSchema`: a name that fails is an
+ * input failure, exit 2, with the caller's `message` and one issue for each name that fails, at
+ * its field, such as `branch`, `head` or `base`.
+ */
+export function checkBranchNames(
+  message: string,
+  branches: Readonly<Record<string, string>>,
+): void {
+  const issues = Object.entries(branches).flatMap(([field, branch]) => {
+    const checked = branchNameSchema.safeParse(branch);
+    return checked.success
+      ? []
+      : checked.error.issues.map((issue) => ({ field, message: issue.message }));
+  });
+  if (issues.length > 0) {
+    throw inputError(message, issues);
+  }
+}
 
 /**
  * The full ref of a local branch, `refs/heads/<branch>`, as a git command line takes it. A full
