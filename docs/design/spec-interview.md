@@ -357,3 +357,42 @@ Peter asked that everything from the interview be saved to Markdown in the layou
 - **Peter, next:** could the folder be passed by flag, so a flag overrides the variable? The agent answered yes for `GIT_DIR` and `GIT_WORK_TREE` (`--git-dir`, `--work-tree`), pending the research's probe of the rest.
 - **Facts given** (`docs/research/12-git-and-github-packages.md`): the flags cover two variables only; a linked worktree's commit hook also sets `GIT_INDEX_FILE`, and a `git clone` under it overwrote another repo's index; git's hook docs, git's own code, pre-commit and simple-git 4.0 clear the variables; clearing every `GIT_` variable gave the right answer in every probed case; no package cuts the GitHub code much (about 600 of 907 lines are ACMElabs's own rules).
 - **Recommended and answered:** clear the `GIT_` variables for every git call that acmelabs makes. Recorded in ADR-0016.
+
+### How acmelabs reaches npm — settled 2026-10-20 (module `npm-ops`)
+
+- **First version** compared acmelabs's own calls with the token in memory, the npm CLI holding the login, and acmelabs's own calls with the token in `~/.npmrc` (notes 13 and 14). Peter answered `/wait-what`. Defects: a missing premise (why `acmelabs new` logs in to npm at all), unexplained terms ("session token", "fake fetch", "redaction", "no terminal"), and a combined scope (the third option added where the key is kept).
+- **Repaired version** opened with what acmelabs does on npm as the user (creates the package, links it to CI), then asked who holds the npm key: acmelabs for one run, or npm's own tool, as gh does. The npm CLI asks for the second factor only in a terminal that it controls, so an agent could not run the link-to-CI step.
+- **Recommended and answered:** acmelabs holds the key, for one run. acmelabs runs npm's web login itself, keeps the 2-hour token in memory only, never writes it to disk or prints it, and forgets it when the command ends. Every front-end works the same: each step shows its browser link as a progress update.
+
+### The throwaway staged version — settled 2026-10-20 (module `npm-ops`)
+
+- **Facts given** (note 13): a stage publish creates a new package with npm's public stub `0.0.0-stage`, and the submitted version waits in the review queue until someone approves or rejects it, each with 2FA. A waiting `0.1.0` would block CI from publishing `0.1.0`, so acmelabs submits a throwaway version that CI never uses. npm's docs say normal publishes work while a staged version waits; a waiting version stays private. No source says what a reject does to a brand-new package, or whether npm removes a waiting version by itself.
+- **Recommended and answered:** leave the throwaway version in the queue. No extra 2FA prompt; one waiting item stays in the package's Staged Packages tab on npmjs.com until Peter rejects it there.
+
+### The npm-ops spec at the handoff — 2026-10-20
+
+The spec interview for `npm-ops` stopped here at Peter's request, so that a new session can continue. `spec/SPEC-npm-ops.md` is not written yet.
+
+**Settled (above):** acmelabs's own registry calls through the World's fetch, with the npm key in memory for one run; the throwaway staged version stays in the queue.
+
+**Asked, not answered: the test seam.** The question was sent once and stopped before Peter answered; send it again first. Its content:
+
+- No test calls npm. Each step runs through a sample command with `fakeWorld`, whose fetch answers from a script built from note 13's real answers.
+- Change needed: `fakeWorld`'s log keeps only a request's method and URL (`WorldCall` in `packages/cli/src/command/fake-world.ts`). It must also keep each request's headers and body, so a test sees the `Authorization` header, the `npm-otp` and `npm-auth-type` headers, and the stage publish body.
+- The first real run stays outside the tests: `cli-release`'s first publish of `@acmelabs/cli`, asked before it runs.
+- Options: (1) the command seam with the larger request log, recommended: the seam every module uses, offline, and the fake clock passes a long wait at once; (2) a local fake npm server (`Bun.serve`) with the real World's fetch: tests the real HTTP path, but a new seam, slower tests and real waits for each poll.
+
+**Taken from evidence or precedent (state them in the spec, for Peter's approval with it):**
+
+- The module adds no command, as `github-ops`. `scaffold` and `cli-release` call its steps. `cli-release` needs a way to run them for this repo's two packages: an open question for that module.
+- Its steps build on `command-core` (the step context, `startStep`, the World's fetch, `sleep`, the failure kinds of ADR-0007). The map row's "Depends on" changes from "none" to `command-core`.
+- Each step reads before it writes and reports itself as skipped when its result is already there, as Peter chose for the GitHub steps. An existing package with real versions is an input failure (exit 2); a package with only npm's stub is this run's package.
+- The steps run on the maintainer's machine. CI publishes through the trusted publisher with the npm CLI, in `shared-workflows` (ADR-0006).
+
+**Steps the spec names (draft):** a login step (web login: `POST /-/v1/login`, poll `doneUrl`, honour `retry-after`, a time bound); a scope step (`GET /-/org/<scope>/package`; on 404 show `https://www.npmjs.com/org/create` and poll every 5 s or slower, with a bound; `GET /-/org/<scope>/user` tells an org from a user); registry reads (abbreviated package document, `GET /-/package/<name>/dist-tags` for a fresh read, also for `upgrade`); a package step (stage publish of the throwaway version with a small tarball that acmelabs builds, `POST /-/stage/package/<name>`); a trusted-publisher step (`GET` then `POST /-/package/<name>/trust` with the web 2FA retry; repository is the package's repo, the file is the caller's workflow file, permissions `createPackage` and `createStagedPackage`; CI must publish within 48 hours).
+
+**Agent's calls planned (small, reversible; state them in the spec):** each step shows a browser link as an info message and opens no browser itself (a front-end may add "press Enter to open"); the redaction learns the npm key at run time; poll intervals and time bounds as for `watchRun`; the throwaway version's number and tag (for example `0.0.0-placeholder` with a non-`latest` tag).
+
+**Facts the spec must carry (notes 13 and 14):** an OTP need is a 401 with an OTP signal, a forbidden call is a 403; the trust endpoints need `npm-otp` on every call; an unvalidated trust config expires after 48 hours and an expired one stays visible; npm's 5-minute 2FA skip; `repository.url` must match the repo exactly; the stub `0.0.0-stage` takes `latest` until 0.1.0 publishes.
+
+**Glossary gaps for the domain-modeling skill:** web login, the npm key (session token), web 2FA, the review queue and its stage id. `CONTEXT.md` has none of them.

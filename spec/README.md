@@ -11,7 +11,7 @@ The index of the spec. Peter approved this map on 2026-10-20 (`docs/design/spec-
 | 1 | `tui-kit` | The theme, the vendored `@clack/ui` preview, and the Bubbles-style components with focus | none | not written; prototype first |
 | 1 | `config-presets` | `@acmelabs/config`: the oxlint, oxfmt and tsconfig presets, each deviation with its reason | none | [built](SPEC-config-presets.md); merged in PR #3 (`7fcb916`), 2026-10-20 |
 | 1 | `github-ops` | GitHub steps: check the gh login, create a repo with its visibility, the Actions setting and Protect main, push, clone, open a PR, watch a run, read a tag; the World's time and output limits | `command-core` | [built](SPEC-github-ops.md); merged in PR #4 (`7a875ae`), 2026-10-20 |
-| 1 | `npm-ops` | npm steps: registry reads, web login, org creation, the placeholder version, the trusted publisher | none | not written |
+| 1 | `npm-ops` | npm steps: registry reads, web login, org creation, the placeholder version, the trusted publisher | none | in progress: the interview runs (`docs/design/spec-interview.md`, "The npm-ops spec at the handoff") |
 | 2 | `cli-frontend` | Direct calls: routing with `@bomb.sh/router`, help, CLI mode with themed clack prompts, JSON mode | `command-core`, `tui-kit` | not written |
 | 2 | `repo-checks` | `version sync`, `version check`, `release notes`, `validate` | `repo-model`, `command-core` | not written |
 | 3 | `shared-workflows` | acmelabs-15/.github: the CI and release workflows (plugin and library paths), their own tests, the `v1` line | `repo-checks` | not written |

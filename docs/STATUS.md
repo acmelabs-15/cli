@@ -2,14 +2,14 @@
 
 The one place for where the project stands. Every session reads it first and rewrites it last (see "Session end" in `AGENTS.md`). Keep it short: facts a new session needs to continue, nothing else.
 
-**Updated:** 2026-10-20, after the merge of PR #4 (`github-ops`), by the Claude Code session that merged it at Peter's choice.
+**Updated:** 2026-10-20, in the `npm-ops` spec interview, by the Claude Code session that merged PR #4 and started that spec. Peter stopped the interview here for a handoff.
 
 ## Where things stand
 
 - **The spec:** the capability map of 16 modules is approved (`spec/README.md`). Every interview decision is recorded (`docs/design/spec-interview.md`, `docs/decisions/`).
 - **Done and merged into main:** `repo-model` (PR #1, `082abe4`), `command-core` (PR #2, `38888fa`), `config-presets` (PR #3, `7fcb916`) and `github-ops` (PR #4, `7a875ae`). Their plans are in `tasks/done/`. `bun run check` is green on `main` after the merge: 653 tests at `7a875ae`.
 - **What `github-ops` holds:** the World's limits (5 minutes per program, 1 minute per request, 10 MB per output or body), a process group per program, network failures as exit 3, `sleep` with a fake clock, and git calls without the `GIT_` variables (ADR-0015, ADR-0016); the GitHub steps in `packages/cli/src/github/` (`checkLogin`, `ensureRepo`, `ensureActionsSetting`, `ensureProtectMain`, `push`, `clone`, `openPullRequest`, `watchRun`, `findTag`), each safe to run again. No command uses them yet: `scaffold` and `marketplace-add` will.
-- **No module is in progress.** `tasks/plan.md` and `tasks/todo.md` do not exist until the next module's plan.
+- **In progress: the `npm-ops` spec (phase Spec, `/brain:spec`).** `spec/SPEC-npm-ops.md` is not written yet. Research notes 13 and 14 are done and on `main` (`a33e7fd`). Two decisions are settled: acmelabs makes its own registry calls through the World's fetch and keeps the npm key in memory for one run; the throwaway staged version stays in npm's review queue. The full state, with the draft steps, the assumptions and the planned agent's calls, is in `docs/design/spec-interview.md`, section "The npm-ops spec at the handoff". `tasks/plan.md` and `tasks/todo.md` do not exist until the plan.
 - **The repo:** public at https://github.com/acmelabs-15/cli, main protected by "Protect main". The module branches stay on the remote after their merge. Peter's standing permissions: commit at task and session ends, push after every commit, one branch per module merged through one PR; opening a PR and merging are asked.
 
 ## Red and notes
@@ -25,9 +25,12 @@ The one place for where the project stands. Every session reads it first and rew
 
 ## Waiting on Peter
 
-Nothing now. The `npm-ops` spec asks Peter its decisions one at a time, and stops for his approval when it is written.
+The `npm-ops` test-seam question. It was sent once and stopped before an answer; its content and the recommendation are in `docs/design/spec-interview.md` ("The npm-ops spec at the handoff").
 
 ## Next steps
 
-1. The other layer 1 spec: `npm-ops`, through `/brain:spec`. **STOP** for Peter's approval when `spec/SPEC-npm-ops.md` is written.
-2. `tui-kit` waits for its prototype (open question 3).
+1. Run `/brain:spec` for `npm-ops`. Read `docs/design/spec-interview.md` from "How acmelabs reaches npm" to its end, and notes 13 and 14, in full.
+2. Send the test-seam question again, through the ask-user-question skill.
+3. Put any other decision that is Peter's to him, one question per call. Raise the glossary gaps through the domain-modeling skill.
+4. Write `spec/SPEC-npm-ops.md` in the layout of `spec/SPEC-github-ops.md`, an ADR for decision 1 (acmelabs holds the npm key for one run; it departs from ADR-0014's rule for GitHub), and the map row. **STOP** for Peter's approval.
+5. `tui-kit` waits for its prototype (open question 3).
