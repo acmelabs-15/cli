@@ -422,6 +422,15 @@ https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api
   - An empty `GH_CONFIG_DIR` did not take gh's login away: gh's helper still served a token, and `ls-remote` of the private acmelabs-15/pinky exited 0.
   - Without `-c core.askPass=`, `SSH_ASKPASS=/usr/bin/false` ran: `error: unable to read askpass response from '/usr/bin/false'`, before "terminal prompts disabled".
   - With a local bare repo: a push that is not a fast-forward prints ` ! [rejected]        main -> main (fetch first)`, exit 1; `git push --set-upstream origin refs/heads/main` sets `branch.main.merge` to `refs/heads/main`; `git remote get-url origin` applies a `url.<base>.insteadOf` rewrite, and `git config --get-all remote.origin.url` does not.
+- **Probes of URL rewrites** (the review fix of github-ops, 2026-10-20, git 2.54.0, a temp home, and a local repo whose origin is `https://github.com/acmelabs-15/jev.git`; local bare repos, no network unless a bullet says so):
+  - `git remote get-url --all origin` applies `url.<base>.insteadOf`. `git remote get-url --push --all origin` applies `url.<base>.pushInsteadOf`, else `insteadOf`. Each prints one URL a line. With no origin, each exits 2 with `error: No such remote 'origin'`.
+  - `git ls-remote origin` reads the fetch URL, and `git push origin` writes to the push URL: with `insteadOf` to one bare repo and `pushInsteadOf` to another, `ls-remote` listed the first one's refs, and the push landed in the second.
+  - A `pushInsteadOf` back to `https://github.com/` beside an `insteadOf` to another host keeps the push URL and moves the fetch URL. So a check of the push URL alone misses `ls-remote`, which would send that host a login from the user's own credential helper.
+  - A configured `pushurl` is moved by `insteadOf`, not by `pushInsteadOf`.
+  - A global `url."git@github.com:".insteadOf = https://github.com/` gives `git@github.com:acmelabs-15/jev.git` for both reads, and the `ssh://git@github.com/` form gives `ssh://git@github.com/acmelabs-15/jev.git`. A longer rule beside it, `url.https://github.com/acmelabs-15/.insteadOf = https://github.com/acmelabs-15/`, keeps the acmelabs-15 URLs on HTTPS, because the longest match wins; another owner's URL still gets the SSH form.
+  - A `git clone` that runs inside another repo does not read that repo's local config: a local `insteadOf` there did not move the clone, which went to github.com and asked for a login (the one probe that reached GitHub; no login, nothing read).
+  - A program that Bun starts with `detached: true`, as the World starts each one, has no controlling terminal (`tpgid` 0, tty `??`, a probe under `script`). Without `detached`, the same program had the terminal. So ssh in a git call of acmelabs cannot ask for a passphrase or a new host key.
+  - This machine has no `url.` rule in any git config scope (`git config --show-origin --get-regexp '^url\.'` exits 1), and gh's `git_protocol` is `https`.
 
 ## 5. Prior art: how acmelabs-15/cli was created on 2026-10-20
 

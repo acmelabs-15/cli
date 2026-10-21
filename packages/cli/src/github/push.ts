@@ -11,6 +11,7 @@ import {
   httpsUrl,
   localCommit,
   originUrls,
+  originUrlsInUse,
   pushBranch,
   remoteCommit,
 } from "./git";
@@ -83,11 +84,30 @@ async function ensureOrigin(context: StepContext, { repo, cwd }: PushRequest): P
 }
 
 /**
+ * Makes sure that git's config moves no URL of the remote origin: each URL that `git ls-remote`
+ * and `git push` use, after the rewrites (url.<base>.insteadOf and pushInsteadOf), must be the
+ * repo's HTTPS URL. A rewrite that moves one is an input failure, exit 2, that names the URL git
+ * would use, before any call reaches a remote: on another host, git would send it a login from
+ * the user's own credential helper, and the SSH form would skip gh's login (ADR-0014).
+ */
+async function refuseRewrites(context: StepContext, { repo, cwd }: PushRequest): Promise<void> {
+  const url = httpsUrl(repo);
+  const inUse = await originUrlsInUse(context, cwd);
+  const moved = inUse.find(({ value }) => value !== url);
+  if (moved !== undefined) {
+    throw inputError(
+      `git's config rewrites the remote origin of ${shownText(cwd)}, ${url}, to ${shownUrl(moved)}; acmelabs pushes ${fullName(repo)} only to that HTTPS URL, with gh's login, so remove the rewrite (git config --show-origin --get-regexp '^url\\.' lists each one)`,
+    );
+  }
+}
+
+/**
  * Pushes the local branch to the repo on GitHub, through the remote origin and gh's login. It adds
- * origin when the local repo has none, reads GitHub's branch with `git ls-remote`, and reports the
- * step as skipped when that branch is at the local commit already. Else it pushes, and sets
- * origin's branch as the upstream. A push is never forced. The messages show the folder, a URL
- * from the git config and git's commit as `shownText` gives them.
+ * origin when the local repo has none, refuses a rewrite in git's config that moves origin's URL,
+ * reads GitHub's branch with `git ls-remote`, and reports the step as skipped when that branch is
+ * at the local commit already. Else it pushes, and sets origin's branch as the upstream. A push is
+ * never forced. The messages show the folder, a URL from the git config and git's commit as
+ * `shownText` gives them.
  */
 export async function push(context: StepContext, request: PushRequest): Promise<Pushed> {
   const { repo, cwd, branch } = request;
@@ -106,6 +126,7 @@ export async function push(context: StepContext, request: PushRequest): Promise<
     throw inputError(`${shownText(cwd)} has no branch ${branch} to push`);
   }
   await ensureOrigin(context, request);
+  await refuseRewrites(context, request);
   if ((await remoteCommit(context, request)) === sha) {
     context.progress({ ...step, status: "skipped", detail: `already at ${shownText(sha)}` });
     return { sha, pushed: false };

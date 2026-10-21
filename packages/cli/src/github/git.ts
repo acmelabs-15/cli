@@ -178,8 +178,8 @@ export async function localCommit(
 }
 
 /**
- * One URL of the local repo's remote origin, as its git config holds it: a `url`, which a fetch
- * and a push use, or a `pushurl`, which a push uses instead of the url.
+ * One URL of the local repo's remote origin: a `url`, which a fetch and a push use, or a
+ * `pushurl`, which a push uses instead of the url.
  */
 export type OriginUrl = { key: "url" | "pushurl"; value: string };
 
@@ -187,9 +187,9 @@ export type OriginUrl = { key: "url" | "pushurl"; value: string };
  * The URLs of the local repo's remote origin, as its git config holds them: none when it has no
  * origin. It runs `git config --null --get-regexp ^remote\.origin\.(url|pushurl)$` in `cwd`, which
  * exits 1 with no output when no key matches, and with --null writes each key in lower case, a
- * newline, the value and a NUL, so no value can break the read. A URL rewrite of the user's own
+ * newline, the value and a NUL, so no value can break the read. A URL rewrite in git's config
  * (url.<base>.insteadOf or pushInsteadOf) does not change what this reads, so a re-run reads the
- * URL that the first run added.
+ * URL that the first run added; `originUrlsInUse` reads the URLs after the rewrites.
  */
 export async function originUrls(context: StepContext, cwd: string): Promise<OriginUrl[]> {
   const words = ["config", "--null", "--get-regexp", String.raw`^remote\.origin\.(url|pushurl)$`];
@@ -209,6 +209,41 @@ export async function originUrls(context: StepContext, cwd: string): Promise<Ori
       const key = name === "remote.origin.pushurl" ? "pushurl" : "url";
       return { key, value: value.join("\n") };
     });
+}
+
+/**
+ * The URLs of one kind that git uses for the local repo's remote origin, after the rewrites in
+ * git's config: `git remote get-url --all origin` in `cwd` for the `url`s, the same with --push
+ * for the `pushurl`s. Each prints one URL a line. Any exit other than 0 is an outside failure that
+ * names the call and git's message.
+ */
+async function urlsInUse(
+  context: StepContext,
+  cwd: string,
+  key: OriginUrl["key"],
+): Promise<OriginUrl[]> {
+  const push = key === "pushurl" ? ["--push"] : [];
+  const call = { words: ["remote", "get-url", ...push, "--all", "origin"], cwd };
+  const spawned = await runGit(context, call);
+  if (spawned.code !== 0) {
+    throw gitFailed(call, spawned);
+  }
+  return spawned.stdout
+    .split("\n")
+    .filter((line) => line !== "")
+    .map((value) => ({ key, value }));
+}
+
+/**
+ * The URLs that git uses for the local repo's remote origin, after the rewrites in git's config:
+ * each `url` as `git ls-remote origin` reads it, with url.<base>.insteadOf applied, then each
+ * `pushurl` as `git push origin` writes to it, with url.<base>.pushInsteadOf, else insteadOf,
+ * applied. A rewrite can move the one and keep the other (probes on git 2.54.0, note 09, section
+ * 4), so the step checks both.
+ */
+export async function originUrlsInUse(context: StepContext, cwd: string): Promise<OriginUrl[]> {
+  const urls = await urlsInUse(context, cwd, "url");
+  return [...urls, ...(await urlsInUse(context, cwd, "pushurl"))];
 }
 
 /** A local git repo and the GitHub repo it goes to: the repo, and the local repo's folder. */
